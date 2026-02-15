@@ -28,6 +28,11 @@ fi
 # Force single-GPU to avoid multiprocessing issues with virtual/integrated devices
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
+# Force NUM_PROC=1: multiprocessing splits video by nb_frames metadata which is
+# often missing/zero in anime containers, producing empty sub-videos that fail.
+# Single-process reads frames via pipe and works reliably with any container.
+NUM_PROC=1
+
 # CUDA check via PyTorch
 python3 - <<'PY'
 import sys, torch
