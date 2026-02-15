@@ -18,11 +18,13 @@ EXT="mp4"
 # Ensure weights directory exists
 mkdir -p "$WEIGHTS_DIR"
 
-# Download weights if missing
-if [ ! -f "$WEIGHTS_DIR/$MODEL.pth" ]; then
+# Download weights if missing or corrupt (< 1MB = likely truncated)
+MODEL_PATH="$WEIGHTS_DIR/$MODEL.pth"
+if [ ! -f "$MODEL_PATH" ] || [ "$(stat -c%s "$MODEL_PATH" 2>/dev/null || echo 0)" -lt 1000000 ]; then
+  [ -f "$MODEL_PATH" ] && echo "[WARN] $MODEL.pth appears corrupt, re-downloading..."
   echo "[INFO] Downloading $MODEL.pth..."
   wget -q "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/$MODEL.pth" \
-    -O "$WEIGHTS_DIR/$MODEL.pth"
+    -O "$MODEL_PATH"
 fi
 
 # Force single-GPU to avoid multiprocessing issues with virtual/integrated devices
