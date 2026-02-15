@@ -92,6 +92,10 @@ process_video() {
 
   echo "[GPU${GPU_ID}|${BASENAME}] Iniciando upscale: ${SCALE}x, tile=${TILE}, denoise=${DENOISE}"
 
+  if [[ "$NUM_PROC" -gt 1 ]]; then
+    echo "[GPU${GPU_ID}|${BASENAME}] Dividindo video em ${NUM_PROC} segmentos..."
+  fi
+
   # Run upscale
   CUDA_VISIBLE_DEVICES="$GPU_ID" python3 /opt/Real-ESRGAN/inference_realesrgan_video.py \
     -i "$ACTUAL_INPUT" -o "$OUTPUT_DIR" -n "$MODEL" \
@@ -99,7 +103,8 @@ process_video() {
     --denoise_strength "$DENOISE" \
     --num_process_per_gpu "$NUM_PROC" \
     --suffix "$SUFFIX" --ext "$EXT" \
-    2>&1 | stdbuf -oL sed "s/^/[GPU${GPU_ID}|${BASENAME}] /" | tee -a "$LOG_FILE"
+    2>&1 | stdbuf -oL grep -v -E "^\s*(ffmpeg version|built with|configuration:|lib(av|sw|post)|Input #|Output #|Stream #|Stream mapping|Metadata:|Chapter #|Press \[|Side data|handler_name|vendor_id|compatible_brands|major_brand|minor_version|encoder|cpb:|\[lib)" \
+    | stdbuf -oL sed "s/^/[GPU${GPU_ID}|${BASENAME}] /" | tee -a "$LOG_FILE"
 
   local RC=${PIPESTATUS[0]}
 
