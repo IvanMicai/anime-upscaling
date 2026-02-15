@@ -187,10 +187,10 @@ find_free_gpu() {
       local secs=$(( elapsed % 60 ))
       if [[ $rc -eq 0 ]]; then
         echo "[GPU${gpu}] Concluido: $fname (${mins}m${secs}s)"
-        ((SUCCEEDED++))
+        ((++SUCCEEDED))
       else
         echo "[GPU${gpu}] FALHOU: $fname (${mins}m${secs}s)"
-        ((FAILED++))
+        ((++FAILED))
       fi
       unset "GPU_PIDS[$g]"
       unset "PID_FILE[$pid]"
@@ -226,10 +226,10 @@ wait_all() {
     local secs=$(( elapsed % 60 ))
     if [[ $rc -eq 0 ]]; then
       echo "[GPU${gpu}] Concluido: $fname (${mins}m${secs}s)"
-      ((SUCCEEDED++))
+      ((++SUCCEEDED))
     else
       echo "[GPU${gpu}] FALHOU: $fname (${mins}m${secs}s)"
-      ((FAILED++))
+      ((++FAILED))
     fi
     unset "GPU_PIDS[$g]"
   done
@@ -238,14 +238,14 @@ wait_all() {
 # ─── Main dispatch loop ────────────────────────────────────────────────────
 IDX=0
 for FILE in "${FILES[@]}"; do
-  ((IDX++))
+  ((++IDX))
   BASENAME=$(basename "$FILE")
 
   # Skip if output already exists
   FILENAME="${BASENAME%.*}"
   if [[ -f "$OUTPUT_DIR/${FILENAME}.${OUTPUT_EXT}" ]]; then
     echo "[SKIP] Ja existe: ${FILENAME}.${OUTPUT_EXT} ($IDX/$TOTAL)"
-    ((SUCCEEDED++))
+    ((++SUCCEEDED))
     continue
   fi
 
