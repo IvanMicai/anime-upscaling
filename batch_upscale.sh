@@ -1,155 +1,182 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Directories
+# ─── Configuration via environment variables ────────────────────────────────
 INPUT_DIR="${INPUT_DIR:-/input}"
 OUTPUT_DIR="${OUTPUT_DIR:-/output}"
-WEIGHTS_DIR="/opt/Real-ESRGAN/weights"
 
-# Model and parameters
-MODEL="${MODEL:-realesr-animevideov3}"
+# Processor: realesrgan, libplacebo, realcugan, rife
+PROCESSOR="${PROCESSOR:-realesrgan}"
 SCALE="${SCALE:-4}"
-TILE="${TILE:-0}"
-DENOISE="${DENOISE:-1.0}"
-NUM_PROC="${NUM_PROC:-1}"
-SUFFIX="upscaled"
-EXT="mp4"
+CODEC="${CODEC:-libx265}"
+OUTPUT_EXT="${OUTPUT_EXT:-mkv}"
+PIX_FMT="${PIX_FMT:-}"
+BIT_RATE="${BIT_RATE:-0}"
+NOISE_LEVEL="${NOISE_LEVEL:-}"
+LOG_LEVEL="${LOG_LEVEL:-info}"
+NUM_GPUS="${NUM_GPUS:-0}"
+HOST_UID="${HOST_UID:-0}"
+HOST_GID="${HOST_GID:-0}"
 
-# Ensure weights directory exists
-mkdir -p "$WEIGHTS_DIR"
+# Processor-specific model/shader (leave empty for video2x defaults)
+MODEL="${MODEL:-}"
+EXTRA_ENCODER_OPTS="${EXTRA_ENCODER_OPTS:-}"
 
-# Download weights if missing or corrupt (< 1MB = likely truncated)
-MODEL_PATH="$WEIGHTS_DIR/$MODEL.pth"
-if [ ! -f "$MODEL_PATH" ] || [ "$(stat -c%s "$MODEL_PATH" 2>/dev/null || echo 0)" -lt 1000000 ]; then
-  [ -f "$MODEL_PATH" ] && echo "[WARN] $MODEL.pth appears corrupt, re-downloading..."
-  echo "[INFO] Downloading $MODEL.pth..."
-  wget -q "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/$MODEL.pth" \
-    -O "$MODEL_PATH"
-fi
+# ─── Auto-detect Vulkan GPUs ────────────────────────────────────────────────
+detect_gpus() {
+  echo "[INFO] Dispositivos Vulkan detectados:"
+  video2x --list-devices 2>&1 | tee /tmp/vulkan_devices.txt || true
+  echo
 
-# CUDA check via PyTorch
-python3 - <<'PY'
-import sys, torch
-assert torch.cuda.is_available(), "CUDA not available inside container"
-PY
+  if [[ "$NUM_GPUS" -gt 0 ]]; then
+    echo "[INFO] NUM_GPUS definido manualmente: $NUM_GPUS"
+    return
+  fi
 
-# Detect available GPUs
-NUM_GPUS=$(nvidia-smi -L 2>/dev/null | wc -l)
-if [ "$NUM_GPUS" -lt 1 ]; then
-  echo "[ERROR] No GPUs detected by nvidia-smi"
-  exit 1
-fi
-echo "[INFO] Detected $NUM_GPUS GPU(s)"
-echo "[INFO] Parameters: TILE=$TILE, NUM_PROC=$NUM_PROC, SCALE=$SCALE, MODEL=$MODEL, DENOISE=$DENOISE"
+  # Count lines matching "Device [index]" pattern from --list-devices output
+  local count
+  count=$(grep -cE '^\s*(Device|GPU)\s+[0-9]+' /tmp/vulkan_devices.txt 2>/dev/null || true)
 
-# Collect all video files
-shopt -s nullglob
+  # Fallback: count lines containing "Discrete GPU" or "Integrated GPU"
+  if [[ "$count" -lt 1 ]]; then
+    count=$(grep -ciE '(Discrete|Integrated|Virtual)\s+GPU' /tmp/vulkan_devices.txt 2>/dev/null || true)
+  fi
+
+  # Last resort fallback
+  if [[ "$count" -lt 1 ]]; then
+    echo "[WARN] Nao foi possivel detectar GPUs automaticamente, usando NUM_GPUS=1"
+    count=1
+  fi
+
+  NUM_GPUS="$count"
+  echo "[INFO] GPUs detectadas: $NUM_GPUS"
+}
+
+detect_gpus
+
+# ─── Discover video files ───────────────────────────────────────────────────
+shopt -s nullglob nocaseglob
 FILES=()
-for FILE in "$INPUT_DIR"/*.{mp4,mkv,avi,webm,mov}; do
-  [ -e "$FILE" ] && FILES+=("$FILE")
+for f in "$INPUT_DIR"/*.{mp4,mkv,avi,webm,mov,flv,wmv,m4v}; do
+  [[ -f "$f" ]] && FILES+=("$f")
 done
+shopt -u nocaseglob
 
 TOTAL=${#FILES[@]}
-if [ "$TOTAL" -eq 0 ]; then
-  echo "[INFO] No video files found in $INPUT_DIR"
+if [[ "$TOTAL" -eq 0 ]]; then
+  echo "[INFO] Nenhum video encontrado em $INPUT_DIR"
   exit 0
 fi
-echo "[INFO] Found $TOTAL video(s) to process with $NUM_GPUS GPU(s)"
+
+echo "[INFO] Encontrados $TOTAL video(s) para processar"
+echo "[INFO] Processador=$PROCESSOR, Scale=$SCALE, Codec=$CODEC, GPUs=$NUM_GPUS"
 echo
 
-# Tracking
-declare -A GPU_PIDS    # GPU_PIDS[gpu_id] = pid
-declare -A PID_FILE    # PID_FILE[pid] = original filename
-declare -A PID_START   # PID_START[pid] = start time (seconds)
-declare -A PID_GPU     # PID_GPU[pid] = gpu_id
+# ─── GPU scheduling arrays ──────────────────────────────────────────────────
+declare -A GPU_PIDS   # GPU_PIDS[gpu_id] = pid
+declare -A PID_FILE   # PID_FILE[pid] = basename
+declare -A PID_START  # PID_START[pid] = SECONDS at start
+declare -A PID_GPU    # PID_GPU[pid] = gpu_id
 SUCCEEDED=0
 FAILED=0
 
+# ─── Process a single video ────────────────────────────────────────────────
 process_video() {
-  local FILE="$1"
+  local INPUT_FILE="$1"
   local GPU_ID="$2"
-  local LOG_FILE="/tmp/upscale_gpu${GPU_ID}.log"
 
-  local BASENAME=$(basename "$FILE")
-  local FILE_EXT="${BASENAME##*.}"
+  local BASENAME
+  BASENAME=$(basename "$INPUT_FILE")
   local FILENAME="${BASENAME%.*}"
+  local OUTPUT_FILE="$OUTPUT_DIR/${FILENAME}.${OUTPUT_EXT}"
+  local TMP_FILE="$OUTPUT_DIR/${FILENAME}.tmp.${OUTPUT_EXT}"
+  local PREFIX="[GPU${GPU_ID}|${BASENAME}]"
 
-  # Sanitize filename: replace spaces and special chars with underscores
-  local SAFE_NAME=$(echo "$FILENAME" | sed 's/[][() ]/_/g; s/__*/_/g; s/^_//; s/_$//')
-
-  # If filename has problematic characters, use a symlink with the safe name
-  local ACTUAL_INPUT="$FILE"
-  local USED_SYMLINK=""
-  if [[ "$SAFE_NAME" != "$FILENAME" ]]; then
-    local SYMLINK="/tmp/${SAFE_NAME}.${FILE_EXT}"
-    ln -sf "$FILE" "$SYMLINK"
-    ACTUAL_INPUT="$SYMLINK"
-    USED_SYMLINK="$SYMLINK"
+  # Skip if output already exists (idempotent for retries)
+  if [[ -f "$OUTPUT_FILE" ]]; then
+    echo "$PREFIX Ja existe, pulando"
+    return 0
   fi
 
-  local ACTUAL_BASENAME=$(basename "$ACTUAL_INPUT")
-  local ACTUAL_FILENAME="${ACTUAL_BASENAME%.*}"
-  local OUTPUT_VIDEO="$OUTPUT_DIR/${ACTUAL_FILENAME}_${SUFFIX}.${EXT}"
+  # Clean up any leftover tmp file from previous failed run
+  rm -f "$TMP_FILE"
 
-  echo "[GPU${GPU_ID}|${BASENAME}] Iniciando upscale: ${SCALE}x, tile=${TILE}, denoise=${DENOISE}"
+  # Build video2x command
+  local CMD=(
+    video2x
+    -i "$INPUT_FILE"
+    -o "$TMP_FILE"
+    -p "$PROCESSOR"
+    -d "$GPU_ID"
+    -s "$SCALE"
+    -c "$CODEC"
+    --log-level "$LOG_LEVEL"
+    --no-progress
+  )
 
-  if [[ "$NUM_PROC" -gt 1 ]]; then
-    echo "[GPU${GPU_ID}|${BASENAME}] Dividindo video em ${NUM_PROC} segmentos..."
+  # Optional: pixel format
+  [[ -n "$PIX_FMT" ]] && CMD+=(--pix-fmt "$PIX_FMT")
+
+  # Optional: bit rate (0 = auto/CRF)
+  [[ "$BIT_RATE" != "0" ]] && CMD+=(--bit-rate "$BIT_RATE")
+
+  # Optional: noise level
+  [[ -n "$NOISE_LEVEL" ]] && CMD+=(-n "$NOISE_LEVEL")
+
+  # Processor-specific model/shader
+  case "$PROCESSOR" in
+    realesrgan)
+      [[ -n "$MODEL" ]] && CMD+=(--realesrgan-model "$MODEL")
+      ;;
+    realcugan)
+      [[ -n "$MODEL" ]] && CMD+=(--realcugan-model "$MODEL")
+      ;;
+    libplacebo)
+      [[ -n "$MODEL" ]] && CMD+=(--libplacebo-shader "$MODEL")
+      ;;
+  esac
+
+  # Extra encoder options (space-separated key=value pairs)
+  if [[ -n "$EXTRA_ENCODER_OPTS" ]]; then
+    for opt in $EXTRA_ENCODER_OPTS; do
+      CMD+=(-e "$opt")
+    done
   fi
 
-  # Run upscale
-  CUDA_VISIBLE_DEVICES="$GPU_ID" python3 /opt/Real-ESRGAN/inference_realesrgan_video.py \
-    -i "$ACTUAL_INPUT" -o "$OUTPUT_DIR" -n "$MODEL" \
-    -s "$SCALE" --tile "$TILE" \
-    --denoise_strength "$DENOISE" \
-    --num_process_per_gpu "$NUM_PROC" \
-    --suffix "$SUFFIX" --ext "$EXT" \
-    2>&1 | stdbuf -oL grep -v -E "^\s*(ffmpeg version|built with|configuration:|lib(av|sw|post)|Input #|Output #|Stream #|Stream mapping|Metadata:|Chapter #|Press \[|Side data|handler_name|vendor_id|compatible_brands|major_brand|minor_version|encoder|cpb:|\[lib)" \
-    | stdbuf -oL sed "s/^/[GPU${GPU_ID}|${BASENAME}] /" | tee -a "$LOG_FILE"
+  echo "$PREFIX Iniciando upscale: ${SCALE}x"
 
+  # Run video2x, prefix each line with GPU/file tag
+  "${CMD[@]}" 2>&1 | sed -u "s/^/$PREFIX /"
   local RC=${PIPESTATUS[0]}
 
-  # Clean up Real-ESRGAN temp files
-  rm -rf "$OUTPUT_DIR/${ACTUAL_FILENAME}_inp_tmp_videos" \
-         "$OUTPUT_DIR/${ACTUAL_FILENAME}_out_tmp_videos" \
-         "$OUTPUT_DIR/${ACTUAL_FILENAME}_vidlist.txt"
-
-  if [[ $RC -ne 0 || ! -f "$OUTPUT_VIDEO" ]]; then
-    echo "[ERROR] Upscale failed for: $BASENAME (see $LOG_FILE)" >&2
-    [[ -n "$USED_SYMLINK" ]] && rm -f "$USED_SYMLINK"
+  if [[ $RC -ne 0 || ! -f "$TMP_FILE" ]]; then
+    echo "$PREFIX ERRO: upscale falhou (exit code $RC)" >&2
+    rm -f "$TMP_FILE"
     return 1
   fi
 
-  # If we used a safe name, rename output back to original name
-  local FINAL_OUTPUT="$OUTPUT_DIR/${FILENAME}_${SUFFIX}.${EXT}"
-  if [[ "$SAFE_NAME" != "$FILENAME" && "$OUTPUT_VIDEO" != "$FINAL_OUTPUT" ]]; then
-    mv "$OUTPUT_VIDEO" "$FINAL_OUTPUT"
-    OUTPUT_VIDEO="$FINAL_OUTPUT"
+  # Atomic rename: tmp -> final
+  mv "$TMP_FILE" "$OUTPUT_FILE"
+
+  # Fix ownership if running as root with HOST_UID/GID set
+  if [[ "$HOST_UID" != "0" || "$HOST_GID" != "0" ]]; then
+    chown "${HOST_UID}:${HOST_GID}" "$OUTPUT_FILE" 2>/dev/null || true
   fi
 
-  # Remux: add audio and subtitles from original
-  echo "[GPU${GPU_ID}|${BASENAME}] Remuxando audio/legendas..."
-  ffmpeg -y -i "$OUTPUT_VIDEO" -i "$FILE" -map 0:v -map 1:a -map "1:s?" -c copy \
-    "$OUTPUT_DIR/${FILENAME}.mkv" >> "$LOG_FILE" 2>&1
-  rm -f "$OUTPUT_VIDEO"
-  echo "[GPU${GPU_ID}|${BASENAME}] Finalizado: ${FILENAME}.mkv"
-
-  # Clean up symlink
-  [[ -n "$USED_SYMLINK" ]] && rm -f "$USED_SYMLINK"
+  echo "$PREFIX Finalizado: ${FILENAME}.${OUTPUT_EXT}"
   return 0
 }
 
-# Find a free GPU. Sets FREE_GPU to the gpu id, or -1 if none free.
+# ─── GPU scheduling functions ───────────────────────────────────────────────
 find_free_gpu() {
   FREE_GPU=-1
-  for ((g=0; g<NUM_GPUS; g++)); do
+  for ((g = 0; g < NUM_GPUS; g++)); do
     local pid="${GPU_PIDS[$g]:-}"
     if [[ -z "$pid" ]]; then
       FREE_GPU=$g
       return
     fi
-    # Check if the process is still running
     if ! kill -0 "$pid" 2>/dev/null; then
-      # Process finished, harvest it
       wait "$pid" 2>/dev/null
       local rc=$?
       local fname="${PID_FILE[$pid]}"
@@ -165,31 +192,28 @@ find_free_gpu() {
         echo "[GPU${gpu}] FALHOU: $fname (${mins}m${secs}s)"
         ((FAILED++))
       fi
-      unset GPU_PIDS[$g]
-      unset PID_FILE[$pid]
-      unset PID_START[$pid]
-      unset PID_GPU[$pid]
+      unset "GPU_PIDS[$g]"
+      unset "PID_FILE[$pid]"
+      unset "PID_START[$pid]"
+      unset "PID_GPU[$pid]"
       FREE_GPU=$g
       return
     fi
   done
 }
 
-# Wait for any one GPU to become free
 wait_for_gpu() {
   while true; do
     find_free_gpu
     if [[ $FREE_GPU -ge 0 ]]; then
       return
     fi
-    # Wait for any child to finish
     wait -n 2>/dev/null || true
   done
 }
 
-# Harvest all remaining jobs
 wait_all() {
-  for ((g=0; g<NUM_GPUS; g++)); do
+  for ((g = 0; g < NUM_GPUS; g++)); do
     local pid="${GPU_PIDS[$g]:-}"
     [[ -z "$pid" ]] && continue
     wait "$pid" 2>/dev/null
@@ -207,22 +231,27 @@ wait_all() {
       echo "[GPU${gpu}] FALHOU: $fname (${mins}m${secs}s)"
       ((FAILED++))
     fi
-    unset GPU_PIDS[$g]
+    unset "GPU_PIDS[$g]"
   done
 }
 
-# Main dispatch loop
+# ─── Main dispatch loop ────────────────────────────────────────────────────
 IDX=0
 for FILE in "${FILES[@]}"; do
   ((IDX++))
   BASENAME=$(basename "$FILE")
 
+  # Skip if output already exists
+  FILENAME="${BASENAME%.*}"
+  if [[ -f "$OUTPUT_DIR/${FILENAME}.${OUTPUT_EXT}" ]]; then
+    echo "[SKIP] Ja existe: ${FILENAME}.${OUTPUT_EXT} ($IDX/$TOTAL)"
+    ((SUCCEEDED++))
+    continue
+  fi
+
   wait_for_gpu
 
   echo "[GPU${FREE_GPU}] Iniciando: $BASENAME ($IDX/$TOTAL)"
-
-  # Clear log for this GPU slot
-  > "/tmp/upscale_gpu${FREE_GPU}.log"
 
   process_video "$FILE" "$FREE_GPU" &
   local_pid=$!
@@ -232,8 +261,11 @@ for FILE in "${FILES[@]}"; do
   PID_GPU[$local_pid]=$FREE_GPU
 done
 
-# Wait for remaining jobs
 wait_all
 
 echo
 echo "[INFO] Processamento concluido: $SUCCEEDED OK, $FAILED falha(s) de $TOTAL video(s)"
+
+if [[ $FAILED -gt 0 ]]; then
+  exit 1
+fi
