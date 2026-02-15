@@ -1,24 +1,21 @@
 #!/usr/bin/env bash
-# Quick-start: build and run the batch upscaler
+# Build and run the batch upscaler
 #
 # Environment variables (all optional):
-#   PROCESSOR    realesrgan (default), libplacebo, realcugan, rife
-#   SCALE        2, 3, 4 (default)
-#   MODEL        processor-specific model name (empty = default)
-#   CODEC        libx265 (default), libx264, libsvtav1, hevc_nvenc, ...
-#   OUTPUT_EXT   mkv (default), mp4
-#   NOISE_LEVEL  denoising level (-1 to disable)
-#   NUM_GPUS     override auto-detection
+#   MODEL     realesr-animevideov3 (default), RealESRGAN_x4plus, realesr-general-x4v3, ...
+#   SCALE     2, 3, 4 (default)
+#   TILE      0 (default, no tiling), 512, 1024 (for low VRAM)
+#   DENOISE   0.0-1.0 (default 1.0)
+#   NUM_PROC  parallel segments per GPU (default 1)
 
 docker run --gpus all --rm -it \
   -v "$(realpath ./input)":/input:ro \
   -v "$(realpath ./output)":/output \
+  -v "$(realpath ./models)":/opt/Real-ESRGAN/weights \
   -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
-  -e PROCESSOR="${PROCESSOR:-realesrgan}" \
+  -e MODEL="${MODEL:-realesr-animevideov3}" \
   -e SCALE="${SCALE:-4}" \
-  -e MODEL="${MODEL:-}" \
-  -e CODEC="${CODEC:-libx265}" \
-  -e OUTPUT_EXT="${OUTPUT_EXT:-mkv}" \
-  -e NOISE_LEVEL="${NOISE_LEVEL:-}" \
-  -e NUM_GPUS="${NUM_GPUS:-0}" \
-  batch-video2x:latest
+  -e TILE="${TILE:-0}" \
+  -e DENOISE="${DENOISE:-1.0}" \
+  -e NUM_PROC="${NUM_PROC:-1}" \
+  anime-upscaler:latest

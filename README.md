@@ -1,18 +1,16 @@
-## Batch Video Upscaler (Video2X)
+## Batch Anime Upscaler (Real-ESRGAN + CUDA)
 
-Batch upscaler for anime videos using [Video2X](https://github.com/k4yt3x/video2x) official Docker image. Supports multiple GPUs with automatic scheduling, and processes all videos in an input directory.
-
-Based on `ghcr.io/k4yt3x/video2x:latest` which includes Real-ESRGAN, Real-CUGAN, libplacebo (Anime4K), and RIFE — all using Vulkan (works with NVIDIA, AMD, and Intel GPUs).
+Batch upscaler for anime videos using [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) with NVIDIA CUDA. Supports multiple GPUs with automatic scheduling.
 
 ### Quick Start
 
 Build:
 
 ```bash
-docker build -t batch-video2x .
+docker build --build-arg HOST_UID=$(id -u) --build-arg HOST_GID=$(id -g) -t anime-upscaler:latest .
 ```
 
-Put your videos in `./input/`, then run:
+Put your videos in `./input/`, create `./output/` and `./models/`, then run:
 
 ```bash
 ./run.sh
@@ -28,51 +26,57 @@ HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PROCESSOR` | `realesrgan` | `realesrgan`, `libplacebo`, `realcugan`, `rife` |
+| `MODEL` | `realesr-animevideov3` | Model name (see below) |
 | `SCALE` | `4` | Upscale factor (2, 3, 4) |
-| `MODEL` | *(auto)* | Processor-specific model (see below) |
-| `CODEC` | `libx265` | Output codec (`libx264`, `libx265`, `libsvtav1`, `hevc_nvenc`) |
-| `OUTPUT_EXT` | `mkv` | Output file extension |
-| `PIX_FMT` | *(auto)* | Pixel format (`yuv420p`, `yuv420p10le`) |
-| `BIT_RATE` | `0` | Bitrate in bps (0 = auto/CRF) |
-| `NOISE_LEVEL` | *(none)* | Denoising level (-1 to disable) |
-| `NUM_GPUS` | `0` | Override GPU auto-detection (0 = auto) |
-| `LOG_LEVEL` | `info` | `trace`, `debug`, `info`, `warn`, `error` |
-| `HOST_UID` / `HOST_GID` | `0` | Set output file ownership to match host user |
+| `TILE` | `0` | Tile size (0=no tiling, 512/1024 for low VRAM GPUs) |
+| `DENOISE` | `1.0` | Denoise strength (0.0-1.0) |
+| `NUM_PROC` | `1` | Parallel segments per GPU |
 
 ### Models
 
-**Real-ESRGAN** (default): `realesr-animevideov3` (default), `realesrgan-plus-anime`, `realesrgan-plus`
+- `realesr-animevideov3` (default) - Best for anime video, good balance of quality and speed
+- `RealESRGAN_x4plus` - Highest quality, much slower
+- `realesr-general-x4v3` - General purpose, faster but lower quality
+- `RealESRGAN_x4plus_anime_6B` - Anime-specific, alternative to animevideov3
 
-**Real-CUGAN**: `models-se` (default), `models-nose`, `models-pro`
-
-**libplacebo**: `anime4k-v4-a` (default), `anime4k-v4-a+a`, `anime4k-v4-b`, `anime4k-v4-b+b`, `anime4k-v4-c`, `anime4k-v4-c+a`, `anime4k-v4.1-gan`
+Models are downloaded automatically on first run. Map `./models` to persist them across container restarts.
 
 ### Examples
 
-Default (4x anime upscale with Real-ESRGAN):
+Default (4x anime upscale):
 
 ```bash
 ./run.sh
 ```
 
-Custom processor and scale:
+Custom model and scale:
 
 ```bash
-PROCESSOR=libplacebo SCALE=2 MODEL=anime4k-v4.1-gan ./run.sh
+MODEL=RealESRGAN_x4plus SCALE=4 ./run.sh
 ```
 
-With NVENC hardware encoding:
+Low VRAM GPU (use tiling):
 
 ```bash
-CODEC=hevc_nvenc ./run.sh
+TILE=512 ./run.sh
+```
+
+Direct docker run:
+
+```bash
+docker run --gpus all --rm \
+  -v /path/to/videos_in:/input \
+  -v /path/to/videos_out:/output \
+  -v /path/to/models:/opt/Real-ESRGAN/weights \
+  -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) \
+  anime-upscaler:latest
 ```
 
 ### Features
 
 - Batch processes all videos in input directory
-- Auto-detects and schedules across multiple GPUs
-- Idempotent: skips already-processed files on re-run
-- Audio and subtitles copied natively by Video2X
-- Atomic writes (temp file + rename) to avoid partial outputs
+- Auto-detects and schedules across multiple NVIDIA GPUs
+- Skips already-processed files on re-run (idempotent)
+- Remuxes audio and subtitles from original via ffmpeg
+- Handles filenames with spaces and special characters
 - Output file ownership matches host user (not root)

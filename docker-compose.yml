@@ -1,23 +1,21 @@
 services:
   upscaler:
-    build: .
-    image: batch-video2x:latest
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    image: anime-upscaler:latest
     volumes:
       - ./input:/input:ro
       - ./output:/output
+      - ./models:/opt/Real-ESRGAN/weights
     environment:
-      HOST_UID: ${HOST_UID:-1000}
-      HOST_GID: ${HOST_GID:-1000}
-      PROCESSOR: ${PROCESSOR:-realesrgan}
+      MODEL: ${MODEL:-realesr-animevideov3}
       SCALE: ${SCALE:-4}
-      MODEL: ${MODEL:-}
-      CODEC: ${CODEC:-libx265}
-      OUTPUT_EXT: ${OUTPUT_EXT:-mkv}
-      PIX_FMT: ${PIX_FMT:-}
-      BIT_RATE: ${BIT_RATE:-0}
-      NOISE_LEVEL: ${NOISE_LEVEL:-}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      NUM_GPUS: ${NUM_GPUS:-0}
+      TILE: ${TILE:-0}
+      DENOISE: ${DENOISE:-1.0}
+      NUM_PROC: ${NUM_PROC:-1}
     deploy:
       resources:
         reservations:
