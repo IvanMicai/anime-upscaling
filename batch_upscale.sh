@@ -25,6 +25,9 @@ if [ ! -f "$WEIGHTS_DIR/$MODEL.pth" ]; then
     -O "$WEIGHTS_DIR/$MODEL.pth"
 fi
 
+# Force single-GPU to avoid multiprocessing issues with virtual/integrated devices
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
+
 # CUDA check via PyTorch
 python3 - <<'PY'
 import sys, torch
