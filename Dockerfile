@@ -31,9 +31,10 @@ RUN pip install --upgrade pip && \
 # Clone and install Real-ESRGAN from source
 RUN git clone https://github.com/xinntao/Real-ESRGAN.git /opt/Real-ESRGAN
 
-COPY nb_frames.patch tiles_quiet.patch /opt/Real-ESRGAN/
+COPY nb_frames.patch /opt/Real-ESRGAN
 
-RUN cd /opt/Real-ESRGAN && git apply nb_frames.patch && git apply tiles_quiet.patch && \
+RUN cd /opt/Real-ESRGAN && git apply nb_frames.patch && \
+    sed -i '/Tile {tile_idx}/d' realesrgan/utils.py && \
     pip3 install --no-cache-dir -r requirements.txt --no-deps && \
     python3 setup.py develop
 
