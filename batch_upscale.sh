@@ -8,8 +8,9 @@ WEIGHTS_DIR="/opt/Real-ESRGAN/weights"
 # Model and parameters
 MODEL="${MODEL:-realesr-animevideov3}"
 SCALE="${SCALE:-4}"
-TILE="${TILE:-512}"
+TILE="${TILE:-0}"
 DENOISE="${DENOISE:-1.0}"
+NUM_PROC="${NUM_PROC:-1}"
 SUFFIX="upscaled"
 EXT="mp4"
 
@@ -38,6 +39,7 @@ if [ "$NUM_GPUS" -lt 1 ]; then
   exit 1
 fi
 echo "[INFO] Detected $NUM_GPUS GPU(s)"
+echo "[INFO] Parameters: TILE=$TILE, NUM_PROC=$NUM_PROC, SCALE=$SCALE, MODEL=$MODEL, DENOISE=$DENOISE"
 
 # Collect all video files
 shopt -s nullglob
@@ -88,16 +90,18 @@ process_video() {
   local ACTUAL_FILENAME="${ACTUAL_BASENAME%.*}"
   local OUTPUT_VIDEO="$OUTPUT_DIR/${ACTUAL_FILENAME}_${SUFFIX}.${EXT}"
 
+  echo "[GPU${GPU_ID}|${BASENAME}] Iniciando upscale: ${SCALE}x, tile=${TILE}, denoise=${DENOISE}"
+
   # Run upscale
   CUDA_VISIBLE_DEVICES="$GPU_ID" python3 /opt/Real-ESRGAN/inference_realesrgan_video.py \
     -i "$ACTUAL_INPUT" -o "$OUTPUT_DIR" -n "$MODEL" \
     -s "$SCALE" --tile "$TILE" \
     --denoise_strength "$DENOISE" \
-    --num_process_per_gpu 1 \
+    --num_process_per_gpu "$NUM_PROC" \
     --suffix "$SUFFIX" --ext "$EXT" \
-    >> "$LOG_FILE" 2>&1
+    2>&1 | stdbuf -oL sed "s/^/[GPU${GPU_ID}|${BASENAME}] /" | tee -a "$LOG_FILE"
 
-  local RC=$?
+  local RC=${PIPESTATUS[0]}
 
   # Clean up Real-ESRGAN temp files
   rm -rf "$OUTPUT_DIR/${ACTUAL_FILENAME}_inp_tmp_videos" \
@@ -118,9 +122,11 @@ process_video() {
   fi
 
   # Remux: add audio and subtitles from original
+  echo "[GPU${GPU_ID}|${BASENAME}] Remuxando audio/legendas..."
   ffmpeg -y -i "$OUTPUT_VIDEO" -i "$FILE" -map 0:v -map 1:a -map "1:s?" -c copy \
     "$OUTPUT_DIR/${FILENAME}.mkv" >> "$LOG_FILE" 2>&1
   rm -f "$OUTPUT_VIDEO"
+  echo "[GPU${GPU_ID}|${BASENAME}] Finalizado: ${FILENAME}.mkv"
 
   # Clean up symlink
   [[ -n "$USED_SYMLINK" ]] && rm -f "$USED_SYMLINK"
