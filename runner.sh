@@ -94,9 +94,9 @@ FILES=("$INPUT_DIR"/*.mp4)
 TOTAL_FILES=${#FILES[@]}
 CURRENT_INDEX=0
 
-# Inicializa PIDs com 0
-PID_GPU0=0
-PID_GPU1=0
+# Inicializa PIDs como vazio (GPU livre)
+PID_GPU0=""
+PID_GPU1=""
 
 # --- FUNÇÃO DE PROCESSAMENTO (O que a GPU faz) ---
 run_task() {
@@ -148,7 +148,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Iniciando processamento de $TOTAL_FILES arq
 while [ $CURRENT_INDEX -lt $TOTAL_FILES ]; do
 
     # Verifica se a GPU 0 está livre (Se o processo PID_GPU0 não existe mais)
-    if ! kill -0 $PID_GPU0 2>/dev/null; then
+    if [ -z "$PID_GPU0" ] || ! kill -0 "$PID_GPU0" 2>/dev/null; then
         # Pega o próximo arquivo
         FILE="${FILES[$CURRENT_INDEX]}"
         INDEX=$((CURRENT_INDEX + 1))
@@ -171,7 +171,7 @@ while [ $CURRENT_INDEX -lt $TOTAL_FILES ]; do
     fi
 
     # Verifica se a GPU 1 está livre
-    if ! kill -0 $PID_GPU1 2>/dev/null; then
+    if [ -z "$PID_GPU1" ] || ! kill -0 "$PID_GPU1" 2>/dev/null; then
         FILE="${FILES[$CURRENT_INDEX]}"
         INDEX=$((CURRENT_INDEX + 1))
 
