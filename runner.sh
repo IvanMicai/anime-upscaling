@@ -118,7 +118,8 @@ run_task() {
     log "$gpu_id" INFO "Limpando cache..." "$index"
     docker run --rm -v "$cache_dir":/clean alpine sh -c "rm -rf /clean/*"
 
-    # 2. Executa o Video2X
+    # 2. Executa o Video2X (captura saída para diagnóstico)
+    local docker_log="$BASE_DIR/docker_gpu${gpu_id}.log"
     docker run --rm \
       --gpus "device=$gpu_id" \
       -v "$BASE_DIR":/host \
@@ -127,11 +128,21 @@ run_task() {
       -i "/host/input/$filename" \
       -o "/host/output/$filename" \
       -d waifu2x_ncnn_vulkan \
-      -r 2
+      -r 2 > "$docker_log" 2>&1
     local exit_code=$?
+
+    log "$gpu_id" INFO "video2x terminou com exit code: $exit_code" "$index"
 
     if [ $exit_code -ne 0 ]; then
         log "$gpu_id" ERRO "Falha ao processar: $filename (exit code: $exit_code)" "$index"
+        log "$gpu_id" ERRO "Últimas linhas do docker: $(tail -5 "$docker_log")" "$index"
+        return
+    fi
+
+    # Verifica se o arquivo de saída foi realmente criado
+    if [ ! -f "$OUTPUT_DIR/$filename" ]; then
+        log "$gpu_id" ERRO "video2x retornou 0 mas output não existe: $filename" "$index"
+        log "$gpu_id" ERRO "Últimas linhas do docker: $(tail -5 "$docker_log")" "$index"
         return
     fi
 
