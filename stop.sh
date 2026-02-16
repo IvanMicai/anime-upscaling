@@ -7,7 +7,7 @@ echo "Parando runner.sh..."
 pkill -f runner.sh 2>/dev/null && echo "runner.sh parado." || echo "runner.sh não estava rodando."
 
 echo "Parando containers video2x..."
-CONTAINERS=$(docker ps -q --filter ancestor=k4yt3x/video2x:latest)
+CONTAINERS=$(docker ps -q --filter ancestor=ghcr.io/k4yt3x/video2x:6.4.0)
 if [ -n "$CONTAINERS" ]; then
     docker stop $CONTAINERS
     echo "Containers parados."

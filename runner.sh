@@ -10,7 +10,7 @@
 # INTERROMPER:
 #   Ctrl+C                   # Para o script (containers Docker em execução continuam)
 #   docker ps                # Lista containers ainda rodando
-#   docker stop $(docker ps -q --filter ancestor=k4yt3x/video2x:latest)  # Para os containers do video2x
+#   docker stop $(docker ps -q --filter ancestor=ghcr.io/k4yt3x/video2x:6.4.0)  # Para os containers do video2x
 #
 # LOGS:
 #   tail -f /mnt/SSD2/process/process.log   # Acompanhar em tempo real
@@ -21,17 +21,12 @@
 # NOTAS:
 #   - Coloque os .mp4 em /mnt/SSD2/process/input/
 #   - Arquivos já existentes em output/ são pulados automaticamente
-#   - Cada GPU usa cache separado para evitar corrupção
 #
 
 # --- CONFIGURAÇÃO ---
 BASE_DIR="/mnt/SSD2/process"
 INPUT_DIR="$BASE_DIR/input"
 OUTPUT_DIR="$BASE_DIR/output"
-
-# Pastas de cache separadas são OBRIGATÓRIAS para evitar corrupção
-CACHE_DIR_0="$BASE_DIR/cache_gpu0"
-CACHE_DIR_1="$BASE_DIR/cache_gpu1"
 
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
@@ -86,7 +81,7 @@ log() {
 }
 
 # Cria as pastas necessárias
-mkdir -p "$OUTPUT_DIR" "$CACHE_DIR_0" "$CACHE_DIR_1"
+mkdir -p "$OUTPUT_DIR"
 
 # Carrega todos os vídeos para uma lista (Array)
 shopt -s nullglob
@@ -102,8 +97,7 @@ PID_GPU1=""
 run_task() {
     local video_path=$1
     local gpu_id=$2
-    local cache_dir=$3
-    local index=$4
+    local index=$3
     local filename=$(basename "$video_path")
 
     # Verifica se já existe na saída
@@ -114,21 +108,17 @@ run_task() {
 
     log "$gpu_id" INFO "Iniciando: $filename" "$index"
 
-    # 1. Limpa o cache específico desta GPU
-    log "$gpu_id" INFO "Limpando cache..." "$index"
-    docker run --rm -v "$cache_dir":/clean alpine sh -c "rm -rf /clean/*"
-
-    # 2. Executa o Video2X (captura saída para diagnóstico)
+    # Executa o Video2X v6 (processa frames em memória, sem cache em disco)
     local docker_log="$BASE_DIR/docker_gpu${gpu_id}.log"
     docker run --rm \
       --gpus "device=$gpu_id" \
       -v "$BASE_DIR":/host \
-      -v "$cache_dir":/tmp \
-      k4yt3x/video2x:latest \
+      ghcr.io/k4yt3x/video2x:6.4.0 \
       -i "/host/input/$filename" \
       -o "/host/output/$filename" \
-      -d waifu2x_ncnn_vulkan \
-      -r 2 > "$docker_log" 2>&1
+      -p realesrgan \
+      -s 2 \
+      --realesrgan-model realesr-animevideov3 > "$docker_log" 2>&1
     local exit_code=$?
 
     log "$gpu_id" INFO "video2x terminou com exit code: $exit_code" "$index"
@@ -165,7 +155,7 @@ while [ $CURRENT_INDEX -lt $TOTAL_FILES ]; do
         INDEX=$((CURRENT_INDEX + 1))
 
         # Lança o trabalho em background (&) e salva o PID
-        ( run_task "$FILE" 0 "$CACHE_DIR_0" "$INDEX" ) &
+        ( run_task "$FILE" 0 "$INDEX" ) &
         PID_GPU0=$!
 
         # Incrementa o índice para o próximo vídeo
@@ -186,7 +176,7 @@ while [ $CURRENT_INDEX -lt $TOTAL_FILES ]; do
         FILE="${FILES[$CURRENT_INDEX]}"
         INDEX=$((CURRENT_INDEX + 1))
 
-        ( run_task "$FILE" 1 "$CACHE_DIR_1" "$INDEX" ) &
+        ( run_task "$FILE" 1 "$INDEX" ) &
         PID_GPU1=$!
 
         ((CURRENT_INDEX++))
