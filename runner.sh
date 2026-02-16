@@ -123,7 +123,7 @@ run_task() {
     docker run --rm \
       --gpus "device=$gpu_id" \
       -v "$BASE_DIR":/host \
-      -v "$cache_dir":/tmp/video2x \
+      -v "$cache_dir":/tmp \
       k4yt3x/video2x:latest \
       -i "/host/input/$filename" \
       -o "/host/output/$filename" \
