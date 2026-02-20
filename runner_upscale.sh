@@ -1,11 +1,11 @@
 #!/bin/bash
 #
-# runner.sh - Upscale de vídeos com video2x usando 2 GPUs em paralelo
+# runner_upscale.sh - Upscale de vídeos com video2x usando 2 GPUs em paralelo
 #
 # USO:
-#   chmod +x runner.sh
-#   ./runner.sh              # Executa em foreground
-#   nohup ./runner.sh &      # Executa em background (sobrevive a fechar o terminal)
+#   chmod +x runner_upscale.sh
+#   ./runner_upscale.sh              # Executa em foreground
+#   nohup ./runner_upscale.sh &      # Executa em background (sobrevive a fechar o terminal)
 #
 # INTERROMPER:
 #   Ctrl+C                   # Para o script (containers Docker em execução continuam)
@@ -108,19 +108,8 @@ run_task() {
 
     log "$gpu_id" INFO "Iniciando: $filename" "$index"
 
-    # Executa o Video2X v6 (processa frames em memória, sem cache em disco)
+    # Executa o Video2X v6 - Upscaling 2x
     local docker_log="$BASE_DIR/docker_gpu${gpu_id}.log"
-    # Upscaling 2x
-    #docker run --rm \
-    #  --gpus "device=$gpu_id" \
-    #  -v "$BASE_DIR":/host \
-    #  ghcr.io/k4yt3x/video2x:6.4.0 \
-    #  -i "/host/input/$filename" \
-    #  -o "/host/output/$filename" \
-    #  -p realesrgan \
-    #  -s 2 \
-    #  --realesrgan-model realesr-animevideov3 > "$docker_log" 2>&1
-    # Denoise (same resolution)
     docker run --rm \
       -u $(id -u):$(id -g) \
       --gpus "device=$gpu_id" \
@@ -128,8 +117,9 @@ run_task() {
       ghcr.io/k4yt3x/video2x:6.4.0 \
       -i "/host/input/$filename" \
       -o "/host/output/$filename" \
-      -p realcugan \
-      -s 1
+      -p realesrgan \
+      -s 2 \
+      --realesrgan-model realesr-animevideov3 > "$docker_log" 2>&1
 
     local exit_code=$?
 
@@ -148,7 +138,7 @@ run_task() {
         return
     fi
 
-    # 3. Corrige permissão
+    # Corrige permissão
     docker run --rm -v "$OUTPUT_DIR":/work alpine chown $USER_ID:$GROUP_ID "/work/$filename"
 
     log "$gpu_id" OK "Concluído: $filename" "$index"
