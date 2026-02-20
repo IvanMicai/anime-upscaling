@@ -85,7 +85,7 @@ mkdir -p "$OUTPUT_DIR"
 
 # Carrega todos os vídeos para uma lista (Array)
 shopt -s nullglob
-FILES=("$INPUT_DIR"/*.mp4)
+FILES=("$INPUT_DIR"/*)
 TOTAL_FILES=${#FILES[@]}
 CURRENT_INDEX=0
 
@@ -110,15 +110,27 @@ run_task() {
 
     # Executa o Video2X v6 (processa frames em memória, sem cache em disco)
     local docker_log="$BASE_DIR/docker_gpu${gpu_id}.log"
+    # Upscaling 2x
+    #docker run --rm \
+    #  --gpus "device=$gpu_id" \
+    #  -v "$BASE_DIR":/host \
+    #  ghcr.io/k4yt3x/video2x:6.4.0 \
+    #  -i "/host/input/$filename" \
+    #  -o "/host/output/$filename" \
+    #  -p realesrgan \
+    #  -s 2 \
+    #  --realesrgan-model realesr-animevideov3 > "$docker_log" 2>&1
+    # Denoise (same resolution)
     docker run --rm \
+      -u $(id -u):$(id -g) \
       --gpus "device=$gpu_id" \
       -v "$BASE_DIR":/host \
       ghcr.io/k4yt3x/video2x:6.4.0 \
       -i "/host/input/$filename" \
       -o "/host/output/$filename" \
-      -p realesrgan \
-      -s 2 \
-      --realesrgan-model realesr-animevideov3 > "$docker_log" 2>&1
+      -p realcugan \
+      -s 1
+
     local exit_code=$?
 
     log "$gpu_id" INFO "video2x terminou com exit code: $exit_code" "$index"
