@@ -109,12 +109,14 @@ for video_path in "${FILES[@]}"; do
       -v "$BASE_DIR":/work \
       linuxserver/ffmpeg \
       -i "/work/input/$filename" \
+      -map 0 \
       -c:v libx265 \
       -preset fast \
-      -crf 22 \
+      -crf 19 \
       -tune animation \
       -pix_fmt yuv420p10le \
       -c:a copy \
+      -c:s copy \
       "/work/optimized/$filename" >> "$BASE_DIR/docker_ffmpeg.log" 2>&1
 
     local_exit_code=$?
