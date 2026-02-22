@@ -17,12 +17,13 @@ type FileInfo struct {
 // ListFiles lists files in a host directory by running find inside an alpine container.
 // Only files matching the given extensions are returned.
 func (d *Docker) ListFiles(ctx context.Context, hostPath string, exts []string) ([]FileInfo, error) {
+	// BusyBox find doesn't support -printf, so use find + stat -c instead
 	var buf bytes.Buffer
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
 		"--name", ContainerPrefix+"ls-"+ephemeralSuffix(),
 		"-v", hostPath+":/src:ro",
 		d.cfg.AlpineImage,
-		"find", "/src", "-maxdepth", "1", "-type", "f", "-printf", "%f\\t%s\\n",
+		"sh", "-c", `find /src -maxdepth 1 -type f -exec stat -c '%n	%s' {} +`,
 	)
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
@@ -44,7 +45,8 @@ func (d *Docker) ListFiles(ctx context.Context, hostPath string, exts []string) 
 		if len(parts) != 2 {
 			continue
 		}
-		name := parts[0]
+		// stat -c '%n' returns full path like /src/video.mkv — strip prefix
+		name := strings.TrimPrefix(parts[0], "/src/")
 		// Filter by extension
 		dot := strings.LastIndex(name, ".")
 		if dot < 0 {
