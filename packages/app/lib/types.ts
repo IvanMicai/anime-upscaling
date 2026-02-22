@@ -45,6 +45,8 @@ export interface LogEntry {
 export interface VideoFile {
   name: string;
   size: number;
+  has_upscaled?: boolean;
+  has_optimized?: boolean;
 }
 
 export interface FilesResponse {
@@ -55,6 +57,7 @@ export interface FilesResponse {
 export interface CreateJobRequest {
   type: JobType;
   files?: string[];
+  source?: "input" | "output";
 }
 
 export interface CreateJobResponse extends Job {}

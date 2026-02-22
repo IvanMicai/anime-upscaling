@@ -30,6 +30,7 @@ type Job struct {
 	ID         string       `json:"id"`
 	Type       string       `json:"type"`
 	Status     string       `json:"status"`
+	Source     string       `json:"source"`
 	Files      []string     `json:"files"`
 	Progress   JobProgress  `json:"progress"`
 	Logs       []logEntry   `json:"-"`
@@ -140,6 +141,7 @@ func (j *Job) snapshot() Job {
 		ID:         j.ID,
 		Type:       j.Type,
 		Status:     j.Status,
+		Source:     j.Source,
 		Files:      j.Files,
 		Progress:   prog,
 		CreatedAt:  j.CreatedAt,
@@ -158,6 +160,7 @@ func (j *Job) snapshotWithLogs() Job {
 		ID:         j.ID,
 		Type:       j.Type,
 		Status:     j.Status,
+		Source:     j.Source,
 		Files:      j.Files,
 		Progress:   prog,
 		Logs:       logs,
@@ -189,13 +192,14 @@ func (m *JobManager) generateID() string {
 	return fmt.Sprintf("j_%d_%04x", time.Now().Unix(), rand.Intn(0xFFFF))
 }
 
-func (m *JobManager) StartJob(jobType string, files []string) *Job {
+func (m *JobManager) StartJob(jobType string, files []string, source string) *Job {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	job := &Job{
 		ID:        m.generateID(),
 		Type:      jobType,
 		Status:    "queued",
+		Source:    source,
 		Files:     files,
 		Progress:  JobProgress{Total: len(files)},
 		CreatedAt: time.Now().UTC(),
@@ -238,6 +242,7 @@ func (m *JobManager) StartJob(jobType string, files []string) *Job {
 			}
 
 		case "optimize":
+			jobSource := source
 			for i, f := range files {
 				wg.Add(1)
 				idx := i + 1
@@ -245,7 +250,7 @@ func (m *JobManager) StartJob(jobType string, files []string) *Job {
 				if err := m.ffmpegQ.Submit(ctx, func() {
 					defer wg.Done()
 					job.setRunningOnce()
-					process.OptimizeFile(ctx, cfg, d, filename, idx, onEvent, onProgress)
+					process.OptimizeFile(ctx, cfg, d, filename, idx, jobSource, onEvent, onProgress)
 				}); err != nil {
 					wg.Done()
 					break // ctx cancelled
