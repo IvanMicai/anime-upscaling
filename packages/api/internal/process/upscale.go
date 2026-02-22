@@ -14,7 +14,7 @@ import (
 	"anime-upscaling/internal/logger"
 )
 
-func RunUpscale(ctx context.Context, cfg config.Config, d *docker.Docker, fileList []string, onEvent func(logger.JobLog)) error {
+func RunUpscale(ctx context.Context, cfg config.Config, d *docker.Docker, fileList []string, onEvent func(logger.JobLog), onProgress func(docker.Progress)) error {
 	if err := os.MkdirAll(cfg.OutputDir, 0755); err != nil {
 		return fmt.Errorf("mkdir output: %w", err)
 	}

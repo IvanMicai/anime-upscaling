@@ -1,7 +1,7 @@
 import type { JobProgress } from "@/lib/types";
 
 export function ProgressBar({ progress }: { progress: JobProgress }) {
-  const { total, completed, failed, skipped, current } = progress;
+  const { total, completed, failed, skipped, current, container } = progress;
   if (total === 0) return null;
 
   const pct = (n: number) => `${((n / total) * 100).toFixed(1)}%`;
@@ -44,6 +44,19 @@ export function ProgressBar({ progress }: { progress: JobProgress }) {
           <span className="max-w-[50%] truncate font-mono">{current}</span>
         )}
       </div>
+      {container && container.frame > 0 && (
+        <div className="flex items-center gap-3 font-mono text-xs text-muted-foreground">
+          <span>
+            Frame: {container.frame}
+            {container.total_frames
+              ? `/${container.total_frames} (${container.percent?.toFixed(1)}%)`
+              : ""}
+          </span>
+          {container.fps > 0 && <span>FPS: {container.fps}</span>}
+          {container.elapsed && <span>Elapsed: {container.elapsed}</span>}
+          {container.speed && <span>Speed: {container.speed}</span>}
+        </div>
+      )}
     </div>
   );
 }

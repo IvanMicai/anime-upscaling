@@ -6,12 +6,22 @@ export type LogLevel = "INFO" | "OK" | "ERRO" | "SKIP" | "WARN";
 
 export type LogSource = "GPU 0" | "GPU 1" | "FFMPEG";
 
+export interface ContainerProgress {
+  frame: number;
+  fps: number;
+  total_frames?: number;
+  elapsed?: string;
+  speed?: string;
+  percent?: number;
+}
+
 export interface JobProgress {
   total: number;
   completed: number;
   failed: number;
   skipped: number;
   current: string;
+  container?: ContainerProgress | null;
 }
 
 export interface Job {
