@@ -14,12 +14,11 @@ import (
 
 func CmdServe(cfg config.Config) error {
 	jm := NewJobManager(cfg)
-	auth := apiKeyMiddleware(cfg.ApiKey)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/files", corsMiddleware(auth(handleFiles(cfg))))
-	mux.HandleFunc("/api/jobs", corsMiddleware(auth(handleJobs(jm, cfg))))
-	mux.HandleFunc("/api/jobs/", corsMiddleware(auth(handleJobRoutes(jm))))
+	mux.HandleFunc("/api/files", corsMiddleware(handleFiles(cfg)))
+	mux.HandleFunc("/api/jobs", corsMiddleware(handleJobs(jm, cfg)))
+	mux.HandleFunc("/api/jobs/", corsMiddleware(handleJobRoutes(jm)))
 
 	addr := ":" + cfg.Port
 	fmt.Printf("Server listening on %s\n", addr)
@@ -30,28 +29,12 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Key")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		next(w, r)
-	}
-}
-
-func apiKeyMiddleware(apiKey string) func(http.HandlerFunc) http.HandlerFunc {
-	return func(next http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			if apiKey == "" {
-				next(w, r)
-				return
-			}
-			if r.Header.Get("X-API-Key") != apiKey {
-				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid or missing API key"})
-				return
-			}
-			next(w, r)
-		}
 	}
 }
 

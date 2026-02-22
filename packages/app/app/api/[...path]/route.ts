@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { COOKIE_NAME, isValidSession } from "@/lib/auth";
 
 const API_URL = process.env.API_URL || "http://localhost:4751";
-const API_KEY = process.env.API_KEY || "";
 
 async function proxy(req: NextRequest) {
   const cookieStore = await cookies();
@@ -18,9 +17,6 @@ async function proxy(req: NextRequest) {
 
   const headers = new Headers();
   headers.set("Content-Type", req.headers.get("Content-Type") || "application/json");
-  if (API_KEY) {
-    headers.set("X-API-Key", API_KEY);
-  }
 
   const upstream = await fetch(url, {
     method: req.method,
