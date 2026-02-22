@@ -19,6 +19,8 @@ func CmdServe(cfg config.Config) error {
 	mux.HandleFunc("/api/files", corsMiddleware(handleFiles(cfg)))
 	mux.HandleFunc("/api/jobs", corsMiddleware(handleJobs(jm, cfg)))
 	mux.HandleFunc("/api/jobs/", corsMiddleware(handleJobRoutes(jm)))
+	mux.HandleFunc("/api/sources", corsMiddleware(handleSources(cfg)))
+	mux.HandleFunc("/api/sources/", corsMiddleware(handleSourceRoutes(cfg)))
 
 	addr := ":" + cfg.Port
 	fmt.Printf("Server listening on %s\n", addr)
@@ -28,7 +30,7 @@ func CmdServe(cfg config.Config) error {
 func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

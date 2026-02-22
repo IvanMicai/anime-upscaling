@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import { LogoutButton } from "@/components/logout-button";
 import "./globals.css";
@@ -36,7 +37,15 @@ export default function RootLayout({
                 Video Processing Dashboard
               </p>
             </div>
-            <LogoutButton />
+            <div className="flex items-center gap-4">
+              <Link
+                href="/sources"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Sources
+              </Link>
+              <LogoutButton />
+            </div>
           </header>
           {children}
         </div>
