@@ -17,12 +17,12 @@ import (
 type logEntry = logger.JobLog
 
 type JobProgress struct {
-	Total     int              `json:"total"`
-	Completed int              `json:"completed"`
-	Failed    int              `json:"failed"`
-	Skipped   int              `json:"skipped"`
-	Current   string           `json:"current"`
-	Container *docker.Progress `json:"container,omitempty"`
+	Total      int                         `json:"total"`
+	Completed  int                         `json:"completed"`
+	Failed     int                         `json:"failed"`
+	Skipped    int                         `json:"skipped"`
+	Current    string                      `json:"current"`
+	Containers map[string]*docker.Progress `json:"containers,omitempty"`
 }
 
 type Job struct {
@@ -42,7 +42,10 @@ type Job struct {
 
 func (j *Job) updateContainerProgress(p docker.Progress) {
 	j.mu.Lock()
-	j.Progress.Container = &p
+	if j.Progress.Containers == nil {
+		j.Progress.Containers = make(map[string]*docker.Progress)
+	}
+	j.Progress.Containers[p.Source] = &p
 	j.mu.Unlock()
 }
 
@@ -54,15 +57,15 @@ func (j *Job) addLog(e logEntry) {
 	case "OK":
 		j.Progress.Completed++
 		j.Progress.Current = ""
-		j.Progress.Container = nil
+		delete(j.Progress.Containers, e.Source)
 	case "ERRO":
 		j.Progress.Failed++
 		j.Progress.Current = ""
-		j.Progress.Container = nil
+		delete(j.Progress.Containers, e.Source)
 	case "SKIP":
 		j.Progress.Skipped++
 		j.Progress.Current = ""
-		j.Progress.Container = nil
+		delete(j.Progress.Containers, e.Source)
 	case "INFO":
 		j.Progress.Current = e.Message
 	}
@@ -107,15 +110,29 @@ func (j *Job) unsubscribe(ch chan logEntry) {
 	// Not found means job already finished and closed all channels
 }
 
+func copyContainers(m map[string]*docker.Progress) map[string]*docker.Progress {
+	if m == nil {
+		return nil
+	}
+	cp := make(map[string]*docker.Progress, len(m))
+	for k, v := range m {
+		p := *v
+		cp[k] = &p
+	}
+	return cp
+}
+
 func (j *Job) snapshot() Job {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	prog := j.Progress
+	prog.Containers = copyContainers(j.Progress.Containers)
 	return Job{
 		ID:         j.ID,
 		Type:       j.Type,
 		Status:     j.Status,
 		Files:      j.Files,
-		Progress:   j.Progress,
+		Progress:   prog,
 		CreatedAt:  j.CreatedAt,
 		FinishedAt: j.FinishedAt,
 	}
@@ -126,12 +143,14 @@ func (j *Job) snapshotWithLogs() Job {
 	defer j.mu.Unlock()
 	logs := make([]logEntry, len(j.Logs))
 	copy(logs, j.Logs)
+	prog := j.Progress
+	prog.Containers = copyContainers(j.Progress.Containers)
 	return Job{
 		ID:         j.ID,
 		Type:       j.Type,
 		Status:     j.Status,
 		Files:      j.Files,
-		Progress:   j.Progress,
+		Progress:   prog,
 		Logs:       logs,
 		CreatedAt:  j.CreatedAt,
 		FinishedAt: j.FinishedAt,

@@ -45,6 +45,10 @@ func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileL
 		go func(gpuID int) {
 			defer gpuWg.Done()
 			source := fmt.Sprintf("GPU %d", gpuID)
+			gpuProgress := func(p docker.Progress) {
+				p.Source = source
+				onProgress(p)
+			}
 
 			for w := range fileCh {
 				if ctx.Err() != nil {
@@ -61,7 +65,7 @@ func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileL
 				onEvent(logger.JobLog{Source: source, Level: "INFO", Index: w.index, Message: "Iniciando: " + w.filename, Time: time.Now()})
 
 				dockerLog := fmt.Sprintf("%s/docker_gpu%d.log", cfg.BaseDir, gpuID)
-				err := d.Video2x(ctx, gpuID, w.filename, dockerLog)
+				err := d.Video2x(ctx, gpuID, w.filename, dockerLog, gpuProgress)
 
 				if err != nil {
 					onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: w.index, Message: fmt.Sprintf("Falha ao processar: %s (%v)", w.filename, err), Time: time.Now()})
@@ -88,6 +92,10 @@ func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileL
 	}()
 
 	// FFmpeg consumer goroutine
+	ffmpegProgress := func(p docker.Progress) {
+		p.Source = "FFMPEG"
+		onProgress(p)
+	}
 	var ffmpegWg sync.WaitGroup
 	ffmpegWg.Add(1)
 	go func() {
@@ -113,7 +121,7 @@ func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileL
 				cfg.HalfCPUs,
 				"ffmpeg-pipeline",
 				false,
-				onProgress,
+				ffmpegProgress,
 			)
 			if err != nil {
 				onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: 0, Message: fmt.Sprintf("Falha: %s (%v)", filename, err), Time: time.Now()})

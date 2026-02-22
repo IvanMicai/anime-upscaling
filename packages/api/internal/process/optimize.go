@@ -18,6 +18,11 @@ func RunOptimize(ctx context.Context, cfg config.Config, d *docker.Docker, fileL
 		return fmt.Errorf("mkdir optimized: %w", err)
 	}
 
+	ffmpegProgress := func(p docker.Progress) {
+		p.Source = "FFMPEG"
+		onProgress(p)
+	}
+
 	for i, filename := range fileList {
 		index := i + 1
 
@@ -40,7 +45,7 @@ func RunOptimize(ctx context.Context, cfg config.Config, d *docker.Docker, fileL
 			cfg.HalfCPUs,
 			"ffmpeg-optimize",
 			true,
-			onProgress,
+			ffmpegProgress,
 		)
 		if err != nil {
 			onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao processar: %s (%v)", filename, err), Time: time.Now()})

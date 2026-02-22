@@ -1,11 +1,21 @@
 import type { JobProgress } from "@/lib/types";
 
+const sourceColors: Record<string, string> = {
+  "GPU 0": "text-blue-400",
+  "GPU 1": "text-purple-400",
+  FFMPEG: "text-cyan-400",
+};
+
 export function ProgressBar({ progress }: { progress: JobProgress }) {
-  const { total, completed, failed, skipped, current, container } = progress;
+  const { total, completed, failed, skipped, current, containers } = progress;
   if (total === 0) return null;
 
   const pct = (n: number) => `${((n / total) * 100).toFixed(1)}%`;
   const done = completed + failed + skipped;
+
+  const entries = containers
+    ? Object.entries(containers).filter(([, c]) => c && c.frame > 0)
+    : [];
 
   return (
     <div className="space-y-1.5">
@@ -44,19 +54,25 @@ export function ProgressBar({ progress }: { progress: JobProgress }) {
           <span className="max-w-[50%] truncate font-mono">{current}</span>
         )}
       </div>
-      {container && container.frame > 0 && (
-        <div className="flex items-center gap-3 font-mono text-xs text-muted-foreground">
+      {entries.map(([source, c]) => (
+        <div
+          key={source}
+          className="flex items-center gap-3 font-mono text-xs text-muted-foreground"
+        >
+          <span className={sourceColors[source] ?? "text-muted-foreground"}>
+            {source}
+          </span>
           <span>
-            Frame: {container.frame}
-            {container.total_frames
-              ? `/${container.total_frames} (${container.percent?.toFixed(1)}%)`
+            Frame: {c.frame}
+            {c.total_frames
+              ? `/${c.total_frames} (${c.percent?.toFixed(1)}%)`
               : ""}
           </span>
-          {container.fps > 0 && <span>FPS: {container.fps}</span>}
-          {container.elapsed && <span>Elapsed: {container.elapsed}</span>}
-          {container.speed && <span>Speed: {container.speed}</span>}
+          {c.fps > 0 && <span>FPS: {c.fps}</span>}
+          {c.elapsed && <span>Elapsed: {c.elapsed}</span>}
+          {c.speed && <span>Speed: {c.speed}</span>}
         </div>
-      )}
+      ))}
     </div>
   );
 }
