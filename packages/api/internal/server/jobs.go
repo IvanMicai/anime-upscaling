@@ -161,8 +161,11 @@ func (m *JobManager) StartJob(jobType string, files []string) *Job {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var containerName string
-	if jobType == "optimize" {
-		containerName = "ffmpeg-optimize"
+	switch jobType {
+	case "optimize":
+		containerName = docker.ContainerPrefix + "ffmpeg-optimize"
+	case "pipeline":
+		containerName = docker.ContainerPrefix + "ffmpeg-pipeline"
 	}
 
 	job := &Job{
@@ -250,6 +253,10 @@ func (m *JobManager) CancelJob(id string) *Job {
 		if job.containerName != "" {
 			name := job.containerName
 			go m.docker.StopContainer(name)
+		}
+		// Stop video2x containers for upscale/pipeline jobs
+		if job.Type == "upscale" || job.Type == "pipeline" {
+			go m.docker.StopByPrefix(context.Background(), docker.ContainerPrefix+"video2x-")
 		}
 	}
 	job.mu.Unlock()

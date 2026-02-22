@@ -111,7 +111,7 @@ func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileL
 				"optimized/"+filename,
 				22,
 				cfg.HalfCPUs,
-				"",
+				"ffmpeg-pipeline",
 				false,
 				onProgress,
 			)
