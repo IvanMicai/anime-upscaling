@@ -1,2 +1,4 @@
 .DS_Store
 bin/
+packages/app/node_modules/
+packages/app/.next/
