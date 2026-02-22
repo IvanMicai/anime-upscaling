@@ -142,6 +142,11 @@ func (d *Docker) Chown(ctx context.Context, hostDir, filename string) error {
 	return cmd.Run()
 }
 
+// StopContainer stops a container by name.
+func (d *Docker) StopContainer(name string) error {
+	return exec.Command("docker", "stop", name).Run()
+}
+
 // StopByImage stops all containers running a given image. Returns count stopped.
 func (d *Docker) StopByImage(ctx context.Context, image string) (int, error) {
 	out, err := exec.CommandContext(ctx, "docker", "ps", "-q", "--filter", "ancestor="+image).Output()

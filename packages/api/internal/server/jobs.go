@@ -34,9 +34,10 @@ type Job struct {
 	Logs       []logEntry   `json:"-"`
 	CreatedAt  time.Time    `json:"created_at"`
 	FinishedAt *time.Time   `json:"finished_at,omitempty"`
-	cancel     context.CancelFunc
-	mu         sync.Mutex
-	listeners  []chan logEntry
+	containerName string
+	cancel        context.CancelFunc
+	mu            sync.Mutex
+	listeners     []chan logEntry
 }
 
 func (j *Job) updateContainerProgress(p docker.Progress) {
@@ -138,15 +139,17 @@ func (j *Job) snapshotWithLogs() Job {
 }
 
 type JobManager struct {
-	mu   sync.RWMutex
-	jobs map[string]*Job
-	cfg  config.Config
+	mu     sync.RWMutex
+	jobs   map[string]*Job
+	cfg    config.Config
+	docker *docker.Docker
 }
 
 func NewJobManager(cfg config.Config) *JobManager {
 	return &JobManager{
-		jobs: make(map[string]*Job),
-		cfg:  cfg,
+		jobs:   make(map[string]*Job),
+		cfg:    cfg,
+		docker: docker.NewDocker(cfg),
 	}
 }
 
@@ -157,21 +160,27 @@ func (m *JobManager) generateID() string {
 func (m *JobManager) StartJob(jobType string, files []string) *Job {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	var containerName string
+	if jobType == "optimize" {
+		containerName = "ffmpeg-optimize"
+	}
+
 	job := &Job{
-		ID:        m.generateID(),
-		Type:      jobType,
-		Status:    "running",
-		Files:     files,
-		Progress:  JobProgress{Total: len(files)},
-		CreatedAt: time.Now().UTC(),
-		cancel:    cancel,
+		ID:            m.generateID(),
+		Type:          jobType,
+		Status:        "running",
+		Files:         files,
+		Progress:      JobProgress{Total: len(files)},
+		CreatedAt:     time.Now().UTC(),
+		cancel:        cancel,
+		containerName: containerName,
 	}
 
 	m.mu.Lock()
 	m.jobs[job.ID] = job
 	m.mu.Unlock()
 
-	d := docker.NewDocker(m.cfg)
+	d := m.docker
 	onEvent := func(e logEntry) {
 		job.addLog(e)
 	}
@@ -238,6 +247,10 @@ func (m *JobManager) CancelJob(id string) *Job {
 	job.mu.Lock()
 	if job.Status == "running" {
 		job.cancel()
+		if job.containerName != "" {
+			name := job.containerName
+			go m.docker.StopContainer(name)
+		}
 	}
 	job.mu.Unlock()
 
