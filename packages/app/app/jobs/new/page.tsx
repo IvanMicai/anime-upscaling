@@ -48,13 +48,13 @@ export default function NewJobPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col min-h-[calc(100vh-12rem)]">
       <Link href="/" className="text-sm text-blue-400 hover:underline">
         &larr; Back to Jobs
       </Link>
-      <h2 className="text-lg font-semibold">Create Job</h2>
+      <h2 className="text-lg font-semibold mt-6">Create Job</h2>
 
-      <div className="space-y-4 max-w-lg">
+      <div className="flex flex-col flex-1 min-h-0 mt-4 gap-4">
         <div className="space-y-2">
           <label className="text-sm font-medium">Type</label>
           <Select
@@ -90,7 +90,7 @@ export default function NewJobPage() {
           </div>
         )}
 
-        <div className="space-y-2">
+        <div className="flex flex-col flex-1 min-h-0 gap-2">
           <label className="text-sm font-medium">Files</label>
           <FilePicker selected={selectedFiles} onChange={setSelectedFiles} dir={source} />
         </div>
