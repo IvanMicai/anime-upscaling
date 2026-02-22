@@ -35,7 +35,7 @@ func cmdUpscale(ctx context.Context) error {
 
 	err = process.RunUpscale(ctx, cfg, d, fileList, func(e logger.JobLog) {
 		log.Log(e.Source, e.Level, e.Index, e.Message)
-	})
+	}, nil)
 
 	log.Banner("Tudo pronto!")
 	return err

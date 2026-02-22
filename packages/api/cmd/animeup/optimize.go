@@ -35,7 +35,7 @@ func cmdOptimize(ctx context.Context) error {
 
 	err = process.RunOptimize(ctx, cfg, d, fileList, func(e logger.JobLog) {
 		log.Log(e.Source, e.Level, e.Index, e.Message)
-	})
+	}, nil)
 
 	log.Banner("Tudo pronto!")
 	return err

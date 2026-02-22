@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -45,7 +46,8 @@ func (d *Docker) Video2x(ctx context.Context, gpuID int, filename, logPath strin
 }
 
 // FFmpegEncode compresses a video with H.265.
-func (d *Docker) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath string, crf int, cpus int, containerName string, copySubtitles bool) error {
+// If onProgress is non-nil, stderr/stdout are intercepted to parse progress data.
+func (d *Docker) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath string, crf int, cpus int, containerName string, copySubtitles bool, onProgress func(Progress)) error {
 	f, err := os.OpenFile(d.cfg.BaseDir+"/docker_ffmpeg.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("open ffmpeg log: %w", err)
@@ -81,8 +83,13 @@ func (d *Docker) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	args = append(args, "/work/"+outputRelPath)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
-	cmd.Stdout = f
-	cmd.Stderr = f
+
+	var out io.Writer = f
+	if onProgress != nil {
+		out = newProgressWriter(f, onProgress)
+	}
+	cmd.Stdout = out
+	cmd.Stderr = out
 	return cmd.Run()
 }
 

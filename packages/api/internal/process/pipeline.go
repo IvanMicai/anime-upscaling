@@ -14,7 +14,7 @@ import (
 	"anime-upscaling/internal/logger"
 )
 
-func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileList []string, onEvent func(logger.JobLog)) error {
+func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileList []string, onEvent func(logger.JobLog), onProgress func(docker.Progress)) error {
 	for _, dir := range []string{cfg.OutputDir, cfg.OptimizedDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("mkdir: %w", err)
@@ -113,6 +113,7 @@ func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileL
 				cfg.HalfCPUs,
 				"",
 				false,
+				onProgress,
 			)
 			if err != nil {
 				onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: 0, Message: fmt.Sprintf("Falha: %s (%v)", filename, err), Time: time.Now()})

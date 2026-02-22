@@ -17,11 +17,12 @@ import (
 type logEntry = logger.JobLog
 
 type JobProgress struct {
-	Total     int    `json:"total"`
-	Completed int    `json:"completed"`
-	Failed    int    `json:"failed"`
-	Skipped   int    `json:"skipped"`
-	Current   string `json:"current"`
+	Total     int              `json:"total"`
+	Completed int              `json:"completed"`
+	Failed    int              `json:"failed"`
+	Skipped   int              `json:"skipped"`
+	Current   string           `json:"current"`
+	Container *docker.Progress `json:"container,omitempty"`
 }
 
 type Job struct {
@@ -38,6 +39,12 @@ type Job struct {
 	listeners  []chan logEntry
 }
 
+func (j *Job) updateContainerProgress(p docker.Progress) {
+	j.mu.Lock()
+	j.Progress.Container = &p
+	j.mu.Unlock()
+}
+
 func (j *Job) addLog(e logEntry) {
 	j.mu.Lock()
 	j.Logs = append(j.Logs, e)
@@ -46,12 +53,15 @@ func (j *Job) addLog(e logEntry) {
 	case "OK":
 		j.Progress.Completed++
 		j.Progress.Current = ""
+		j.Progress.Container = nil
 	case "ERRO":
 		j.Progress.Failed++
 		j.Progress.Current = ""
+		j.Progress.Container = nil
 	case "SKIP":
 		j.Progress.Skipped++
 		j.Progress.Current = ""
+		j.Progress.Container = nil
 	case "INFO":
 		j.Progress.Current = e.Message
 	}
@@ -165,16 +175,19 @@ func (m *JobManager) StartJob(jobType string, files []string) *Job {
 	onEvent := func(e logEntry) {
 		job.addLog(e)
 	}
+	onProgress := func(p docker.Progress) {
+		job.updateContainerProgress(p)
+	}
 
 	go func() {
 		var err error
 		switch jobType {
 		case "upscale":
-			err = process.RunUpscale(ctx, m.cfg, d, files, onEvent)
+			err = process.RunUpscale(ctx, m.cfg, d, files, onEvent, onProgress)
 		case "optimize":
-			err = process.RunOptimize(ctx, m.cfg, d, files, onEvent)
+			err = process.RunOptimize(ctx, m.cfg, d, files, onEvent, onProgress)
 		case "pipeline":
-			err = process.RunPipeline(ctx, m.cfg, d, files, onEvent)
+			err = process.RunPipeline(ctx, m.cfg, d, files, onEvent, onProgress)
 		}
 
 		job.mu.Lock()

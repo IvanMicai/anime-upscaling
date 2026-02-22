@@ -35,7 +35,7 @@ func cmdPipeline(ctx context.Context) error {
 
 	err = process.RunPipeline(ctx, cfg, d, fileList, func(e logger.JobLog) {
 		log.Log(e.Source, e.Level, e.Index, e.Message)
-	})
+	}, nil)
 
 	log.Banner("Pipeline completo! Tudo pronto.")
 	return err
