@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
 import { getFiles } from "@/lib/api";
 import type { VideoFile } from "@/lib/types";
 
@@ -62,8 +61,10 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
     return <p className="text-sm text-muted-foreground">No files found in {dir}/.</p>;
   }
 
+  const hasStatus = dir === "input" && files.some((f) => f.has_upscaled || f.has_optimized);
+
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col h-full gap-2">
       <div className="flex items-center gap-2">
         <Checkbox
           id="select-all"
@@ -74,7 +75,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
           Select All ({files.length} files{selected.length > 0 ? `, ${formatBytes(selectedTotal)}` : ""})
         </Label>
       </div>
-      <ScrollArea className="h-64 rounded-md border p-2">
+      <ScrollArea className="flex-1 min-h-0 rounded-md border p-2">
         <div className="space-y-1.5">
           {files.map((file) => (
             <div key={file.name} className="flex items-center gap-2">
@@ -87,10 +88,10 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
                 {file.name}
               </Label>
               {dir === "input" && file.has_upscaled && (
-                <Badge className="bg-blue-600 text-white text-[10px] px-1.5 py-0">Upscaled</Badge>
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
               )}
               {dir === "input" && file.has_optimized && (
-                <Badge className="bg-green-600 text-white text-[10px] px-1.5 py-0">Optimized</Badge>
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0" />
               )}
               <span className="text-xs text-muted-foreground ml-auto shrink-0">
                 {formatBytes(file.size)}
@@ -99,6 +100,18 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
           ))}
         </div>
       </ScrollArea>
+      {hasStatus && (
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+            Upscaled
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+            Optimized
+          </span>
+        </div>
+      )}
     </div>
   );
 }
