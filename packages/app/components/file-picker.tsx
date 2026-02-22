@@ -77,7 +77,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
       </div>
       <ScrollArea className="flex-1 min-h-0 rounded-md border p-2">
         <div className="space-y-1.5">
-          {files.map((file) => (
+          {[...files].sort((a, b) => a.name.localeCompare(b.name)).map((file) => (
             <div key={file.name} className="flex items-center gap-2">
               <Checkbox
                 id={file.name}
