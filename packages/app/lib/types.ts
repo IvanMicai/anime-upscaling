@@ -77,4 +77,7 @@ export interface Source {
 export interface SourceFile {
   name: string;
   size: number;
+  in_input?: boolean;
+  in_output?: boolean;
+  in_optimized?: boolean;
 }

@@ -151,6 +151,15 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
                       >
                         {file.name}
                       </Label>
+                      {file.in_input && (
+                        <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 shrink-0" />
+                      )}
+                      {file.in_output && (
+                        <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
+                      )}
+                      {file.in_optimized && (
+                        <span className="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0" />
+                      )}
                       <span className="text-xs text-muted-foreground ml-auto shrink-0">
                         {formatBytes(file.size)}
                       </span>
@@ -158,6 +167,23 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
                   ))}
                 </div>
               </ScrollArea>
+
+              {files.some((f) => f.in_input || f.in_output || f.in_optimized) && (
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
+                    Imported
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                    Upscaled
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                    Optimized
+                  </span>
+                </div>
+              )}
 
               <div className="flex items-center gap-3">
                 <Button

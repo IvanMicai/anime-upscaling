@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"anime-upscaling/internal/config"
 	"anime-upscaling/internal/docker"
+	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/sources"
 )
 
@@ -126,15 +128,27 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 			}
 			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer cancel()
-			files, err := d.ListFiles(ctx, src.Path, cfg.VideoExts)
+			fileList, err := d.ListFiles(ctx, src.Path, cfg.VideoExts)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
 			}
-			if files == nil {
-				files = []docker.FileInfo{}
+			type sourceFileWithStatus struct {
+				Name        string `json:"name"`
+				Size        int64  `json:"size"`
+				InInput     bool   `json:"in_input,omitempty"`
+				InOutput    bool   `json:"in_output,omitempty"`
+				InOptimized bool   `json:"in_optimized,omitempty"`
 			}
-			writeJSON(w, http.StatusOK, map[string]interface{}{"files": files})
+			result := make([]sourceFileWithStatus, 0, len(fileList))
+			for _, f := range fileList {
+				sf := sourceFileWithStatus{Name: f.Name, Size: f.Size}
+				sf.InInput = files.FileExists(filepath.Join(cfg.InputDir, f.Name))
+				sf.InOutput = files.FileExists(filepath.Join(cfg.OutputDir, f.Name))
+				sf.InOptimized = files.FileExists(filepath.Join(cfg.OptimizedDir, f.Name))
+				result = append(result, sf)
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{"files": result})
 
 		case "import":
 			// POST /api/sources/{id}/import
