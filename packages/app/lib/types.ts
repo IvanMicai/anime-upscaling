@@ -42,9 +42,14 @@ export interface LogEntry {
   time: string;
 }
 
+export interface VideoFile {
+  name: string;
+  size: number;
+}
+
 export interface FilesResponse {
   dir: string;
-  files: string[];
+  files: VideoFile[];
 }
 
 export interface CreateJobRequest {

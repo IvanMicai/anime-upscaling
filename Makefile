@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: all build build-api build-app run stop dev dev-api dev-app clean
+.PHONY: all build build-api build-app run stop dev dev-api dev-app clean deploy
 
 # --- Build ---
 
@@ -55,6 +55,11 @@ dev-api:
 dev-app:
 	cp .env packages/app/.env.local
 	cd packages/app && PORT=$(APP_PORT) pnpm dev
+
+# --- Deploy ---
+
+deploy:
+	ssh truenas_admin@192.168.15.4 'bash -s' < deploy.sh
 
 # --- Clean ---
 
