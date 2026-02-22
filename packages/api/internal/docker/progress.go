@@ -25,6 +25,8 @@ var (
 	reElapsed     = regexp.MustCompile(`elapsed=(\S+)`)
 	reSpeed       = regexp.MustCompile(`speed=\s*(\S+)`)
 	reTotalFrames = regexp.MustCompile(`NUMBER_OF_FRAMES:\s*(\d+)`)
+	reStreamVideo = regexp.MustCompile(`Stream\s+#\d+:\d+.*Video:`)
+	reStreamAny   = regexp.MustCompile(`Stream\s+#\d+:\d+`)
 )
 
 // progressWriter is an io.Writer that tees all writes to an underlying writer
@@ -33,11 +35,12 @@ type progressWriter struct {
 	underlying io.Writer
 	onProgress func(Progress)
 
-	mu          sync.Mutex
-	buf         []byte
-	current     Progress
-	lastEmit    time.Time
-	minInterval time.Duration
+	mu            sync.Mutex
+	buf           []byte
+	current       Progress
+	lastEmit      time.Time
+	minInterval   time.Duration
+	inVideoStream bool
 }
 
 func newProgressWriter(w io.Writer, onProgress func(Progress)) *progressWriter {
@@ -87,11 +90,21 @@ func (pw *progressWriter) Write(p []byte) (int, error) {
 func (pw *progressWriter) parseLine(line string) {
 	changed := false
 
-	// Check for total frames (from ffprobe-style header in stats)
-	if m := reTotalFrames.FindStringSubmatch(line); m != nil {
-		if v, err := strconv.Atoi(m[1]); err == nil && v > 0 {
-			pw.current.TotalFrames = v
-			changed = true
+	// Track which stream's metadata we're in so we only pick up
+	// NUMBER_OF_FRAMES from the video stream, not audio/subtitle streams.
+	if reStreamVideo.MatchString(line) {
+		pw.inVideoStream = true
+	} else if reStreamAny.MatchString(line) {
+		pw.inVideoStream = false
+	}
+
+	// Check for total frames — only from the video stream section
+	if pw.inVideoStream {
+		if m := reTotalFrames.FindStringSubmatch(line); m != nil {
+			if v, err := strconv.Atoi(m[1]); err == nil && v > 0 {
+				pw.current.TotalFrames = v
+				changed = true
+			}
 		}
 	}
 
