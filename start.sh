@@ -5,12 +5,17 @@ cd "$(dirname "$0")"
 # Load env
 set -a; source .env; set +a
 
-mkdir -p pids logs
+mkdir -p logs
 
 # Start API
 echo "Starting API on :$API_PORT..."
-nohup ./bin/api serve > logs/api.log 2>&1 &
-echo $! > pids/api.pid
+docker rm -f anime-upscaling-api 2>/dev/null || true
+nohup docker run --rm --name anime-upscaling-api \
+  --env-file .env \
+  -e API_PORT=$API_PORT \
+  -p $API_PORT:$API_PORT \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  anime-upscaling-api > logs/api.log 2>&1 &
 
 # Start App
 echo "Starting App on :$APP_PORT..."
@@ -20,8 +25,7 @@ nohup docker run --rm --name anime-upscaling-app \
   -e PORT=$APP_PORT \
   -p $APP_PORT:$APP_PORT \
   anime-upscaling-app > logs/app.log 2>&1 &
-sleep 1
-docker inspect -f '{{.State.Pid}}' anime-upscaling-app > pids/app.pid 2>/dev/null || echo $! > pids/app.pid
 
-echo "Done. PIDs: api=$(cat pids/api.pid) app=$(cat pids/app.pid)"
+sleep 1
+echo "Done. Containers: anime-upscaling-api, anime-upscaling-app."
 echo "Logs: logs/api.log, logs/app.log"

@@ -11,7 +11,7 @@ all: build
 build: build-api build-app
 
 build-api:
-	cd packages/api && GOOS=linux GOARCH=amd64 go build -o ../../bin/api ./cmd/animeup
+	docker build -t anime-upscaling-api packages/api
 
 build-app:
 	docker build -t anime-upscaling-app packages/app
@@ -19,9 +19,15 @@ build-app:
 # --- Run (production) ---
 
 run: stop
-	@mkdir -p pids logs
+	@mkdir -p logs
 	@echo "Starting API on :$(API_PORT)..."
-	@nohup ./bin/api serve > logs/api.log 2>&1 & echo $$! > pids/api.pid
+	@-docker rm -f anime-upscaling-api 2>/dev/null
+	@nohup docker run --rm --name anime-upscaling-api \
+		--env-file .env \
+		-e API_PORT=$(API_PORT) \
+		-p $(API_PORT):$(API_PORT) \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		anime-upscaling-api > logs/api.log 2>&1 &
 	@echo "Starting App on :$(APP_PORT)..."
 	@-docker rm -f anime-upscaling-app 2>/dev/null
 	@nohup docker run --rm --name anime-upscaling-app \
@@ -30,11 +36,11 @@ run: stop
 		-p $(APP_PORT):$(APP_PORT) \
 		anime-upscaling-app > logs/app.log 2>&1 &
 	@sleep 1
-	@echo "Done. API pid=$$(cat pids/api.pid). App container=anime-upscaling-app."
+	@echo "Done. Containers: anime-upscaling-api, anime-upscaling-app."
 	@echo "Logs: logs/api.log, logs/app.log"
 
 stop:
-	@-if [ -f pids/api.pid ]; then kill $$(cat pids/api.pid) 2>/dev/null; rm -f pids/api.pid; fi
+	@-docker rm -f anime-upscaling-api 2>/dev/null
 	@-docker rm -f anime-upscaling-app 2>/dev/null
 
 # --- Dev (foreground) ---
@@ -52,5 +58,5 @@ dev-app:
 # --- Clean ---
 
 clean:
-	rm -rf bin/api packages/app/.next packages/app/node_modules
-	-docker rmi anime-upscaling-app 2>/dev/null
+	rm -rf bin packages/app/.next packages/app/node_modules
+	-docker rmi anime-upscaling-api anime-upscaling-app 2>/dev/null
