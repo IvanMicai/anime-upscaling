@@ -27,6 +27,7 @@ run: stop
 		-e API_PORT=$(API_PORT) \
 		-p $(API_PORT):$(API_PORT) \
 		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v $(PROCESS_DIR):$(PROCESS_DIR) \
 		anime-upscaling-api > logs/api.log 2>&1 &
 	@echo "Starting App on :$(APP_PORT)..."
 	@-docker rm -f anime-upscaling-app 2>/dev/null

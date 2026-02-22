@@ -10,6 +10,7 @@ services:
       - "${API_PORT:-4751}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ${PROCESS_DIR}:${PROCESS_DIR}
     restart: unless-stopped
 
   app:
