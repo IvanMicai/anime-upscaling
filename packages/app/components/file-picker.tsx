@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import { getFiles } from "@/lib/api";
 import type { VideoFile } from "@/lib/types";
 
@@ -18,18 +19,21 @@ function formatBytes(bytes: number): string {
 interface FilePickerProps {
   selected: string[];
   onChange: (files: string[]) => void;
+  dir?: string;
 }
 
-export function FilePicker({ selected, onChange }: FilePickerProps) {
+export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProps) {
   const [files, setFiles] = useState<VideoFile[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getFiles("input")
+    setLoading(true);
+    onChange([]);
+    getFiles(dir)
       .then((res) => setFiles(res.files ?? []))
       .catch(() => setFiles([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [dir]);
 
   const allSelected = files.length > 0 && selected.length === files.length;
   const names = files.map((f) => f.name);
@@ -55,7 +59,7 @@ export function FilePicker({ selected, onChange }: FilePickerProps) {
   }
 
   if (files.length === 0) {
-    return <p className="text-sm text-muted-foreground">No input files found.</p>;
+    return <p className="text-sm text-muted-foreground">No files found in {dir}/.</p>;
   }
 
   return (
@@ -82,6 +86,12 @@ export function FilePicker({ selected, onChange }: FilePickerProps) {
               <Label htmlFor={file.name} className="font-mono text-sm truncate">
                 {file.name}
               </Label>
+              {dir === "input" && file.has_upscaled && (
+                <Badge className="bg-blue-600 text-white text-[10px] px-1.5 py-0">Upscaled</Badge>
+              )}
+              {dir === "input" && file.has_optimized && (
+                <Badge className="bg-green-600 text-white text-[10px] px-1.5 py-0">Optimized</Badge>
+              )}
               <span className="text-xs text-muted-foreground ml-auto shrink-0">
                 {formatBytes(file.size)}
               </span>

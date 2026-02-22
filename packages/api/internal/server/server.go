@@ -63,7 +63,13 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 			return
 		}
 
-		videoFiles, err := files.ListVideosWithSize(fullPath, cfg.VideoExts)
+		var videoFiles []files.VideoFile
+		var err error
+		if dir == "input" {
+			videoFiles, err = files.ListVideosWithStatus(fullPath, cfg.OutputDir, cfg.OptimizedDir, cfg.VideoExts)
+		} else {
+			videoFiles, err = files.ListVideosWithSize(fullPath, cfg.VideoExts)
+		}
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -100,8 +106,9 @@ func handleListJobs(jm *JobManager, w http.ResponseWriter, r *http.Request) {
 
 func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Type  string   `json:"type"`
-		Files []string `json:"files"`
+		Type   string   `json:"type"`
+		Files  []string `json:"files"`
+		Source string   `json:"source"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -114,34 +121,52 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		return
 	}
 
-	// If no files specified, use all videos in input/
+	if req.Source == "" {
+		req.Source = "input"
+	}
+	if req.Source != "input" && req.Source != "output" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source must be input or output"})
+		return
+	}
+	if req.Source == "output" && req.Type != "optimize" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source=output is only allowed for optimize jobs"})
+		return
+	}
+
+	sourceDir := cfg.InputDir
+	if req.Source == "output" {
+		sourceDir = cfg.OutputDir
+	}
+
+	// If no files specified, use all videos in source dir
 	if len(req.Files) == 0 {
-		all, err := files.ListVideos(cfg.InputDir, cfg.VideoExts)
+		all, err := files.ListVideos(sourceDir, cfg.VideoExts)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list input files"})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list files"})
 			return
 		}
 		if len(all) == 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no video files found in input/"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("no video files found in %s/", req.Source)})
 			return
 		}
 		req.Files = all
 	} else {
 		// Validate each file exists
 		for _, f := range req.Files {
-			if !files.FileExists(filepath.Join(cfg.InputDir, f)) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("file not found in input/: %s", f)})
+			if !files.FileExists(filepath.Join(sourceDir, f)) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("file not found in %s/: %s", req.Source, f)})
 				return
 			}
 		}
 	}
 
-	job := jm.StartJob(req.Type, req.Files)
+	job := jm.StartJob(req.Type, req.Files, req.Source)
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":     job.ID,
 		"type":   job.Type,
 		"status": job.Status,
+		"source": job.Source,
 		"files":  job.Files,
 	})
 }
@@ -200,6 +225,7 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		ID         string      `json:"id"`
 		Type       string      `json:"type"`
 		Status     string      `json:"status"`
+		Source     string      `json:"source"`
 		Files      []string    `json:"files"`
 		Progress   JobProgress `json:"progress"`
 		CreatedAt  time.Time   `json:"created_at"`
@@ -209,6 +235,7 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		ID:         snap.ID,
 		Type:       snap.Type,
 		Status:     snap.Status,
+		Source:     snap.Source,
 		Files:      snap.Files,
 		Progress:   snap.Progress,
 		CreatedAt:  snap.CreatedAt,

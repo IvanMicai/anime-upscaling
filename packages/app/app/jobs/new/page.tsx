@@ -18,15 +18,27 @@ import type { JobType } from "@/lib/types";
 export default function NewJobPage() {
   const router = useRouter();
   const [type, setType] = useState<JobType>("upscale");
+  const [source, setSource] = useState<"input" | "output">("input");
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function handleTypeChange(v: string) {
+    setType(v as JobType);
+    if (v !== "optimize") {
+      setSource("input");
+    }
+  }
 
   async function submit(files?: string[]) {
     setSubmitting(true);
     setError(null);
     try {
-      await createJob({ type, files });
+      await createJob({
+        type,
+        files,
+        ...(source !== "input" && { source }),
+      });
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create job");
@@ -47,7 +59,7 @@ export default function NewJobPage() {
           <label className="text-sm font-medium">Type</label>
           <Select
             value={type}
-            onValueChange={(v) => setType(v as JobType)}
+            onValueChange={handleTypeChange}
           >
             <SelectTrigger>
               <SelectValue />
@@ -60,9 +72,27 @@ export default function NewJobPage() {
           </Select>
         </div>
 
+        {type === "optimize" && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Source</label>
+            <Select
+              value={source}
+              onValueChange={(v) => setSource(v as "input" | "output")}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="input">Input</SelectItem>
+                <SelectItem value="output">Output (upscaled)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         <div className="space-y-2">
           <label className="text-sm font-medium">Files</label>
-          <FilePicker selected={selectedFiles} onChange={setSelectedFiles} />
+          <FilePicker selected={selectedFiles} onChange={setSelectedFiles} dir={source} />
         </div>
 
         {error && <p className="text-sm text-red-400">{error}</p>}
