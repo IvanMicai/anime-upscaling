@@ -136,7 +136,7 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
                 </Label>
               </div>
 
-              <ScrollArea className="max-h-64 rounded-md border p-2">
+              <ScrollArea className="rounded-md border p-2">
                 <div className="space-y-1.5">
                   {files.map((file) => (
                     <div key={file.name} className="flex items-center gap-2">
