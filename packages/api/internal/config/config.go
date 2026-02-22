@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 )
@@ -18,6 +19,7 @@ type Config struct {
 	Video2xImage string
 	FFmpegImage  string
 	AlpineImage  string
+	ApiKey       string
 }
 
 func NewConfig() Config {
@@ -25,6 +27,11 @@ func NewConfig() Config {
 	halfCPUs := runtime.NumCPU() / 2
 	if halfCPUs < 1 {
 		halfCPUs = 1
+	}
+
+	apiKey := os.Getenv("API_KEY")
+	if apiKey == "" {
+		fmt.Println("WARNING: API_KEY not set — API authentication disabled")
 	}
 
 	return Config{
@@ -40,5 +47,6 @@ func NewConfig() Config {
 		Video2xImage: "ghcr.io/k4yt3x/video2x:6.4.0",
 		FFmpegImage:  "linuxserver/ffmpeg",
 		AlpineImage:  "alpine",
+		ApiKey:       apiKey,
 	}
 }

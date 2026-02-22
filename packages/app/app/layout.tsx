@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { LogoutButton } from "@/components/logout-button";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,11 +29,14 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <div className="mx-auto max-w-5xl px-4 py-8">
-          <header className="mb-8">
-            <h1 className="text-2xl font-bold">AnimeUp</h1>
-            <p className="text-sm text-muted-foreground">
-              Video Processing Dashboard
-            </p>
+          <header className="mb-8 flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold">AnimeUp</h1>
+              <p className="text-sm text-muted-foreground">
+                Video Processing Dashboard
+              </p>
+            </div>
+            <LogoutButton />
           </header>
           {children}
         </div>

@@ -2,13 +2,13 @@
 
 Go HTTP API for managing video upscaling and optimization jobs using Docker containers (video2x, ffmpeg).
 
-**Base URL:** `http://localhost:8080`
+**Base URL:** `http://localhost:4751`
 
 ## Configuration
 
 | Setting | Value |
 |---------|-------|
-| Port | `8080` |
+| Port | `4751` |
 | Base directory | `/mnt/SSD2/process` |
 | Input directory | `{BaseDir}/input` |
 | Output directory | `{BaseDir}/output` |
@@ -46,7 +46,7 @@ List video files in a directory.
 **Example:**
 
 ```bash
-curl 'http://localhost:8080/api/files?dir=input'
+curl 'http://localhost:4751/api/files?dir=input'
 ```
 
 ---
@@ -80,7 +80,7 @@ List all jobs.
 **Example:**
 
 ```bash
-curl http://localhost:8080/api/jobs
+curl http://localhost:4751/api/jobs
 ```
 
 ---
@@ -132,17 +132,17 @@ Create a new job.
 
 ```bash
 # Upscale specific files
-curl -X POST http://localhost:8080/api/jobs \
+curl -X POST http://localhost:4751/api/jobs \
   -H 'Content-Type: application/json' \
   -d '{"type": "upscale", "files": ["video1.mkv"]}'
 
 # Optimize all files in input/
-curl -X POST http://localhost:8080/api/jobs \
+curl -X POST http://localhost:4751/api/jobs \
   -H 'Content-Type: application/json' \
   -d '{"type": "optimize"}'
 
 # Full pipeline (upscale + optimize)
-curl -X POST http://localhost:8080/api/jobs \
+curl -X POST http://localhost:4751/api/jobs \
   -H 'Content-Type: application/json' \
   -d '{"type": "pipeline", "files": ["video1.mkv", "video2.mp4"]}'
 ```
@@ -188,7 +188,7 @@ Get job details.
 **Example:**
 
 ```bash
-curl http://localhost:8080/api/jobs/j_1708540800_1a2b
+curl http://localhost:4751/api/jobs/j_1708540800_1a2b
 ```
 
 ---
@@ -242,7 +242,7 @@ Each `data:` line is a JSON log entry:
 **Example:**
 
 ```bash
-curl -N http://localhost:8080/api/jobs/j_1708540800_1a2b/logs
+curl -N http://localhost:4751/api/jobs/j_1708540800_1a2b/logs
 ```
 
 ---
@@ -275,7 +275,7 @@ Cancel a running job.
 **Example:**
 
 ```bash
-curl -X POST http://localhost:8080/api/jobs/j_1708540800_1a2b/cancel
+curl -X POST http://localhost:4751/api/jobs/j_1708540800_1a2b/cancel
 ```
 
 ---
