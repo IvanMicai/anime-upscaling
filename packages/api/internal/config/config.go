@@ -24,7 +24,10 @@ type Config struct {
 }
 
 func NewConfig() Config {
-	baseDir := "/mnt/SSD2/process"
+	baseDir := os.Getenv("PROCESS_DIR")
+	if baseDir == "" {
+		baseDir = "/mnt/SSD2/process"
+	}
 	halfCPUs := runtime.NumCPU() / 2
 	if halfCPUs < 1 {
 		halfCPUs = 1
