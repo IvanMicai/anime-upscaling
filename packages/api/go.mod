@@ -1,0 +1,3 @@
+module anime-upscaling
+
+go 1.23
