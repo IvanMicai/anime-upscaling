@@ -2,6 +2,10 @@ import { Badge } from "@/components/ui/badge";
 import type { JobStatus } from "@/lib/types";
 
 const config: Record<JobStatus, { label: string; className: string }> = {
+  queued: {
+    label: "Queued",
+    className: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  },
   running: {
     label: "Running",
     className: "bg-blue-500/20 text-blue-400 border-blue-500/30",

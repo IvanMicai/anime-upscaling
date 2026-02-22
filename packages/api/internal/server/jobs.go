@@ -11,6 +11,7 @@ import (
 	"anime-upscaling/internal/docker"
 	"anime-upscaling/internal/logger"
 	"anime-upscaling/internal/process"
+	"anime-upscaling/internal/queue"
 )
 
 // logEntry is a type alias for logger.JobLog used within the server package.
@@ -34,10 +35,9 @@ type Job struct {
 	Logs       []logEntry   `json:"-"`
 	CreatedAt  time.Time    `json:"created_at"`
 	FinishedAt *time.Time   `json:"finished_at,omitempty"`
-	containerName string
-	cancel        context.CancelFunc
-	mu            sync.Mutex
-	listeners     []chan logEntry
+	cancel     context.CancelFunc
+	mu         sync.Mutex
+	listeners  []chan logEntry
 }
 
 func (j *Job) updateContainerProgress(p docker.Progress) {
@@ -82,13 +82,22 @@ func (j *Job) addLog(e logEntry) {
 	}
 }
 
-// subscribe returns a channel for real-time log events and whether the job is still running.
+// setRunningOnce transitions the job from "queued" to "running" exactly once.
+func (j *Job) setRunningOnce() {
+	j.mu.Lock()
+	if j.Status == "queued" {
+		j.Status = "running"
+	}
+	j.mu.Unlock()
+}
+
+// subscribe returns a channel for real-time log events and whether the job is still active.
 // If the job already finished, the channel is returned closed.
 func (j *Job) subscribe() (chan logEntry, bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	ch := make(chan logEntry, 64)
-	if j.Status != "running" {
+	if j.Status != "running" && j.Status != "queued" {
 		close(ch)
 		return ch, false
 	}
@@ -158,17 +167,21 @@ func (j *Job) snapshotWithLogs() Job {
 }
 
 type JobManager struct {
-	mu     sync.RWMutex
-	jobs   map[string]*Job
-	cfg    config.Config
-	docker *docker.Docker
+	mu      sync.RWMutex
+	jobs    map[string]*Job
+	cfg     config.Config
+	docker  *docker.Docker
+	gpuQ    *queue.GPUQueue
+	ffmpegQ *queue.Queue
 }
 
 func NewJobManager(cfg config.Config) *JobManager {
 	return &JobManager{
-		jobs:   make(map[string]*Job),
-		cfg:    cfg,
-		docker: docker.NewDocker(cfg),
+		jobs:    make(map[string]*Job),
+		cfg:     cfg,
+		docker:  docker.NewDocker(cfg),
+		gpuQ:    queue.NewGPUQueue(2),
+		ffmpegQ: queue.New(1),
 	}
 }
 
@@ -179,23 +192,14 @@ func (m *JobManager) generateID() string {
 func (m *JobManager) StartJob(jobType string, files []string) *Job {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	var containerName string
-	switch jobType {
-	case "optimize":
-		containerName = docker.ContainerPrefix + "ffmpeg-optimize"
-	case "pipeline":
-		containerName = docker.ContainerPrefix + "ffmpeg-pipeline"
-	}
-
 	job := &Job{
-		ID:            m.generateID(),
-		Type:          jobType,
-		Status:        "running",
-		Files:         files,
-		Progress:      JobProgress{Total: len(files)},
-		CreatedAt:     time.Now().UTC(),
-		cancel:        cancel,
-		containerName: containerName,
+		ID:        m.generateID(),
+		Type:      jobType,
+		Status:    "queued",
+		Files:     files,
+		Progress:  JobProgress{Total: len(files)},
+		CreatedAt: time.Now().UTC(),
+		cancel:    cancel,
 	}
 
 	m.mu.Lock()
@@ -203,6 +207,7 @@ func (m *JobManager) StartJob(jobType string, files []string) *Job {
 	m.mu.Unlock()
 
 	d := m.docker
+	cfg := m.cfg
 	onEvent := func(e logEntry) {
 		job.addLog(e)
 	}
@@ -211,23 +216,78 @@ func (m *JobManager) StartJob(jobType string, files []string) *Job {
 	}
 
 	go func() {
-		var err error
+		var wg sync.WaitGroup
+
 		switch jobType {
 		case "upscale":
-			err = process.RunUpscale(ctx, m.cfg, d, files, onEvent, onProgress)
+			for i, f := range files {
+				wg.Add(1)
+				idx := i + 1
+				filename := f
+				gpuID, err := m.gpuQ.Acquire(ctx)
+				if err != nil {
+					wg.Done()
+					break // ctx cancelled
+				}
+				go func() {
+					defer wg.Done()
+					defer m.gpuQ.Release(gpuID)
+					job.setRunningOnce()
+					process.UpscaleFile(ctx, cfg, d, gpuID, filename, idx, onEvent, onProgress)
+				}()
+			}
+
 		case "optimize":
-			err = process.RunOptimize(ctx, m.cfg, d, files, onEvent, onProgress)
+			for i, f := range files {
+				wg.Add(1)
+				idx := i + 1
+				filename := f
+				if err := m.ffmpegQ.Submit(ctx, func() {
+					defer wg.Done()
+					job.setRunningOnce()
+					process.OptimizeFile(ctx, cfg, d, filename, idx, onEvent, onProgress)
+				}); err != nil {
+					wg.Done()
+					break // ctx cancelled
+				}
+			}
+
 		case "pipeline":
-			err = process.RunPipeline(ctx, m.cfg, d, files, onEvent, onProgress)
+			for i, f := range files {
+				wg.Add(1)
+				idx := i + 1
+				filename := f
+				gpuID, err := m.gpuQ.Acquire(ctx)
+				if err != nil {
+					wg.Done()
+					break // ctx cancelled
+				}
+				go func() {
+					defer m.gpuQ.Release(gpuID)
+					job.setRunningOnce()
+					ok := process.UpscaleFile(ctx, cfg, d, gpuID, filename, idx, onEvent, onProgress)
+					if !ok || ctx.Err() != nil {
+						wg.Done()
+						return
+					}
+					// Phase 2: enqueue into FFmpeg queue
+					if err := m.ffmpegQ.Submit(ctx, func() {
+						defer wg.Done()
+						process.EncodeFile(ctx, cfg, d, filename, onEvent, onProgress)
+					}); err != nil {
+						wg.Done() // ctx cancelled
+					}
+				}()
+			}
 		}
+
+		wg.Wait()
 
 		job.mu.Lock()
 		now := time.Now().UTC()
 		job.FinishedAt = &now
 		if ctx.Err() != nil {
 			job.Status = "cancelled"
-		} else if err != nil {
-			job.Status = "failed"
 		} else {
 			job.Status = "completed"
 		}
@@ -267,15 +327,15 @@ func (m *JobManager) CancelJob(id string) *Job {
 	}
 
 	job.mu.Lock()
-	if job.Status == "running" {
+	if job.Status == "running" || job.Status == "queued" {
 		job.cancel()
-		if job.containerName != "" {
-			name := job.containerName
-			go m.docker.StopContainer(name)
-		}
 		// Stop video2x containers for upscale/pipeline jobs
 		if job.Type == "upscale" || job.Type == "pipeline" {
 			go m.docker.StopByPrefix(context.Background(), docker.ContainerPrefix+"video2x-")
+		}
+		// Stop ffmpeg containers for optimize/pipeline jobs
+		if job.Type == "optimize" || job.Type == "pipeline" {
+			go m.docker.StopByPrefix(context.Background(), docker.ContainerPrefix+"ffmpeg-")
 		}
 	}
 	job.mu.Unlock()

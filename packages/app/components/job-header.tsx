@@ -45,7 +45,7 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
             <StatusBadge status={job.status} />
           </div>
         </div>
-        {job.status === "running" && (
+        {(job.status === "running" || job.status === "queued") && (
           <Button
             variant="destructive"
             size="sm"
