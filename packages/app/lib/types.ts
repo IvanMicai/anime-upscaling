@@ -67,3 +67,14 @@ export interface CancelJobResponse extends Job {}
 export interface ApiError {
   error: string;
 }
+
+export interface Source {
+  id: string;
+  name: string;
+  path: string;
+}
+
+export interface SourceFile {
+  name: string;
+  size: number;
+}

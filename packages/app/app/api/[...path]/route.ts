@@ -49,6 +49,7 @@ async function proxy(req: NextRequest) {
 
 export const GET = proxy;
 export const POST = proxy;
+export const DELETE = proxy;
 
 export async function OPTIONS() {
   return new Response(null, { status: 204 });
