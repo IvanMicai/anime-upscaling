@@ -14,16 +14,12 @@ import (
 	"anime-upscaling/internal/logger"
 )
 
+// RunUpscale processes all files using 2 GPU workers (CLI convenience wrapper).
 func RunUpscale(ctx context.Context, cfg config.Config, d *docker.Docker, fileList []string, onEvent func(logger.JobLog), onProgress func(docker.Progress)) error {
-	if err := os.MkdirAll(cfg.OutputDir, 0755); err != nil {
-		return fmt.Errorf("mkdir output: %w", err)
-	}
-
 	type work struct {
 		filename string
 		index    int
 	}
-
 	fileCh := make(chan work, len(fileList))
 	for i, f := range fileList {
 		fileCh <- work{filename: f, index: i + 1}
@@ -32,49 +28,66 @@ func RunUpscale(ctx context.Context, cfg config.Config, d *docker.Docker, fileLi
 
 	var wg sync.WaitGroup
 	gpuCount := 2
-
 	for gpuID := 0; gpuID < gpuCount; gpuID++ {
 		wg.Add(1)
 		go func(gpuID int) {
 			defer wg.Done()
-			source := fmt.Sprintf("GPU %d", gpuID)
-			gpuProgress := func(p docker.Progress) {
-				p.Source = source
-				onProgress(p)
-			}
-
 			for w := range fileCh {
 				if ctx.Err() != nil {
 					return
 				}
-
-				outPath := filepath.Join(cfg.OutputDir, w.filename)
-				if files.FileExists(outPath) {
-					onEvent(logger.JobLog{Source: source, Level: "SKIP", Index: w.index, Message: "Pulando " + w.filename + " (já existe)", Time: time.Now()})
-					continue
-				}
-
-				onEvent(logger.JobLog{Source: source, Level: "INFO", Index: w.index, Message: "Iniciando: " + w.filename, Time: time.Now()})
-
-				dockerLog := fmt.Sprintf("%s/docker_gpu%d.log", cfg.BaseDir, gpuID)
-				err := d.Video2x(ctx, gpuID, w.filename, dockerLog, gpuProgress)
-
-				if err != nil {
-					onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: w.index, Message: fmt.Sprintf("Falha ao processar: %s (%v)", w.filename, err), Time: time.Now()})
-					continue
-				}
-
-				if !files.FileExists(outPath) {
-					onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: w.index, Message: "video2x retornou 0 mas output não existe: " + w.filename, Time: time.Now()})
-					continue
-				}
-
-				d.Chown(ctx, cfg.OutputDir, w.filename)
-				onEvent(logger.JobLog{Source: source, Level: "OK", Index: w.index, Message: "Concluído: " + w.filename, Time: time.Now()})
+				UpscaleFile(ctx, cfg, d, gpuID, w.filename, w.index, onEvent, safeProgress(onProgress))
 			}
 		}(gpuID)
 	}
-
 	wg.Wait()
 	return nil
+}
+
+func safeProgress(fn func(docker.Progress)) func(docker.Progress) {
+	if fn == nil {
+		return func(docker.Progress) {}
+	}
+	return fn
+}
+
+// UpscaleFile processes a single file on the given GPU.
+// Returns true if the file was successfully upscaled (or skipped).
+func UpscaleFile(ctx context.Context, cfg config.Config, d *docker.Docker, gpuID int, filename string, index int, onEvent func(logger.JobLog), onProgress func(docker.Progress)) bool {
+	if err := os.MkdirAll(cfg.OutputDir, 0755); err != nil {
+		source := fmt.Sprintf("GPU %d", gpuID)
+		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir output: %v", err), Time: time.Now()})
+		return false
+	}
+
+	source := fmt.Sprintf("GPU %d", gpuID)
+	gpuProgress := func(p docker.Progress) {
+		p.Source = source
+		onProgress(p)
+	}
+
+	outPath := filepath.Join(cfg.OutputDir, filename)
+	if files.FileExists(outPath) {
+		onEvent(logger.JobLog{Source: source, Level: "SKIP", Index: index, Message: "Pulando " + filename + " (já existe)", Time: time.Now()})
+		return true
+	}
+
+	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
+
+	dockerLog := fmt.Sprintf("%s/docker_gpu%d.log", cfg.BaseDir, gpuID)
+	err := d.Video2x(ctx, gpuID, filename, dockerLog, gpuProgress)
+
+	if err != nil {
+		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao processar: %s (%v)", filename, err), Time: time.Now()})
+		return false
+	}
+
+	if !files.FileExists(outPath) {
+		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: "video2x retornou 0 mas output não existe: " + filename, Time: time.Now()})
+		return false
+	}
+
+	d.Chown(ctx, cfg.OutputDir, filename)
+	onEvent(logger.JobLog{Source: source, Level: "OK", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
+	return true
 }

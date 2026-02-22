@@ -68,9 +68,9 @@ func (d *Docker) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	}
 	defer f.Close()
 
-	name := ContainerPrefix + "ffmpeg-encode"
+	name := ContainerPrefix + "ffmpeg-encode-" + ephemeralSuffix()
 	if containerName != "" {
-		name = ContainerPrefix + containerName
+		name = ContainerPrefix + containerName + "-" + ephemeralSuffix()
 	}
 	args := []string{"run", "--rm",
 		"--name", name,

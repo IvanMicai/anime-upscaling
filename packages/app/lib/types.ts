@@ -1,6 +1,6 @@
 export type JobType = "upscale" | "optimize" | "pipeline";
 
-export type JobStatus = "running" | "completed" | "failed" | "cancelled";
+export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export type LogLevel = "INFO" | "OK" | "ERRO" | "SKIP" | "WARN";
 
