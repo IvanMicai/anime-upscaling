@@ -11,7 +11,7 @@ all: build
 build: build-api build-app
 
 build-api:
-	cd packages/api && go build -o ../../bin/animeup ./cmd/animeup
+	cd packages/api && GOOS=linux GOARCH=amd64 go build -o ../../bin/api ./cmd/animeup
 
 build-app:
 	cp .env packages/app/.env.local
@@ -32,4 +32,4 @@ dev-app:
 # --- Clean ---
 
 clean:
-	rm -rf bin/animeup packages/app/.next packages/app/node_modules
+	rm -rf bin/api packages/app/.next packages/app/node_modules
