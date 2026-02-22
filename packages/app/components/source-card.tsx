@@ -138,7 +138,7 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
 
               <ScrollArea className="rounded-md border p-2">
                 <div className="space-y-1.5">
-                  {files.map((file) => (
+                  {[...files].sort((a, b) => a.name.localeCompare(b.name)).map((file) => (
                     <div key={file.name} className="flex items-center gap-2">
                       <Checkbox
                         id={`${source.id}-${file.name}`}
