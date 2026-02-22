@@ -80,13 +80,13 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 			return
 		}
 
-		videoFiles, err := files.ListVideos(fullPath, cfg.VideoExts)
+		videoFiles, err := files.ListVideosWithSize(fullPath, cfg.VideoExts)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 		if videoFiles == nil {
-			videoFiles = []string{}
+			videoFiles = []files.VideoFile{}
 		}
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{
