@@ -16,13 +16,13 @@ cp .env packages/app/.env.local
 (cd packages/app && pnpm install --frozen-lockfile && pnpm build)
 
 # Start API
-echo "Starting API on :4751..."
+echo "Starting API on :$API_PORT..."
 nohup ./bin/animeup serve > logs/api.log 2>&1 &
 echo $! > pids/api.pid
 
 # Start App
-echo "Starting App on :4750..."
-(cd packages/app && nohup pnpm start -p 4750 > ../../logs/app.log 2>&1 &
+echo "Starting App on :$APP_PORT..."
+(cd packages/app && nohup pnpm start -p $APP_PORT > ../../logs/app.log 2>&1 &
 echo $! > ../../pids/app.pid)
 
 echo "Done. PIDs: api=$(cat pids/api.pid) app=$(cat pids/app.pid)"

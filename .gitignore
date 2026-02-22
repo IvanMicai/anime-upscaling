@@ -1,5 +1,5 @@
 .DS_Store
-.env*
+.env
 bin/
 packages/app/node_modules/
 packages/app/.next/

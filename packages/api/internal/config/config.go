@@ -7,6 +7,7 @@ import (
 )
 
 type Config struct {
+	Port         string
 	BaseDir      string
 	InputDir     string
 	OutputDir    string
@@ -29,12 +30,18 @@ func NewConfig() Config {
 		halfCPUs = 1
 	}
 
+	port := os.Getenv("API_PORT")
+	if port == "" {
+		port = "4751"
+	}
+
 	apiKey := os.Getenv("API_KEY")
 	if apiKey == "" {
 		fmt.Println("WARNING: API_KEY not set — API authentication disabled")
 	}
 
 	return Config{
+		Port:    port,
 		BaseDir:      baseDir,
 		InputDir:     baseDir + "/input",
 		OutputDir:    baseDir + "/output",

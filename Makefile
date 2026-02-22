@@ -27,7 +27,7 @@ dev-api:
 
 dev-app:
 	cp .env packages/app/.env.local
-	cd packages/app && pnpm dev
+	cd packages/app && PORT=$(APP_PORT) pnpm dev
 
 # --- Clean ---
 

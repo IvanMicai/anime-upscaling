@@ -21,7 +21,7 @@ func CmdServe(cfg config.Config) error {
 	mux.HandleFunc("/api/jobs", corsMiddleware(auth(handleJobs(jm, cfg))))
 	mux.HandleFunc("/api/jobs/", corsMiddleware(auth(handleJobRoutes(jm))))
 
-	addr := ":4751"
+	addr := ":" + cfg.Port
 	fmt.Printf("Server listening on %s\n", addr)
 	return http.ListenAndServe(addr, mux)
 }

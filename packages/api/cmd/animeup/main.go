@@ -58,5 +58,5 @@ Commands:
   check      Verify video integrity (ffprobe + decode)
   stop       Stop all running Docker containers
   logs       Tail all log files with colors
-  serve      Start HTTP API server on :4751`)
+  serve      Start HTTP API server`)
 }
