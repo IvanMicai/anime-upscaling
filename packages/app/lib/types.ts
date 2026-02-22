@@ -21,7 +21,7 @@ export interface JobProgress {
   failed: number;
   skipped: number;
   current: string;
-  container?: ContainerProgress | null;
+  containers?: Record<string, ContainerProgress> | null;
 }
 
 export interface Job {

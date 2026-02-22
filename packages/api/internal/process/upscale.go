@@ -38,6 +38,10 @@ func RunUpscale(ctx context.Context, cfg config.Config, d *docker.Docker, fileLi
 		go func(gpuID int) {
 			defer wg.Done()
 			source := fmt.Sprintf("GPU %d", gpuID)
+			gpuProgress := func(p docker.Progress) {
+				p.Source = source
+				onProgress(p)
+			}
 
 			for w := range fileCh {
 				if ctx.Err() != nil {
@@ -53,7 +57,7 @@ func RunUpscale(ctx context.Context, cfg config.Config, d *docker.Docker, fileLi
 				onEvent(logger.JobLog{Source: source, Level: "INFO", Index: w.index, Message: "Iniciando: " + w.filename, Time: time.Now()})
 
 				dockerLog := fmt.Sprintf("%s/docker_gpu%d.log", cfg.BaseDir, gpuID)
-				err := d.Video2x(ctx, gpuID, w.filename, dockerLog)
+				err := d.Video2x(ctx, gpuID, w.filename, dockerLog, gpuProgress)
 
 				if err != nil {
 					onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: w.index, Message: fmt.Sprintf("Falha ao processar: %s (%v)", w.filename, err), Time: time.Now()})

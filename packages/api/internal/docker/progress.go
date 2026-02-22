@@ -11,6 +11,7 @@ import (
 
 // Progress holds parsed container progress data.
 type Progress struct {
+	Source      string  `json:"source,omitempty"`
 	Frame       int     `json:"frame"`
 	FPS         float64 `json:"fps"`
 	TotalFrames int     `json:"total_frames,omitempty"`
@@ -20,6 +21,7 @@ type Progress struct {
 }
 
 var (
+	reFrameSlash  = regexp.MustCompile(`frame=(\d+)/(\d+)`)
 	reFrame       = regexp.MustCompile(`frame=\s*(\d+)`)
 	reFPS         = regexp.MustCompile(`fps=\s*([\d.]+)`)
 	reElapsed     = regexp.MustCompile(`elapsed=(\S+)`)
@@ -108,8 +110,17 @@ func (pw *progressWriter) parseLine(line string) {
 		}
 	}
 
-	// Check for progress line (contains "frame=")
-	if m := reFrame.FindStringSubmatch(line); m != nil {
+	// Check for progress line — try video2x "frame=N/T" first, then plain "frame=N"
+	if m := reFrameSlash.FindStringSubmatch(line); m != nil {
+		if v, err := strconv.Atoi(m[1]); err == nil {
+			pw.current.Frame = v
+			changed = true
+		}
+		if v, err := strconv.Atoi(m[2]); err == nil && v > 0 {
+			pw.current.TotalFrames = v
+			changed = true
+		}
+	} else if m := reFrame.FindStringSubmatch(line); m != nil {
 		if v, err := strconv.Atoi(m[1]); err == nil {
 			pw.current.Frame = v
 			changed = true
@@ -124,7 +135,7 @@ func (pw *progressWriter) parseLine(line string) {
 	}
 
 	if m := reElapsed.FindStringSubmatch(line); m != nil {
-		pw.current.Elapsed = strings.TrimSpace(m[1])
+		pw.current.Elapsed = strings.TrimRight(strings.TrimSpace(m[1]), ";")
 		changed = true
 	}
 
