@@ -85,15 +85,55 @@ func (d *Docker) CopyFile(ctx context.Context, srcHostDir, dstHostDir, filename 
 	return d.Chown(ctx, dstHostDir, filename)
 }
 
-// CopyFiles copies multiple files between two host directories.
+// CopyFiles copies multiple files between two host directories using a single
+// Docker container for all copies and a single container for chown.
+// Individual file failures don't stop the rest; returns the count of successes.
 func (d *Docker) CopyFiles(ctx context.Context, srcHostDir, dstHostDir string, filenames []string) (int, error) {
-	copied := 0
-	for _, f := range filenames {
-		if err := d.CopyFile(ctx, srcHostDir, dstHostDir, f); err != nil {
-			return copied, err
-		}
-		copied++
+	if len(filenames) == 0 {
+		return 0, nil
 	}
+
+	// Build a shell command that copies each file individually and counts successes
+	var sb strings.Builder
+	sb.WriteString("copied=0; ")
+	for _, f := range filenames {
+		sb.WriteString(fmt.Sprintf("cp /src/%s /dst/%s && copied=$((copied+1)); ", f, f))
+	}
+	sb.WriteString("echo $copied")
+
+	var buf bytes.Buffer
+	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
+		"--name", ContainerPrefix+"cp-"+ephemeralSuffix(),
+		"-v", srcHostDir+":/src:ro",
+		"-v", dstHostDir+":/dst",
+		d.cfg.AlpineImage,
+		"sh", "-c", sb.String(),
+	)
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		return 0, fmt.Errorf("copy files: %w (%s)", err, strings.TrimSpace(buf.String()))
+	}
+
+	// Parse count from output (last line)
+	lines := strings.TrimSpace(buf.String())
+	copied, _ := strconv.Atoi(lines[strings.LastIndex(lines, "\n")+1:])
+
+	// Batch chown all copied files in a single container
+	chownArgs := []string{"run", "--rm",
+		"--name", ContainerPrefix + "chown-" + ephemeralSuffix(),
+		"-v", dstHostDir + ":/work",
+		d.cfg.AlpineImage,
+		"chown", fmt.Sprintf("%d:%d", d.cfg.UserID, d.cfg.GroupID),
+	}
+	for _, f := range filenames {
+		chownArgs = append(chownArgs, "/work/"+f)
+	}
+	chownCmd := exec.CommandContext(ctx, "docker", chownArgs...)
+	if err := chownCmd.Run(); err != nil {
+		return copied, fmt.Errorf("chown: %w", err)
+	}
+
 	return copied, nil
 }
 
