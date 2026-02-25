@@ -19,6 +19,7 @@ export default function NewJobPage() {
   const router = useRouter();
   const [type, setType] = useState<JobType>("upscale");
   const [source, setSource] = useState<"input" | "output" | "optimized">("input");
+  const [scale, setScale] = useState<2 | 4>(2);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +28,9 @@ export default function NewJobPage() {
     setType(v as JobType);
     if (v !== "optimize" && v !== "check") {
       setSource("input");
+    }
+    if (v !== "upscale" && v !== "pipeline") {
+      setScale(2);
     }
   }
 
@@ -38,6 +42,7 @@ export default function NewJobPage() {
         type,
         files,
         ...(source !== "input" && { source }),
+        ...((type === "upscale" || type === "pipeline") && { scale }),
       });
       router.push("/");
     } catch (err) {
@@ -89,6 +94,24 @@ export default function NewJobPage() {
                 {type === "check" && (
                   <SelectItem value="optimized">Optimized</SelectItem>
                 )}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {(type === "upscale" || type === "pipeline") && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Scale</label>
+            <Select
+              value={String(scale)}
+              onValueChange={(v) => setScale(Number(v) as 2 | 4)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="2">2x</SelectItem>
+                <SelectItem value="4">4x</SelectItem>
               </SelectContent>
             </Select>
           </div>

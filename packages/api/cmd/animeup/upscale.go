@@ -33,7 +33,7 @@ func cmdUpscale(ctx context.Context) error {
 	log.SetTotal(len(fileList))
 	log.Banner(fmt.Sprintf("Iniciando processamento de %d arquivos com fila dinâmica...", len(fileList)))
 
-	err = process.RunUpscale(ctx, cfg, d, fileList, func(e logger.JobLog) {
+	err = process.RunUpscale(ctx, cfg, d, fileList, 2, func(e logger.JobLog) {
 		log.Log(e.Source, e.Level, e.Index, e.Message)
 	}, nil)
 

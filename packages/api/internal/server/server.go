@@ -111,6 +111,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		Type   string   `json:"type"`
 		Files  []string `json:"files"`
 		Source string   `json:"source"`
+		Scale  int      `json:"scale"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -120,6 +121,14 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 	validTypes := map[string]bool{"upscale": true, "optimize": true, "pipeline": true, "check": true}
 	if !validTypes[req.Type] {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be upscale, optimize, pipeline, or check"})
+		return
+	}
+
+	if req.Scale == 0 {
+		req.Scale = 2
+	}
+	if (req.Type == "upscale" || req.Type == "pipeline") && req.Scale != 2 && req.Scale != 4 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "scale must be 2 or 4"})
 		return
 	}
 
@@ -169,13 +178,14 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		}
 	}
 
-	job := jm.StartJob(req.Type, req.Files, req.Source)
+	job := jm.StartJob(req.Type, req.Files, req.Source, req.Scale)
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":     job.ID,
 		"type":   job.Type,
 		"status": job.Status,
 		"source": job.Source,
+		"scale":  job.Scale,
 		"files":  job.Files,
 	})
 }
@@ -235,6 +245,7 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		Type       string      `json:"type"`
 		Status     string      `json:"status"`
 		Source     string      `json:"source"`
+		Scale      int         `json:"scale"`
 		Files      []string    `json:"files"`
 		Progress   JobProgress `json:"progress"`
 		CreatedAt  time.Time   `json:"created_at"`
@@ -245,6 +256,7 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		Type:       snap.Type,
 		Status:     snap.Status,
 		Source:     snap.Source,
+		Scale:      snap.Scale,
 		Files:      snap.Files,
 		Progress:   snap.Progress,
 		CreatedAt:  snap.CreatedAt,

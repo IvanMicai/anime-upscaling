@@ -31,6 +31,7 @@ type Job struct {
 	Type       string       `json:"type"`
 	Status     string       `json:"status"`
 	Source     string       `json:"source"`
+	Scale      int          `json:"scale"`
 	Files      []string     `json:"files"`
 	Progress   JobProgress  `json:"progress"`
 	Logs       []logEntry   `json:"-"`
@@ -142,6 +143,7 @@ func (j *Job) snapshot() Job {
 		Type:       j.Type,
 		Status:     j.Status,
 		Source:     j.Source,
+		Scale:      j.Scale,
 		Files:      j.Files,
 		Progress:   prog,
 		CreatedAt:  j.CreatedAt,
@@ -161,6 +163,7 @@ func (j *Job) snapshotWithLogs() Job {
 		Type:       j.Type,
 		Status:     j.Status,
 		Source:     j.Source,
+		Scale:      j.Scale,
 		Files:      j.Files,
 		Progress:   prog,
 		Logs:       logs,
@@ -192,7 +195,7 @@ func (m *JobManager) generateID() string {
 	return fmt.Sprintf("j_%d_%04x", time.Now().Unix(), rand.Intn(0xFFFF))
 }
 
-func (m *JobManager) StartJob(jobType string, files []string, source string) *Job {
+func (m *JobManager) StartJob(jobType string, files []string, source string, scale int) *Job {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	job := &Job{
@@ -200,6 +203,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string) *Jo
 		Type:      jobType,
 		Status:    "queued",
 		Source:    source,
+		Scale:     scale,
 		Files:     files,
 		Progress:  JobProgress{Total: len(files)},
 		CreatedAt: time.Now().UTC(),
@@ -237,7 +241,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string) *Jo
 					defer wg.Done()
 					defer m.gpuQ.Release(gpuID)
 					job.setRunningOnce()
-					process.UpscaleFile(ctx, cfg, d, gpuID, filename, idx, onEvent, onProgress)
+					process.UpscaleFile(ctx, cfg, d, gpuID, filename, idx, job.Scale, onEvent, onProgress)
 				}()
 			}
 
@@ -286,7 +290,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string) *Jo
 				go func() {
 					defer m.gpuQ.Release(gpuID)
 					job.setRunningOnce()
-					ok := process.UpscaleFile(ctx, cfg, d, gpuID, filename, idx, onEvent, onProgress)
+					ok := process.UpscaleFile(ctx, cfg, d, gpuID, filename, idx, job.Scale, onEvent, onProgress)
 					if !ok || ctx.Err() != nil {
 						wg.Done()
 						return

@@ -15,7 +15,7 @@ import (
 )
 
 // RunPipeline runs the full upscale+encode pipeline with 2 GPU workers feeding 1 FFmpeg worker (CLI convenience wrapper).
-func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileList []string, onEvent func(logger.JobLog), onProgress func(docker.Progress)) error {
+func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileList []string, scale int, onEvent func(logger.JobLog), onProgress func(docker.Progress)) error {
 	type work struct {
 		filename string
 		index    int
@@ -38,7 +38,7 @@ func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileL
 				if ctx.Err() != nil {
 					return
 				}
-				ok := UpscaleFile(ctx, cfg, d, gpuID, w.filename, w.index, onEvent, safeProgress(onProgress))
+				ok := UpscaleFile(ctx, cfg, d, gpuID, w.filename, w.index, scale, onEvent, safeProgress(onProgress))
 				if ok {
 					readyCh <- w.filename
 				}
