@@ -18,14 +18,14 @@ import type { JobType } from "@/lib/types";
 export default function NewJobPage() {
   const router = useRouter();
   const [type, setType] = useState<JobType>("upscale");
-  const [source, setSource] = useState<"input" | "output">("input");
+  const [source, setSource] = useState<"input" | "output" | "optimized">("input");
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function handleTypeChange(v: string) {
     setType(v as JobType);
-    if (v !== "optimize") {
+    if (v !== "optimize" && v !== "check") {
       setSource("input");
     }
   }
@@ -68,16 +68,17 @@ export default function NewJobPage() {
               <SelectItem value="upscale">Upscale</SelectItem>
               <SelectItem value="optimize">Optimize</SelectItem>
               <SelectItem value="pipeline">Pipeline</SelectItem>
+              <SelectItem value="check">Check</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        {type === "optimize" && (
+        {(type === "optimize" || type === "check") && (
           <div className="space-y-2">
             <label className="text-sm font-medium">Source</label>
             <Select
               value={source}
-              onValueChange={(v) => setSource(v as "input" | "output")}
+              onValueChange={(v) => setSource(v as "input" | "output" | "optimized")}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -85,6 +86,9 @@ export default function NewJobPage() {
               <SelectContent>
                 <SelectItem value="input">Input</SelectItem>
                 <SelectItem value="output">Output (upscaled)</SelectItem>
+                {type === "check" && (
+                  <SelectItem value="optimized">Optimized</SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>
