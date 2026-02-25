@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { deleteSource, getSourceFiles, importFiles } from "@/lib/api";
+import { useShiftSelect } from "@/lib/use-shift-select";
 import type { Source, SourceFile } from "@/lib/types";
 
 function formatBytes(bytes: number): string {
@@ -27,6 +28,7 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
   const [files, setFiles] = useState<SourceFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const { handleToggle, resetLastClicked } = useShiftSelect(selected, setSelected);
   const [importing, setImporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -36,6 +38,7 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
     if (!expanded) return;
     setLoading(true);
     setError(null);
+    resetLastClicked();
     getSourceFiles(source.id)
       .then((res) => setFiles(res.files ?? []))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load files"))
@@ -46,12 +49,6 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
 
   function toggleAll() {
     setSelected(allSelected ? [] : files.map((f) => f.name));
-  }
-
-  function toggle(name: string) {
-    setSelected((prev) =>
-      prev.includes(name) ? prev.filter((f) => f !== name) : [...prev, name]
-    );
   }
 
   async function handleImport() {
@@ -138,19 +135,23 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
 
               <ScrollArea className="rounded-md border p-2">
                 <div className="space-y-1.5">
-                  {[...files].sort((a, b) => a.name.localeCompare(b.name)).map((file) => (
-                    <div key={file.name} className="flex items-center gap-2">
+                  {(() => {
+                    const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
+                    const sortedNames = sorted.map((f) => f.name);
+                    return sorted.map((file, index) => (
+                    <div
+                      key={file.name}
+                      className="flex items-center gap-2 cursor-pointer select-none"
+                      onClick={(e) => handleToggle(index, sortedNames, e.shiftKey)}
+                    >
                       <Checkbox
-                        id={`${source.id}-${file.name}`}
                         checked={selected.includes(file.name)}
-                        onCheckedChange={() => toggle(file.name)}
+                        tabIndex={-1}
+                        className="pointer-events-none"
                       />
-                      <Label
-                        htmlFor={`${source.id}-${file.name}`}
-                        className="font-mono text-sm truncate"
-                      >
+                      <span className="font-mono text-sm truncate">
                         {file.name}
-                      </Label>
+                      </span>
                       {file.in_input && (
                         <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 shrink-0" />
                       )}
@@ -164,7 +165,8 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
                         {formatBytes(file.size)}
                       </span>
                     </div>
-                  ))}
+                  ));
+                  })()}
                 </div>
               </ScrollArea>
 

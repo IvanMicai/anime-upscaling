@@ -5,6 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getFiles } from "@/lib/api";
+import { useShiftSelect } from "@/lib/use-shift-select";
 import type { VideoFile } from "@/lib/types";
 
 function formatBytes(bytes: number): string {
@@ -24,10 +25,12 @@ interface FilePickerProps {
 export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProps) {
   const [files, setFiles] = useState<VideoFile[]>([]);
   const [loading, setLoading] = useState(true);
+  const { handleToggle, resetLastClicked } = useShiftSelect(selected, onChange);
 
   useEffect(() => {
     setLoading(true);
     onChange([]);
+    resetLastClicked();
     getFiles(dir)
       .then((res) => setFiles(res.files ?? []))
       .catch(() => setFiles([]))
@@ -43,14 +46,6 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
 
   function toggleAll() {
     onChange(allSelected ? [] : [...names]);
-  }
-
-  function toggle(name: string) {
-    onChange(
-      selected.includes(name)
-        ? selected.filter((f) => f !== name)
-        : [...selected, name]
-    );
   }
 
   if (loading) {
@@ -77,16 +72,23 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
       </div>
       <ScrollArea className="flex-1 min-h-0 rounded-md border p-2">
         <div className="space-y-1.5">
-          {[...files].sort((a, b) => a.name.localeCompare(b.name)).map((file) => (
-            <div key={file.name} className="flex items-center gap-2">
+          {(() => {
+            const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
+            const sortedNames = sorted.map((f) => f.name);
+            return sorted.map((file, index) => (
+            <div
+              key={file.name}
+              className="flex items-center gap-2 cursor-pointer select-none"
+              onClick={(e) => handleToggle(index, sortedNames, e.shiftKey)}
+            >
               <Checkbox
-                id={file.name}
                 checked={selected.includes(file.name)}
-                onCheckedChange={() => toggle(file.name)}
+                tabIndex={-1}
+                className="pointer-events-none"
               />
-              <Label htmlFor={file.name} className="font-mono text-sm truncate">
+              <span className="font-mono text-sm truncate">
                 {file.name}
-              </Label>
+              </span>
               {dir === "input" && file.has_upscaled && (
                 <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
               )}
@@ -97,7 +99,8 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
                 {formatBytes(file.size)}
               </span>
             </div>
-          ))}
+          ));
+          })()}
         </div>
       </ScrollArea>
       {hasStatus && (
