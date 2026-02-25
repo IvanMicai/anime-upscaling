@@ -33,7 +33,7 @@ func cmdPipeline(ctx context.Context) error {
 	log.SetTotal(len(fileList))
 	log.Banner(fmt.Sprintf("Iniciando pipeline upscale+compressão de %d arquivos...", len(fileList)))
 
-	err = process.RunPipeline(ctx, cfg, d, fileList, func(e logger.JobLog) {
+	err = process.RunPipeline(ctx, cfg, d, fileList, 2, func(e logger.JobLog) {
 		log.Log(e.Source, e.Level, e.Index, e.Message)
 	}, nil)
 

@@ -30,7 +30,7 @@ func NewDocker(cfg config.Config) *Docker {
 
 // Video2x runs video2x upscale on a specific GPU, writing docker stdout/stderr to logPath.
 // If onProgress is non-nil, the log output is also parsed for progress data.
-func (d *Docker) Video2x(ctx context.Context, gpuID int, filename, logPath string, onProgress func(Progress)) error {
+func (d *Docker) Video2x(ctx context.Context, gpuID int, filename, logPath string, scale int, onProgress func(Progress)) error {
 	f, err := os.Create(logPath)
 	if err != nil {
 		return fmt.Errorf("create docker log: %w", err)
@@ -46,7 +46,7 @@ func (d *Docker) Video2x(ctx context.Context, gpuID int, filename, logPath strin
 		"-i", "/host/input/"+filename,
 		"-o", "/host/output/"+filename,
 		"-p", "realesrgan",
-		"-s", "2",
+		"-s", strconv.Itoa(scale),
 		"--realesrgan-model", "realesr-animevideov3",
 	)
 

@@ -28,6 +28,7 @@ export interface Job {
   id: string;
   type: JobType;
   status: JobStatus;
+  scale: number;
   files: string[];
   progress: JobProgress;
   created_at: string;
@@ -58,6 +59,7 @@ export interface CreateJobRequest {
   type: JobType;
   files?: string[];
   source?: "input" | "output" | "optimized";
+  scale?: 2 | 4;
 }
 
 export interface CreateJobResponse extends Job {}

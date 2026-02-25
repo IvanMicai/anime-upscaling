@@ -15,7 +15,7 @@ import (
 )
 
 // RunUpscale processes all files using 2 GPU workers (CLI convenience wrapper).
-func RunUpscale(ctx context.Context, cfg config.Config, d *docker.Docker, fileList []string, onEvent func(logger.JobLog), onProgress func(docker.Progress)) error {
+func RunUpscale(ctx context.Context, cfg config.Config, d *docker.Docker, fileList []string, scale int, onEvent func(logger.JobLog), onProgress func(docker.Progress)) error {
 	type work struct {
 		filename string
 		index    int
@@ -36,7 +36,7 @@ func RunUpscale(ctx context.Context, cfg config.Config, d *docker.Docker, fileLi
 				if ctx.Err() != nil {
 					return
 				}
-				UpscaleFile(ctx, cfg, d, gpuID, w.filename, w.index, onEvent, safeProgress(onProgress))
+				UpscaleFile(ctx, cfg, d, gpuID, w.filename, w.index, scale, onEvent, safeProgress(onProgress))
 			}
 		}(gpuID)
 	}
@@ -53,7 +53,7 @@ func safeProgress(fn func(docker.Progress)) func(docker.Progress) {
 
 // UpscaleFile processes a single file on the given GPU.
 // Returns true if the file was successfully upscaled (or skipped).
-func UpscaleFile(ctx context.Context, cfg config.Config, d *docker.Docker, gpuID int, filename string, index int, onEvent func(logger.JobLog), onProgress func(docker.Progress)) bool {
+func UpscaleFile(ctx context.Context, cfg config.Config, d *docker.Docker, gpuID int, filename string, index int, scale int, onEvent func(logger.JobLog), onProgress func(docker.Progress)) bool {
 	if err := os.MkdirAll(cfg.OutputDir, 0755); err != nil {
 		source := fmt.Sprintf("GPU %d", gpuID)
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir output: %v", err), Time: time.Now()})
@@ -75,7 +75,7 @@ func UpscaleFile(ctx context.Context, cfg config.Config, d *docker.Docker, gpuID
 	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
 
 	dockerLog := fmt.Sprintf("%s/docker_gpu%d.log", cfg.BaseDir, gpuID)
-	err := d.Video2x(ctx, gpuID, filename, dockerLog, gpuProgress)
+	err := d.Video2x(ctx, gpuID, filename, dockerLog, scale, gpuProgress)
 
 	if err != nil {
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao processar: %s (%v)", filename, err), Time: time.Now()})
