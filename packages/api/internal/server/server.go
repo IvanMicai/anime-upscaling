@@ -117,27 +117,34 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		return
 	}
 
-	validTypes := map[string]bool{"upscale": true, "optimize": true, "pipeline": true}
+	validTypes := map[string]bool{"upscale": true, "optimize": true, "pipeline": true, "check": true}
 	if !validTypes[req.Type] {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be upscale, optimize, or pipeline"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be upscale, optimize, pipeline, or check"})
 		return
 	}
 
 	if req.Source == "" {
 		req.Source = "input"
 	}
-	if req.Source != "input" && req.Source != "output" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source must be input or output"})
+	validSources := map[string]bool{"input": true, "output": true}
+	if req.Type == "check" {
+		validSources["optimized"] = true
+	}
+	if !validSources[req.Source] {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source"})
 		return
 	}
-	if req.Source == "output" && req.Type != "optimize" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source=output is only allowed for optimize jobs"})
+	if req.Source == "output" && req.Type != "optimize" && req.Type != "check" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source=output is only allowed for optimize or check jobs"})
 		return
 	}
 
 	sourceDir := cfg.InputDir
-	if req.Source == "output" {
+	switch req.Source {
+	case "output":
 		sourceDir = cfg.OutputDir
+	case "optimized":
+		sourceDir = cfg.OptimizedDir
 	}
 
 	// If no files specified, use all videos in source dir

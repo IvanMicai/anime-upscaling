@@ -74,7 +74,7 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {job.status === "completed" && sources.length > 0 && (
+          {job.status === "completed" && job.type !== "check" && sources.length > 0 && (
             <div className="relative">
               <Button
                 variant="secondary"

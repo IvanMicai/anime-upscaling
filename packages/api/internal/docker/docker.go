@@ -131,23 +131,34 @@ func (d *Docker) FFprobe(ctx context.Context, relPath string) (string, error) {
 }
 
 // FFmpegDecode does a full decode pass to check integrity.
-func (d *Docker) FFmpegDecode(ctx context.Context, relPath string) (string, error) {
-	var buf bytes.Buffer
+// If onProgress is non-nil, stderr is parsed for progress data.
+func (d *Docker) FFmpegDecode(ctx context.Context, relPath string, containerName string, onProgress func(Progress)) (string, error) {
+	name := ContainerPrefix + "ffmpeg-decode-" + ephemeralSuffix()
+	if containerName != "" {
+		name = ContainerPrefix + "ffmpeg-" + containerName + "-" + ephemeralSuffix()
+	}
+
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
-		"--name", ContainerPrefix+"ffmpeg-decode-"+ephemeralSuffix(),
+		"--name", name,
 		"-e", "PUID="+strconv.Itoa(d.cfg.UserID),
 		"-e", "PGID="+strconv.Itoa(d.cfg.GroupID),
 		"-v", d.cfg.BaseDir+":/work",
 		d.cfg.FFmpegImage,
-		"-v", "error",
+		"-stats", "-v", "error",
 		"-i", "/work/"+relPath,
 		"-f", "null",
 		"-",
 	)
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
+
+	var errBuf bytes.Buffer
+	var out io.Writer = &errBuf
+	if onProgress != nil {
+		out = io.MultiWriter(&errBuf, newProgressWriter(io.Discard, onProgress))
+	}
+	cmd.Stdout = out
+	cmd.Stderr = out
 	err := cmd.Run()
-	return buf.String(), err
+	return errBuf.String(), err
 }
 
 // Chown fixes file permissions via alpine container.

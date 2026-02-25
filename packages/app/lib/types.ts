@@ -1,4 +1,4 @@
-export type JobType = "upscale" | "optimize" | "pipeline";
+export type JobType = "upscale" | "optimize" | "pipeline" | "check";
 
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -57,7 +57,7 @@ export interface FilesResponse {
 export interface CreateJobRequest {
   type: JobType;
   files?: string[];
-  source?: "input" | "output";
+  source?: "input" | "output" | "optimized";
 }
 
 export interface CreateJobResponse extends Job {}

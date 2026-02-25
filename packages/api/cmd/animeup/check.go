@@ -83,7 +83,7 @@ func cmdCheck(ctx context.Context, args []string) error {
 			}
 
 			// Stage 2: ffmpeg decode
-			decodeOut, decodeErr := d.FFmpegDecode(ctx, relPath)
+			decodeOut, decodeErr := d.FFmpegDecode(ctx, relPath, "", nil)
 			if decodeErr != nil || decodeOut != "" {
 				if decodeErr != nil {
 					fmt.Printf("  %s[ERRO]%s  %s (decode falhou, %v)\n", logger.ColorRed, logger.ColorReset, relPath, decodeErr)

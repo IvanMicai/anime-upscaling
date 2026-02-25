@@ -257,6 +257,22 @@ func (m *JobManager) StartJob(jobType string, files []string, source string) *Jo
 				}
 			}
 
+		case "check":
+			jobSource := source
+			for i, f := range files {
+				wg.Add(1)
+				idx := i + 1
+				filename := f
+				if err := m.ffmpegQ.Submit(ctx, func() {
+					defer wg.Done()
+					job.setRunningOnce()
+					process.CheckFile(ctx, cfg, d, filename, idx, jobSource, onEvent, onProgress)
+				}); err != nil {
+					wg.Done()
+					break // ctx cancelled
+				}
+			}
+
 		case "pipeline":
 			for i, f := range files {
 				wg.Add(1)
@@ -338,8 +354,8 @@ func (m *JobManager) CancelJob(id string) *Job {
 		if job.Type == "upscale" || job.Type == "pipeline" {
 			go m.docker.StopByPrefix(context.Background(), docker.ContainerPrefix+"video2x-")
 		}
-		// Stop ffmpeg containers for optimize/pipeline jobs
-		if job.Type == "optimize" || job.Type == "pipeline" {
+		// Stop ffmpeg containers for optimize/pipeline/check jobs
+		if job.Type == "optimize" || job.Type == "pipeline" || job.Type == "check" {
 			go m.docker.StopByPrefix(context.Background(), docker.ContainerPrefix+"ffmpeg-")
 		}
 	}
