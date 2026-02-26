@@ -73,6 +73,7 @@ func (d *Docker) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 		name = ContainerPrefix + containerName + "-" + ephemeralSuffix()
 	}
 	args := []string{"run", "--rm",
+		"--runtime=runc",
 		"--name", name,
 		"--cpus=" + strconv.Itoa(cpus),
 		"-e", "PUID=" + strconv.Itoa(d.cfg.UserID),
@@ -113,6 +114,7 @@ func (d *Docker) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 func (d *Docker) FFprobe(ctx context.Context, relPath string) (string, error) {
 	var buf bytes.Buffer
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
+		"--runtime=runc",
 		"--name", ContainerPrefix+"ffprobe-"+ephemeralSuffix(),
 		"-e", "PUID="+strconv.Itoa(d.cfg.UserID),
 		"-e", "PGID="+strconv.Itoa(d.cfg.GroupID),
@@ -139,6 +141,7 @@ func (d *Docker) FFmpegDecode(ctx context.Context, relPath string, containerName
 	}
 
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
+		"--runtime=runc",
 		"--name", name,
 		"-e", "PUID="+strconv.Itoa(d.cfg.UserID),
 		"-e", "PGID="+strconv.Itoa(d.cfg.GroupID),
@@ -164,6 +167,7 @@ func (d *Docker) FFmpegDecode(ctx context.Context, relPath string, containerName
 // Chown fixes file permissions via alpine container.
 func (d *Docker) Chown(ctx context.Context, hostDir, filename string) error {
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
+		"--runtime=runc",
 		"--name", ContainerPrefix+"chown-"+ephemeralSuffix(),
 		"-v", hostDir+":/work",
 		d.cfg.AlpineImage,
