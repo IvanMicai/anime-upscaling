@@ -60,6 +60,7 @@ export interface CreateJobRequest {
   files?: string[];
   source?: "input" | "output" | "optimized";
   scale?: 2 | 4;
+  resolution?: 1 | 2 | 4;
 }
 
 export interface CreateJobResponse extends Job {}

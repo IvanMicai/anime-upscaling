@@ -32,6 +32,7 @@ type Job struct {
 	Status     string       `json:"status"`
 	Source     string       `json:"source"`
 	Scale      int          `json:"scale"`
+	Resolution int          `json:"resolution"`
 	Files      []string     `json:"files"`
 	Progress   JobProgress  `json:"progress"`
 	Logs       []logEntry   `json:"-"`
@@ -144,6 +145,7 @@ func (j *Job) snapshot() Job {
 		Status:     j.Status,
 		Source:     j.Source,
 		Scale:      j.Scale,
+		Resolution: j.Resolution,
 		Files:      j.Files,
 		Progress:   prog,
 		CreatedAt:  j.CreatedAt,
@@ -164,6 +166,7 @@ func (j *Job) snapshotWithLogs() Job {
 		Status:     j.Status,
 		Source:     j.Source,
 		Scale:      j.Scale,
+		Resolution: j.Resolution,
 		Files:      j.Files,
 		Progress:   prog,
 		Logs:       logs,
@@ -195,19 +198,20 @@ func (m *JobManager) generateID() string {
 	return fmt.Sprintf("j_%d_%04x", time.Now().Unix(), rand.Intn(0xFFFF))
 }
 
-func (m *JobManager) StartJob(jobType string, files []string, source string, scale int) *Job {
+func (m *JobManager) StartJob(jobType string, files []string, source string, scale int, resolution int) *Job {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	job := &Job{
-		ID:        m.generateID(),
-		Type:      jobType,
-		Status:    "queued",
-		Source:    source,
-		Scale:     scale,
-		Files:     files,
-		Progress:  JobProgress{Total: len(files)},
-		CreatedAt: time.Now().UTC(),
-		cancel:    cancel,
+		ID:         m.generateID(),
+		Type:       jobType,
+		Status:     "queued",
+		Source:     source,
+		Scale:      scale,
+		Resolution: resolution,
+		Files:      files,
+		Progress:   JobProgress{Total: len(files)},
+		CreatedAt:  time.Now().UTC(),
+		cancel:     cancel,
 	}
 
 	m.mu.Lock()
@@ -247,6 +251,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 
 		case "optimize":
 			jobSource := source
+			jobResolution := job.Resolution
 			for i, f := range files {
 				wg.Add(1)
 				idx := i + 1
@@ -254,7 +259,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 				if err := m.ffmpegQ.Submit(ctx, func() {
 					defer wg.Done()
 					job.setRunningOnce()
-					process.OptimizeFile(ctx, cfg, d, filename, idx, jobSource, onEvent, onProgress)
+					process.OptimizeFile(ctx, cfg, d, filename, idx, jobSource, jobResolution, onEvent, onProgress)
 				}); err != nil {
 					wg.Done()
 					break // ctx cancelled

@@ -20,6 +20,7 @@ export default function NewJobPage() {
   const [type, setType] = useState<JobType>("upscale");
   const [source, setSource] = useState<"input" | "output" | "optimized">("input");
   const [scale, setScale] = useState<2 | 4>(2);
+  const [resolution, setResolution] = useState<1 | 2 | 4>(1);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +33,9 @@ export default function NewJobPage() {
     if (v !== "upscale" && v !== "pipeline") {
       setScale(2);
     }
+    if (v !== "optimize") {
+      setResolution(1);
+    }
   }
 
   async function submit(files?: string[]) {
@@ -43,6 +47,7 @@ export default function NewJobPage() {
         files,
         ...(source !== "input" && { source }),
         ...((type === "upscale" || type === "pipeline") && { scale }),
+        ...(type === "optimize" && resolution !== 1 && { resolution }),
       });
       router.push("/");
     } catch (err) {
@@ -112,6 +117,25 @@ export default function NewJobPage() {
               <SelectContent>
                 <SelectItem value="2">2x</SelectItem>
                 <SelectItem value="4">4x</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {type === "optimize" && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Resolution</label>
+            <Select
+              value={String(resolution)}
+              onValueChange={(v) => setResolution(Number(v) as 1 | 2 | 4)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">Original</SelectItem>
+                <SelectItem value="2">1/2</SelectItem>
+                <SelectItem value="4">1/4</SelectItem>
               </SelectContent>
             </Select>
           </div>
