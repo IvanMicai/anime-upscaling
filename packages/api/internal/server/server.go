@@ -108,10 +108,11 @@ func handleListJobs(jm *JobManager, w http.ResponseWriter, r *http.Request) {
 
 func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Type   string   `json:"type"`
-		Files  []string `json:"files"`
-		Source string   `json:"source"`
-		Scale  int      `json:"scale"`
+		Type       string   `json:"type"`
+		Files      []string `json:"files"`
+		Source     string   `json:"source"`
+		Scale      int      `json:"scale"`
+		Resolution int      `json:"resolution"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -129,6 +130,14 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 	}
 	if (req.Type == "upscale" || req.Type == "pipeline") && req.Scale != 2 && req.Scale != 4 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "scale must be 2 or 4"})
+		return
+	}
+
+	if req.Resolution == 0 {
+		req.Resolution = 1
+	}
+	if req.Type == "optimize" && req.Resolution != 1 && req.Resolution != 2 && req.Resolution != 4 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "resolution must be 1, 2, or 4"})
 		return
 	}
 
@@ -178,7 +187,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		}
 	}
 
-	job := jm.StartJob(req.Type, req.Files, req.Source, req.Scale)
+	job := jm.StartJob(req.Type, req.Files, req.Source, req.Scale, req.Resolution)
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":     job.ID,
@@ -246,6 +255,7 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		Status     string      `json:"status"`
 		Source     string      `json:"source"`
 		Scale      int         `json:"scale"`
+		Resolution int         `json:"resolution"`
 		Files      []string    `json:"files"`
 		Progress   JobProgress `json:"progress"`
 		CreatedAt  time.Time   `json:"created_at"`
@@ -257,6 +267,7 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		Status:     snap.Status,
 		Source:     snap.Source,
 		Scale:      snap.Scale,
+		Resolution: snap.Resolution,
 		Files:      snap.Files,
 		Progress:   snap.Progress,
 		CreatedAt:  snap.CreatedAt,

@@ -89,6 +89,7 @@ func EncodeFile(ctx context.Context, cfg config.Config, d *docker.Docker, filena
 		cfg.HalfCPUs,
 		"",
 		false,
+		1,
 		ffmpegProgress,
 	)
 	if err != nil {

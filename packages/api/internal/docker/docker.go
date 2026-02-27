@@ -61,7 +61,7 @@ func (d *Docker) Video2x(ctx context.Context, gpuID int, filename, logPath strin
 
 // FFmpegEncode compresses a video with H.265.
 // If onProgress is non-nil, stderr/stdout are intercepted to parse progress data.
-func (d *Docker) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath string, crf int, cpus int, containerName string, copySubtitles bool, onProgress func(Progress)) error {
+func (d *Docker) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath string, crf int, cpus int, containerName string, copySubtitles bool, scaleDivisor int, onProgress func(Progress)) error {
 	f, err := os.OpenFile(d.cfg.BaseDir+"/docker_ffmpeg.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("open ffmpeg log: %w", err)
@@ -85,6 +85,9 @@ func (d *Docker) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	)
 	if copySubtitles {
 		args = append(args, "-map", "0")
+	}
+	if scaleDivisor > 1 {
+		args = append(args, "-vf", fmt.Sprintf("scale=iw/%d:ih/%d", scaleDivisor, scaleDivisor))
 	}
 	args = append(args,
 		"-c:v", "libx265",

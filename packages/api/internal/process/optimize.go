@@ -19,13 +19,13 @@ func RunOptimize(ctx context.Context, cfg config.Config, d *docker.Docker, fileL
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		OptimizeFile(ctx, cfg, d, f, i+1, "input", onEvent, safeProgress(onProgress))
+		OptimizeFile(ctx, cfg, d, f, i+1, "input", 1, onEvent, safeProgress(onProgress))
 	}
 	return nil
 }
 
 // OptimizeFile compresses a single file from input/ to optimized/ using FFmpeg.
-func OptimizeFile(ctx context.Context, cfg config.Config, d *docker.Docker, filename string, index int, source string, onEvent func(logger.JobLog), onProgress func(docker.Progress)) {
+func OptimizeFile(ctx context.Context, cfg config.Config, d *docker.Docker, filename string, index int, source string, resolution int, onEvent func(logger.JobLog), onProgress func(docker.Progress)) {
 	if err := os.MkdirAll(cfg.OptimizedDir, 0755); err != nil {
 		onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir optimized: %v", err), Time: time.Now()})
 		return
@@ -51,6 +51,7 @@ func OptimizeFile(ctx context.Context, cfg config.Config, d *docker.Docker, file
 		cfg.HalfCPUs,
 		"",
 		true,
+		resolution,
 		ffmpegProgress,
 	)
 	if err != nil {
