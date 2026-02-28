@@ -7,10 +7,12 @@ import (
 )
 
 type VideoFile struct {
-	Name         string `json:"name"`
-	Size         int64  `json:"size"`
-	HasUpscaled  bool   `json:"has_upscaled,omitempty"`
-	HasOptimized bool   `json:"has_optimized,omitempty"`
+	Name          string `json:"name"`
+	Size          int64  `json:"size"`
+	HasUpscaled   bool   `json:"has_upscaled,omitempty"`
+	HasOptimized  bool   `json:"has_optimized,omitempty"`
+	UpscaledSize  int64  `json:"upscaled_size,omitempty"`
+	OptimizedSize int64  `json:"optimized_size,omitempty"`
 }
 
 func ListVideos(dir string, exts []string) ([]string, error) {
@@ -70,11 +72,13 @@ func ListVideosWithStatus(dir, outputDir, optimizedDir string, exts []string) ([
 		return nil, err
 	}
 	for i, f := range vfiles {
-		if FileExists(filepath.Join(outputDir, f.Name)) {
+		if info, err := os.Stat(filepath.Join(outputDir, f.Name)); err == nil {
 			vfiles[i].HasUpscaled = true
+			vfiles[i].UpscaledSize = info.Size()
 		}
-		if FileExists(filepath.Join(optimizedDir, f.Name)) {
+		if info, err := os.Stat(filepath.Join(optimizedDir, f.Name)); err == nil {
 			vfiles[i].HasOptimized = true
+			vfiles[i].OptimizedSize = info.Size()
 		}
 	}
 	return vfiles, nil

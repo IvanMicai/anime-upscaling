@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import { deleteSource, getSourceFiles, importFiles } from "@/lib/api";
 import { useShiftSelect } from "@/lib/use-shift-select";
 import type { Source, SourceFile } from "@/lib/types";
@@ -28,6 +30,7 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
   const [files, setFiles] = useState<SourceFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [filters, setFilters] = useState<Set<string>>(new Set());
   const { handleToggle, resetLastClicked } = useShiftSelect(selected, setSelected);
   const [importing, setImporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -39,16 +42,40 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
     setLoading(true);
     setError(null);
     resetLastClicked();
+    setFilters(new Set());
     getSourceFiles(source.id)
       .then((res) => setFiles(res.files ?? []))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load files"))
       .finally(() => setLoading(false));
   }, [expanded, source.id]);
 
-  const allSelected = files.length > 0 && selected.length === files.length;
+  function toggleFilter(key: string) {
+    setFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    setSelected([]);
+    resetLastClicked();
+  }
+
+  function matchesFilter(file: SourceFile): boolean {
+    if (filters.size === 0) return true;
+    if (filters.has("imported") && file.in_input) return true;
+    if (filters.has("upscaled") && file.in_output) return true;
+    if (filters.has("optimized") && file.in_optimized) return true;
+    return false;
+  }
+
+  const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
+  const filtered = sorted.filter(matchesFilter);
+  const filteredNames = filtered.map((f) => f.name);
+
+  const allSelected = filtered.length > 0 && filtered.every((f) => selected.includes(f.name));
 
   function toggleAll() {
-    setSelected(allSelected ? [] : files.map((f) => f.name));
+    setSelected(allSelected ? [] : [...filteredNames]);
   }
 
   async function handleImport() {
@@ -75,6 +102,8 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
       setDeleting(false);
     }
   }
+
+  const hasStatus = files.some((f) => f.in_input || f.in_output || f.in_optimized);
 
   return (
     <Card>
@@ -129,20 +158,58 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
                   htmlFor={`select-all-${source.id}`}
                   className="text-sm font-medium"
                 >
-                  Select All ({files.length} files)
+                  Select All ({filtered.length} files)
                 </Label>
               </div>
 
+              {hasStatus && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleFilter("imported")}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
+                      filters.has("imported")
+                        ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                        : "bg-transparent text-muted-foreground border-border"
+                    )}
+                  >
+                    Imported
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleFilter("upscaled")}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
+                      filters.has("upscaled")
+                        ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                        : "bg-transparent text-muted-foreground border-border"
+                    )}
+                  >
+                    Upscaled
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleFilter("optimized")}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
+                      filters.has("optimized")
+                        ? "bg-green-500/20 text-green-400 border-green-500/30"
+                        : "bg-transparent text-muted-foreground border-border"
+                    )}
+                  >
+                    Optimized
+                  </button>
+                </div>
+              )}
+
               <ScrollArea className="rounded-md border p-2">
                 <div className="space-y-1.5">
-                  {(() => {
-                    const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
-                    const sortedNames = sorted.map((f) => f.name);
-                    return sorted.map((file, index) => (
+                  {filtered.map((file, index) => (
                     <div
                       key={file.name}
                       className="flex items-center gap-2 cursor-pointer select-none"
-                      onClick={(e) => handleToggle(index, sortedNames, e.shiftKey)}
+                      onClick={(e) => handleToggle(index, filteredNames, e.shiftKey)}
                     >
                       <Checkbox
                         checked={selected.includes(file.name)}
@@ -152,40 +219,30 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
                       <span className="font-mono text-sm truncate">
                         {file.name}
                       </span>
-                      {file.in_input && (
-                        <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 shrink-0" />
-                      )}
-                      {file.in_output && (
-                        <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
-                      )}
-                      {file.in_optimized && (
-                        <span className="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0" />
-                      )}
-                      <span className="text-xs text-muted-foreground ml-auto shrink-0">
-                        {formatBytes(file.size)}
-                      </span>
+                      <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                        {file.in_input && (
+                          <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">
+                            Input {formatBytes(file.input_size ?? 0)}
+                          </Badge>
+                        )}
+                        {file.in_output && (
+                          <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20">
+                            Upscaled {formatBytes(file.output_size ?? 0)}
+                          </Badge>
+                        )}
+                        {file.in_optimized && (
+                          <Badge className="bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20">
+                            Optimized {formatBytes(file.optimized_size ?? 0)}
+                          </Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {formatBytes(file.size)}
+                        </span>
+                      </div>
                     </div>
-                  ));
-                  })()}
+                  ))}
                 </div>
               </ScrollArea>
-
-              {files.some((f) => f.in_input || f.in_output || f.in_optimized) && (
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
-                    Imported
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                    Upscaled
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                    Optimized
-                  </span>
-                </div>
-              )}
 
               <div className="flex items-center gap-3">
                 <Button

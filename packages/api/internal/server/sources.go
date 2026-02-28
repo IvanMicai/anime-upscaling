@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"os"
+
 	"anime-upscaling/internal/config"
 	"anime-upscaling/internal/docker"
-	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/sources"
 )
 
@@ -134,18 +135,30 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 				return
 			}
 			type sourceFileWithStatus struct {
-				Name        string `json:"name"`
-				Size        int64  `json:"size"`
-				InInput     bool   `json:"in_input,omitempty"`
-				InOutput    bool   `json:"in_output,omitempty"`
-				InOptimized bool   `json:"in_optimized,omitempty"`
+				Name          string `json:"name"`
+				Size          int64  `json:"size"`
+				InInput       bool   `json:"in_input,omitempty"`
+				InOutput      bool   `json:"in_output,omitempty"`
+				InOptimized   bool   `json:"in_optimized,omitempty"`
+				InputSize     int64  `json:"input_size,omitempty"`
+				OutputSize    int64  `json:"output_size,omitempty"`
+				OptimizedSize int64  `json:"optimized_size,omitempty"`
 			}
 			result := make([]sourceFileWithStatus, 0, len(fileList))
 			for _, f := range fileList {
 				sf := sourceFileWithStatus{Name: f.Name, Size: f.Size}
-				sf.InInput = files.FileExists(filepath.Join(cfg.InputDir, f.Name))
-				sf.InOutput = files.FileExists(filepath.Join(cfg.OutputDir, f.Name))
-				sf.InOptimized = files.FileExists(filepath.Join(cfg.OptimizedDir, f.Name))
+				if info, err := os.Stat(filepath.Join(cfg.InputDir, f.Name)); err == nil {
+					sf.InInput = true
+					sf.InputSize = info.Size()
+				}
+				if info, err := os.Stat(filepath.Join(cfg.OutputDir, f.Name)); err == nil {
+					sf.InOutput = true
+					sf.OutputSize = info.Size()
+				}
+				if info, err := os.Stat(filepath.Join(cfg.OptimizedDir, f.Name)); err == nil {
+					sf.InOptimized = true
+					sf.OptimizedSize = info.Size()
+				}
 				result = append(result, sf)
 			}
 			writeJSON(w, http.StatusOK, map[string]interface{}{"files": result})
