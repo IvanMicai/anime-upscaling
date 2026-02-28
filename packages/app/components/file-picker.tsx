@@ -142,12 +142,12 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
               <div className="flex items-center gap-1.5 ml-auto shrink-0">
                 {dir === "input" && file.has_upscaled && (
                   <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20">
-                    Upscaled {formatBytes(file.upscaled_size ?? 0)}
+                    {formatBytes(file.upscaled_size ?? 0)}
                   </Badge>
                 )}
                 {dir === "input" && file.has_optimized && (
                   <Badge className="bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20">
-                    Optimized {formatBytes(file.optimized_size ?? 0)}
+                    {formatBytes(file.optimized_size ?? 0)}
                   </Badge>
                 )}
                 <span className="text-xs text-muted-foreground">
