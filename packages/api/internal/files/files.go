@@ -11,8 +11,10 @@ type VideoFile struct {
 	Size          int64  `json:"size"`
 	HasUpscaled   bool   `json:"has_upscaled,omitempty"`
 	HasOptimized  bool   `json:"has_optimized,omitempty"`
+	HasInput      bool   `json:"has_input,omitempty"`
 	UpscaledSize  int64  `json:"upscaled_size,omitempty"`
 	OptimizedSize int64  `json:"optimized_size,omitempty"`
+	InputSize     int64  `json:"input_size,omitempty"`
 }
 
 func ListVideos(dir string, exts []string) ([]string, error) {
@@ -79,6 +81,38 @@ func ListVideosWithStatus(dir, outputDir, optimizedDir string, exts []string) ([
 		if info, err := os.Stat(filepath.Join(optimizedDir, f.Name)); err == nil {
 			vfiles[i].HasOptimized = true
 			vfiles[i].OptimizedSize = info.Size()
+		}
+	}
+	return vfiles, nil
+}
+
+func ListOutputWithStatus(dir, optimizedDir string, exts []string) ([]VideoFile, error) {
+	vfiles, err := ListVideosWithSize(dir, exts)
+	if err != nil {
+		return nil, err
+	}
+	for i, f := range vfiles {
+		if info, err := os.Stat(filepath.Join(optimizedDir, f.Name)); err == nil {
+			vfiles[i].HasOptimized = true
+			vfiles[i].OptimizedSize = info.Size()
+		}
+	}
+	return vfiles, nil
+}
+
+func ListOptimizedWithStatus(dir, inputDir, outputDir string, exts []string) ([]VideoFile, error) {
+	vfiles, err := ListVideosWithSize(dir, exts)
+	if err != nil {
+		return nil, err
+	}
+	for i, f := range vfiles {
+		if info, err := os.Stat(filepath.Join(inputDir, f.Name)); err == nil {
+			vfiles[i].HasInput = true
+			vfiles[i].InputSize = info.Size()
+		}
+		if info, err := os.Stat(filepath.Join(outputDir, f.Name)); err == nil {
+			vfiles[i].HasUpscaled = true
+			vfiles[i].UpscaledSize = info.Size()
 		}
 	}
 	return vfiles, nil

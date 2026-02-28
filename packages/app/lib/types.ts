@@ -48,8 +48,10 @@ export interface VideoFile {
   size: number;
   has_upscaled?: boolean;
   has_optimized?: boolean;
+  has_input?: boolean;
   upscaled_size?: number;
   optimized_size?: number;
+  input_size?: number;
 }
 
 export interface FilesResponse {
