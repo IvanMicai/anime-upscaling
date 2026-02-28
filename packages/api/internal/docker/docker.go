@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"anime-upscaling/internal/config"
@@ -182,6 +183,105 @@ func (d *Docker) Chown(ctx context.Context, hostDir, filename string) error {
 // StopContainer stops a container by its full name (including prefix).
 func (d *Docker) StopContainer(name string) error {
 	return exec.Command("docker", "stop", name).Run()
+}
+
+// VideoResolution holds the width and height of a video stream.
+type VideoResolution struct {
+	Width  int
+	Height int
+}
+
+type resolutionCacheEntry struct {
+	data      map[string]VideoResolution
+	expiresAt time.Time
+}
+
+var (
+	resolutionCache   = map[string]resolutionCacheEntry{}
+	resolutionCacheMu sync.Mutex
+)
+
+// FFprobeBatchResolution runs a single Docker container that probes all video
+// files in hostDir and returns a map of filename -> resolution.
+func (d *Docker) FFprobeBatchResolution(ctx context.Context, hostDir string, filenames []string) (map[string]VideoResolution, error) {
+	if len(filenames) == 0 {
+		return nil, nil
+	}
+
+	// Build a shell script that runs ffprobe on each file and outputs "filename\twidth,height"
+	var sb strings.Builder
+	for _, f := range filenames {
+		// Use printf to avoid newline issues in filenames; output tab-separated
+		sb.WriteString(fmt.Sprintf(
+			`res=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "/work/%s" 2>/dev/null) && printf '%%s\t%%s\n' '%s' "$res"; `,
+			f, strings.ReplaceAll(f, "'", "'\\''"),
+		))
+	}
+
+	var buf bytes.Buffer
+	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
+		"--runtime=runc",
+		"--name", ContainerPrefix+"ffprobe-batch-"+ephemeralSuffix(),
+		"-e", "PUID="+strconv.Itoa(d.cfg.UserID),
+		"-e", "PGID="+strconv.Itoa(d.cfg.GroupID),
+		"-v", hostDir+":/work:ro",
+		"--entrypoint", "sh",
+		d.cfg.FFmpegImage,
+		"-c", sb.String(),
+	)
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("ffprobe batch: %w", err)
+	}
+
+	result := make(map[string]VideoResolution, len(filenames))
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		name := parts[0]
+		dims := strings.SplitN(strings.TrimSpace(parts[1]), ",", 2)
+		if len(dims) != 2 {
+			continue
+		}
+		w, err1 := strconv.Atoi(strings.TrimSpace(dims[0]))
+		h, err2 := strconv.Atoi(strings.TrimSpace(dims[1]))
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		result[name] = VideoResolution{Width: w, Height: h}
+	}
+	return result, nil
+}
+
+// FFprobeBatchResolutionCached is like FFprobeBatchResolution but uses an
+// in-memory cache with a 60-second TTL keyed by directory path.
+func (d *Docker) FFprobeBatchResolutionCached(ctx context.Context, hostDir string, filenames []string) (map[string]VideoResolution, error) {
+	resolutionCacheMu.Lock()
+	if entry, ok := resolutionCache[hostDir]; ok && time.Now().Before(entry.expiresAt) {
+		resolutionCacheMu.Unlock()
+		return entry.data, nil
+	}
+	resolutionCacheMu.Unlock()
+
+	data, err := d.FFprobeBatchResolution(ctx, hostDir, filenames)
+	if err != nil {
+		return nil, err
+	}
+
+	resolutionCacheMu.Lock()
+	resolutionCache[hostDir] = resolutionCacheEntry{
+		data:      data,
+		expiresAt: time.Now().Add(60 * time.Second),
+	}
+	resolutionCacheMu.Unlock()
+
+	return data, nil
 }
 
 // StopByPrefix stops all containers whose name matches the given prefix. Returns count stopped.

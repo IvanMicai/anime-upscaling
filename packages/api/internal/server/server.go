@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"anime-upscaling/internal/config"
+	"anime-upscaling/internal/docker"
 	"anime-upscaling/internal/files"
 )
 
@@ -42,6 +44,8 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 // GET /api/files?dir=input
 func handleFiles(cfg config.Config) http.HandlerFunc {
+	d := docker.NewDocker(cfg)
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -82,6 +86,116 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 		}
 		if videoFiles == nil {
 			videoFiles = []files.VideoFile{}
+		}
+
+		// Enrich with resolution data
+		if len(videoFiles) > 0 {
+			names := make([]string, len(videoFiles))
+			for i, f := range videoFiles {
+				names[i] = f.Name
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+			defer cancel()
+
+			// Primary directory resolution
+			resolutions, _ := d.FFprobeBatchResolutionCached(ctx, fullPath, names)
+			for i, f := range videoFiles {
+				if res, ok := resolutions[f.Name]; ok {
+					videoFiles[i].Width = res.Width
+					videoFiles[i].Height = res.Height
+				}
+			}
+
+			// Cross-directory resolutions
+			if dir == "input" {
+				// Probe upscaled files
+				var upscaledNames []string
+				for _, f := range videoFiles {
+					if f.HasUpscaled {
+						upscaledNames = append(upscaledNames, f.Name)
+					}
+				}
+				if len(upscaledNames) > 0 {
+					if upRes, err := d.FFprobeBatchResolutionCached(ctx, cfg.OutputDir, upscaledNames); err == nil {
+						for i, f := range videoFiles {
+							if res, ok := upRes[f.Name]; ok {
+								videoFiles[i].UpscaledWidth = res.Width
+								videoFiles[i].UpscaledHeight = res.Height
+							}
+						}
+					}
+				}
+				// Probe optimized files
+				var optNames []string
+				for _, f := range videoFiles {
+					if f.HasOptimized {
+						optNames = append(optNames, f.Name)
+					}
+				}
+				if len(optNames) > 0 {
+					if optRes, err := d.FFprobeBatchResolutionCached(ctx, cfg.OptimizedDir, optNames); err == nil {
+						for i, f := range videoFiles {
+							if res, ok := optRes[f.Name]; ok {
+								videoFiles[i].OptimizedWidth = res.Width
+								videoFiles[i].OptimizedHeight = res.Height
+							}
+						}
+					}
+				}
+			} else if dir == "output" {
+				// Probe optimized files
+				var optNames []string
+				for _, f := range videoFiles {
+					if f.HasOptimized {
+						optNames = append(optNames, f.Name)
+					}
+				}
+				if len(optNames) > 0 {
+					if optRes, err := d.FFprobeBatchResolutionCached(ctx, cfg.OptimizedDir, optNames); err == nil {
+						for i, f := range videoFiles {
+							if res, ok := optRes[f.Name]; ok {
+								videoFiles[i].OptimizedWidth = res.Width
+								videoFiles[i].OptimizedHeight = res.Height
+							}
+						}
+					}
+				}
+			} else if dir == "optimized" {
+				// Probe input files
+				var inputNames []string
+				for _, f := range videoFiles {
+					if f.HasInput {
+						inputNames = append(inputNames, f.Name)
+					}
+				}
+				if len(inputNames) > 0 {
+					if inRes, err := d.FFprobeBatchResolutionCached(ctx, cfg.InputDir, inputNames); err == nil {
+						for i, f := range videoFiles {
+							if res, ok := inRes[f.Name]; ok {
+								videoFiles[i].InputWidth = res.Width
+								videoFiles[i].InputHeight = res.Height
+							}
+						}
+					}
+				}
+				// Probe upscaled files
+				var upscaledNames []string
+				for _, f := range videoFiles {
+					if f.HasUpscaled {
+						upscaledNames = append(upscaledNames, f.Name)
+					}
+				}
+				if len(upscaledNames) > 0 {
+					if upRes, err := d.FFprobeBatchResolutionCached(ctx, cfg.OutputDir, upscaledNames); err == nil {
+						for i, f := range videoFiles {
+							if res, ok := upRes[f.Name]; ok {
+								videoFiles[i].UpscaledWidth = res.Width
+								videoFiles[i].UpscaledHeight = res.Height
+							}
+						}
+					}
+				}
+			}
 		}
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{

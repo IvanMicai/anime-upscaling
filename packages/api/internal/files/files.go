@@ -7,14 +7,22 @@ import (
 )
 
 type VideoFile struct {
-	Name          string `json:"name"`
-	Size          int64  `json:"size"`
-	HasUpscaled   bool   `json:"has_upscaled,omitempty"`
-	HasOptimized  bool   `json:"has_optimized,omitempty"`
-	HasInput      bool   `json:"has_input,omitempty"`
-	UpscaledSize  int64  `json:"upscaled_size,omitempty"`
-	OptimizedSize int64  `json:"optimized_size,omitempty"`
-	InputSize     int64  `json:"input_size,omitempty"`
+	Name            string `json:"name"`
+	Size            int64  `json:"size"`
+	Width           int    `json:"width,omitempty"`
+	Height          int    `json:"height,omitempty"`
+	HasUpscaled     bool   `json:"has_upscaled,omitempty"`
+	HasOptimized    bool   `json:"has_optimized,omitempty"`
+	HasInput        bool   `json:"has_input,omitempty"`
+	UpscaledSize    int64  `json:"upscaled_size,omitempty"`
+	OptimizedSize   int64  `json:"optimized_size,omitempty"`
+	InputSize       int64  `json:"input_size,omitempty"`
+	UpscaledWidth   int    `json:"upscaled_width,omitempty"`
+	UpscaledHeight  int    `json:"upscaled_height,omitempty"`
+	OptimizedWidth  int    `json:"optimized_width,omitempty"`
+	OptimizedHeight int    `json:"optimized_height,omitempty"`
+	InputWidth      int    `json:"input_width,omitempty"`
+	InputHeight     int    `json:"input_height,omitempty"`
 }
 
 func ListVideos(dir string, exts []string) ([]string, error) {
