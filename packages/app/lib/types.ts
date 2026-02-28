@@ -46,12 +46,20 @@ export interface LogEntry {
 export interface VideoFile {
   name: string;
   size: number;
+  width?: number;
+  height?: number;
   has_upscaled?: boolean;
   has_optimized?: boolean;
   has_input?: boolean;
   upscaled_size?: number;
   optimized_size?: number;
   input_size?: number;
+  upscaled_width?: number;
+  upscaled_height?: number;
+  optimized_width?: number;
+  optimized_height?: number;
+  input_width?: number;
+  input_height?: number;
 }
 
 export interface FilesResponse {
@@ -84,10 +92,18 @@ export interface Source {
 export interface SourceFile {
   name: string;
   size: number;
+  width?: number;
+  height?: number;
   in_input?: boolean;
   in_output?: boolean;
   in_optimized?: boolean;
   input_size?: number;
   output_size?: number;
   optimized_size?: number;
+  input_width?: number;
+  input_height?: number;
+  upscaled_width?: number;
+  upscaled_height?: number;
+  optimized_width?: number;
+  optimized_height?: number;
 }

@@ -222,21 +222,29 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
                       <div className="flex items-center gap-1.5 ml-auto shrink-0">
                         {file.in_input && (
                           <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">
-                            {formatBytes(file.input_size ?? 0)}
+                            {file.input_width && file.input_height
+                              ? `${file.input_width}x${file.input_height} @ `
+                              : ""}{formatBytes(file.input_size ?? 0)}
                           </Badge>
                         )}
                         {file.in_output && (
                           <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20">
-                            {formatBytes(file.output_size ?? 0)}
+                            {file.upscaled_width && file.upscaled_height
+                              ? `${file.upscaled_width}x${file.upscaled_height} @ `
+                              : ""}{formatBytes(file.output_size ?? 0)}
                           </Badge>
                         )}
                         {file.in_optimized && (
                           <Badge className="bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20">
-                            {formatBytes(file.optimized_size ?? 0)}
+                            {file.optimized_width && file.optimized_height
+                              ? `${file.optimized_width}x${file.optimized_height} @ `
+                              : ""}{formatBytes(file.optimized_size ?? 0)}
                           </Badge>
                         )}
                         <span className="text-xs text-muted-foreground">
-                          {formatBytes(file.size)}
+                          {file.width && file.height
+                            ? `${file.width}x${file.height} `
+                            : ""}{formatBytes(file.size)}
                         </span>
                       </div>
                     </div>

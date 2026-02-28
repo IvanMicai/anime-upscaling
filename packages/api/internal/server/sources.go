@@ -134,30 +134,85 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
 			}
-			type sourceFileWithStatus struct {
-				Name          string `json:"name"`
-				Size          int64  `json:"size"`
-				InInput       bool   `json:"in_input,omitempty"`
-				InOutput      bool   `json:"in_output,omitempty"`
-				InOptimized   bool   `json:"in_optimized,omitempty"`
-				InputSize     int64  `json:"input_size,omitempty"`
-				OutputSize    int64  `json:"output_size,omitempty"`
-				OptimizedSize int64  `json:"optimized_size,omitempty"`
+			// Batch-fetch resolutions
+			names := make([]string, len(fileList))
+			for i, f := range fileList {
+				names[i] = f.Name
 			}
+			resolutions, _ := d.FFprobeBatchResolutionCached(ctx, src.Path, names)
+
+			type sourceFileWithStatus struct {
+				Name            string `json:"name"`
+				Size            int64  `json:"size"`
+				Width           int    `json:"width,omitempty"`
+				Height          int    `json:"height,omitempty"`
+				InInput         bool   `json:"in_input,omitempty"`
+				InOutput        bool   `json:"in_output,omitempty"`
+				InOptimized     bool   `json:"in_optimized,omitempty"`
+				InputSize       int64  `json:"input_size,omitempty"`
+				OutputSize      int64  `json:"output_size,omitempty"`
+				OptimizedSize   int64  `json:"optimized_size,omitempty"`
+				InputWidth      int    `json:"input_width,omitempty"`
+				InputHeight     int    `json:"input_height,omitempty"`
+				UpscaledWidth   int    `json:"upscaled_width,omitempty"`
+				UpscaledHeight  int    `json:"upscaled_height,omitempty"`
+				OptimizedWidth  int    `json:"optimized_width,omitempty"`
+				OptimizedHeight int    `json:"optimized_height,omitempty"`
+			}
+			// Probe cross-directory resolutions
+			var inputNames, outputNames, optNames []string
+			for _, f := range fileList {
+				if _, err := os.Stat(filepath.Join(cfg.InputDir, f.Name)); err == nil {
+					inputNames = append(inputNames, f.Name)
+				}
+				if _, err := os.Stat(filepath.Join(cfg.OutputDir, f.Name)); err == nil {
+					outputNames = append(outputNames, f.Name)
+				}
+				if _, err := os.Stat(filepath.Join(cfg.OptimizedDir, f.Name)); err == nil {
+					optNames = append(optNames, f.Name)
+				}
+			}
+			var inputRes, outputRes, optRes map[string]docker.VideoResolution
+			if len(inputNames) > 0 {
+				inputRes, _ = d.FFprobeBatchResolutionCached(ctx, cfg.InputDir, inputNames)
+			}
+			if len(outputNames) > 0 {
+				outputRes, _ = d.FFprobeBatchResolutionCached(ctx, cfg.OutputDir, outputNames)
+			}
+			if len(optNames) > 0 {
+				optRes, _ = d.FFprobeBatchResolutionCached(ctx, cfg.OptimizedDir, optNames)
+			}
+
 			result := make([]sourceFileWithStatus, 0, len(fileList))
 			for _, f := range fileList {
 				sf := sourceFileWithStatus{Name: f.Name, Size: f.Size}
+				if res, ok := resolutions[f.Name]; ok {
+					sf.Width = res.Width
+					sf.Height = res.Height
+				}
 				if info, err := os.Stat(filepath.Join(cfg.InputDir, f.Name)); err == nil {
 					sf.InInput = true
 					sf.InputSize = info.Size()
+					if res, ok := inputRes[f.Name]; ok {
+						sf.InputWidth = res.Width
+						sf.InputHeight = res.Height
+					}
 				}
 				if info, err := os.Stat(filepath.Join(cfg.OutputDir, f.Name)); err == nil {
 					sf.InOutput = true
 					sf.OutputSize = info.Size()
+					if res, ok := outputRes[f.Name]; ok {
+						sf.UpscaledWidth = res.Width
+						sf.UpscaledHeight = res.Height
+					}
 				}
 				if info, err := os.Stat(filepath.Join(cfg.OptimizedDir, f.Name)); err == nil {
 					sf.InOptimized = true
 					sf.OptimizedSize = info.Size()
+					if res, ok := optRes[f.Name]; ok {
+						sf.OptimizedWidth = res.Width
+						sf.OptimizedHeight = res.Height
+					}
 				}
 				result = append(result, sf)
 			}
