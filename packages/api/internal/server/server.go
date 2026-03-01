@@ -91,7 +91,7 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 		if dir == "input" {
 			videoFiles, err = files.ListVideosWithStatus(fullPath, cfg.OutputDir, cfg.OptimizedDir, cfg.VideoExts)
 		} else if dir == "output" {
-			videoFiles, err = files.ListOutputWithStatus(fullPath, cfg.OptimizedDir, cfg.VideoExts)
+			videoFiles, err = files.ListOutputWithStatus(fullPath, cfg.InputDir, cfg.OptimizedDir, cfg.VideoExts)
 		} else if dir == "optimized" {
 			videoFiles, err = files.ListOptimizedWithStatus(fullPath, cfg.InputDir, cfg.OutputDir, cfg.VideoExts)
 		} else {

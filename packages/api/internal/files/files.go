@@ -94,12 +94,16 @@ func ListVideosWithStatus(dir, outputDir, optimizedDir string, exts []string) ([
 	return vfiles, nil
 }
 
-func ListOutputWithStatus(dir, optimizedDir string, exts []string) ([]VideoFile, error) {
+func ListOutputWithStatus(dir, inputDir, optimizedDir string, exts []string) ([]VideoFile, error) {
 	vfiles, err := ListVideosWithSize(dir, exts)
 	if err != nil {
 		return nil, err
 	}
 	for i, f := range vfiles {
+		if info, err := os.Stat(filepath.Join(inputDir, f.Name)); err == nil {
+			vfiles[i].HasInput = true
+			vfiles[i].InputSize = info.Size()
+		}
 		if info, err := os.Stat(filepath.Join(optimizedDir, f.Name)); err == nil {
 			vfiles[i].HasOptimized = true
 			vfiles[i].OptimizedSize = info.Size()
