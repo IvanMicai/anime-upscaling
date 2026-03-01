@@ -5,7 +5,7 @@ import type {
   CreateJobResponse,
   CancelJobResponse,
   Source,
-  SourceFile,
+  SourceFilesResponse,
 } from "./types";
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -25,8 +25,10 @@ export function getJob(id: string): Promise<Job> {
   return fetchJSON<Job>(`/api/jobs/${id}`);
 }
 
-export function getFiles(dir: string = "input"): Promise<FilesResponse> {
-  return fetchJSON<FilesResponse>(`/api/files?dir=${dir}`);
+export function getFiles(dir: string = "input", refresh = false): Promise<FilesResponse> {
+  const params = new URLSearchParams({ dir });
+  if (refresh) params.set("refresh", "true");
+  return fetchJSON<FilesResponse>(`/api/files?${params}`);
 }
 
 export function createJob(req: CreateJobRequest): Promise<CreateJobResponse> {
@@ -61,8 +63,9 @@ export function deleteSource(id: string): Promise<{ deleted: string }> {
   });
 }
 
-export function getSourceFiles(id: string): Promise<{ files: SourceFile[] }> {
-  return fetchJSON<{ files: SourceFile[] }>(`/api/sources/${id}/files`);
+export function getSourceFiles(id: string, refresh = false): Promise<SourceFilesResponse> {
+  const q = refresh ? "?refresh=true" : "";
+  return fetchJSON<SourceFilesResponse>(`/api/sources/${id}/files${q}`);
 }
 
 export function importFiles(id: string, files: string[]): Promise<{ copied: number }> {

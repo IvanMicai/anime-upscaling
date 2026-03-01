@@ -20,6 +20,14 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
+function formatCacheAge(iso: string): string {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 10) return "just now";
+  if (diff < 60) return `${diff}s ago`;
+  const mins = Math.floor(diff / 60);
+  return `${mins}m ago`;
+}
+
 interface SourceCardProps {
   source: Source;
   onDeleted: () => void;
@@ -36,6 +44,8 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (!expanded) return;
@@ -44,10 +54,24 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
     resetLastClicked();
     setFilters(new Set());
     getSourceFiles(source.id)
-      .then((res) => setFiles(res.files ?? []))
+      .then((res) => {
+        setFiles(res.files ?? []);
+        setCachedAt(res.cached_at ?? null);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load files"))
       .finally(() => setLoading(false));
   }, [expanded, source.id]);
+
+  function handleRefresh() {
+    setRefreshing(true);
+    getSourceFiles(source.id, true)
+      .then((res) => {
+        setFiles(res.files ?? []);
+        setCachedAt(res.cached_at ?? null);
+      })
+      .catch(() => {})
+      .finally(() => setRefreshing(false));
+  }
 
   function toggleFilter(key: string) {
     setFilters((prev) => {
@@ -160,6 +184,19 @@ export function SourceCard({ source, onDeleted }: SourceCardProps) {
                 >
                   Select All ({filtered.length} files)
                 </Label>
+                {cachedAt && (
+                  <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                    Cached {formatCacheAge(cachedAt)}
+                    <button
+                      type="button"
+                      onClick={handleRefresh}
+                      disabled={refreshing}
+                      className="hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      {refreshing ? "..." : "Refresh"}
+                    </button>
+                  </span>
+                )}
               </div>
 
               {hasStatus && (

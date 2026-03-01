@@ -18,6 +18,14 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
+function formatCacheAge(iso: string): string {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 10) return "just now";
+  if (diff < 60) return `${diff}s ago`;
+  const mins = Math.floor(diff / 60);
+  return `${mins}m ago`;
+}
+
 interface FilePickerProps {
   selected: string[];
   onChange: (files: string[]) => void;
@@ -28,6 +36,8 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
   const [files, setFiles] = useState<VideoFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<Set<string>>(new Set());
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const { handleToggle, resetLastClicked } = useShiftSelect(selected, onChange);
 
   useEffect(() => {
@@ -36,10 +46,24 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
     resetLastClicked();
     setFilters(new Set());
     getFiles(dir)
-      .then((res) => setFiles(res.files ?? []))
+      .then((res) => {
+        setFiles(res.files ?? []);
+        setCachedAt(res.cached_at ?? null);
+      })
       .catch(() => setFiles([]))
       .finally(() => setLoading(false));
   }, [dir]);
+
+  function handleRefresh() {
+    setRefreshing(true);
+    getFiles(dir, true)
+      .then((res) => {
+        setFiles(res.files ?? []);
+        setCachedAt(res.cached_at ?? null);
+      })
+      .catch(() => {})
+      .finally(() => setRefreshing(false));
+  }
 
   function toggleFilter(key: string) {
     setFilters((prev) => {
@@ -95,6 +119,19 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
         <Label htmlFor="select-all" className="text-sm font-medium">
           Select All ({filtered.length} files{selected.length > 0 ? `, ${formatBytes(selectedTotal)}` : ""})
         </Label>
+        {cachedAt && (
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+            Cached {formatCacheAge(cachedAt)}
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              {refreshing ? "..." : "Refresh"}
+            </button>
+          </span>
+        )}
       </div>
       {hasStatus && (
         <div className="flex items-center gap-2">
