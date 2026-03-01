@@ -1,19 +1,35 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { getFiles } from "@/lib/api";
+import { getFiles, deleteFiles } from "@/lib/api";
 import { useShiftSelect } from "@/lib/use-shift-select";
 import type { VideoFile } from "@/lib/types";
 
 const FOLDER_COLORS = {
-  input:     { badge: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20", label: "Input" },
-  output:    { badge: "bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20",   label: "Upscaled" },
-  optimized: { badge: "bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20", label: "Optimized" },
+  input:     { badge: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20", text: "text-yellow-400", label: "Input" },
+  output:    { badge: "bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20", text: "text-blue-400", label: "Upscaled" },
+  optimized: { badge: "bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20", text: "text-green-400", label: "Optimized" },
 } as const;
 
 const FOLDER_FILTER_KEY = { input: "input", output: "upscaled", optimized: "optimized" } as const;
@@ -76,11 +92,19 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
   const [refreshing, setRefreshing] = useState(false);
   const { handleToggle, resetLastClicked } = useShiftSelect(selected, onChange);
 
+  // Delete mode state
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [deleteSelections, setDeleteSelections] = useState<Map<string, Set<FolderKey>>>(new Map());
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   useEffect(() => {
     setLoading(true);
     onChange([]);
     resetLastClicked();
     setFilters(new Set());
+    setDeleteMode(false);
+    setDeleteSelections(new Map());
     getFiles(dir)
       .then((res) => {
         setFiles(res.files ?? []);
@@ -120,6 +144,62 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
     return false;
   }
 
+  // Delete mode helpers
+  function toggleDeleteCell(fileName: string, folder: FolderKey) {
+    setDeleteSelections((prev) => {
+      const next = new Map(prev);
+      const folders = new Set(next.get(fileName) ?? []);
+      if (folders.has(folder)) {
+        folders.delete(folder);
+        if (folders.size === 0) next.delete(fileName);
+        else next.set(fileName, folders);
+      } else {
+        folders.add(folder);
+        next.set(fileName, folders);
+      }
+      return next;
+    });
+  }
+
+  function clearDeleteSelections() {
+    setDeleteSelections(new Map());
+  }
+
+  function getDeleteSummary() {
+    const counts: Record<FolderKey, number> = { input: 0, output: 0, optimized: 0 };
+    for (const folders of deleteSelections.values()) {
+      for (const f of folders) counts[f]++;
+    }
+    return counts;
+  }
+
+  function getDeleteTotal() {
+    let total = 0;
+    for (const folders of deleteSelections.values()) total += folders.size;
+    return total;
+  }
+
+  async function handleDeleteConfirm() {
+    const items: { name: string; folders: string[] }[] = [];
+    for (const [name, folders] of deleteSelections) {
+      items.push({ name, folders: [...folders] });
+    }
+    setDeleting(true);
+    try {
+      await deleteFiles({ items });
+      setDeleteSelections(new Map());
+      setConfirmOpen(false);
+      // Refresh file list
+      const res = await getFiles(dir, true);
+      setFiles(res.files ?? []);
+      setCachedAt(res.cached_at ?? null);
+    } catch {
+      // keep dialog open on error
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
   const filtered = sorted.filter(matchesFilter);
   const filteredNames = filtered.map((f) => f.name);
@@ -141,6 +221,9 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
   if (files.length === 0) {
     return <p className="text-sm text-muted-foreground">No files found in {dir}/.</p>;
   }
+
+  const deleteSummary = getDeleteSummary();
+  const deleteTotal = getDeleteTotal();
 
   return (
     <div className="flex flex-col h-full gap-2">
@@ -164,6 +247,18 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
             </button>
           );
         })}
+        <div className="ml-auto">
+          <Button
+            variant={deleteMode ? "destructive" : "outline"}
+            size="xs"
+            onClick={() => {
+              setDeleteMode(!deleteMode);
+              if (deleteMode) clearDeleteSelections();
+            }}
+          >
+            {deleteMode ? "Exit Delete" : "Delete Mode"}
+          </Button>
+        </div>
       </div>
       <div className="flex items-center gap-2">
         <Checkbox
@@ -188,35 +283,137 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
           </span>
         )}
       </div>
-      <ScrollArea className="flex-1 min-h-0 rounded-md border p-2">
-        <div className="space-y-1.5">
-          {filtered.map((file, index) => (
-            <div
-              key={file.name}
-              className="flex items-center gap-2 cursor-pointer select-none"
-              onClick={(e) => handleToggle(index, filteredNames, e.shiftKey)}
-            >
-              <Checkbox
-                checked={selected.includes(file.name)}
-                tabIndex={-1}
-                className="pointer-events-none"
-              />
-              <span className="font-mono text-sm truncate">
-                {file.name}
-              </span>
-              <div className="flex items-center gap-1.5 ml-auto shrink-0">
-                {getFolderData(file, dir).map((entry) => (
-                  <Badge key={entry.key} className={FOLDER_COLORS[entry.key].badge}>
-                    {entry.exists
-                      ? `${entry.width && entry.height ? `${entry.width}x${entry.height} @ ` : ""}${formatBytes(entry.size)}`
-                      : "\u2014"}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          ))}
+
+      {/* Delete summary bar */}
+      {deleteMode && deleteTotal > 0 && (
+        <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm">
+          <span className="text-red-400">
+            {[
+              deleteSummary.input > 0 && `${deleteSummary.input} input`,
+              deleteSummary.output > 0 && `${deleteSummary.output} upscaled`,
+              deleteSummary.optimized > 0 && `${deleteSummary.optimized} optimized`,
+            ].filter(Boolean).join(", ")}
+          </span>
+          <div className="ml-auto flex gap-1.5">
+            <Button variant="ghost" size="xs" onClick={clearDeleteSelections}>
+              Clear
+            </Button>
+            <Button variant="destructive" size="xs" onClick={() => setConfirmOpen(true)}>
+              Delete selected
+            </Button>
+          </div>
         </div>
+      )}
+
+      <ScrollArea className="flex-1 min-h-0 rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-8" />
+              <TableHead>Filename</TableHead>
+              <TableHead className={cn("text-right", FOLDER_COLORS.input.text)}>
+                {FOLDER_COLORS.input.label}
+              </TableHead>
+              <TableHead className={cn("text-right", FOLDER_COLORS.output.text)}>
+                {FOLDER_COLORS.output.label}
+              </TableHead>
+              <TableHead className={cn("text-right", FOLDER_COLORS.optimized.text)}>
+                {FOLDER_COLORS.optimized.label}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.map((file, index) => {
+              const folders = getFolderData(file, dir);
+              const fileDeleteFolders = deleteSelections.get(file.name);
+              return (
+                <TableRow
+                  key={file.name}
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    if (!deleteMode) handleToggle(index, filteredNames, e.shiftKey);
+                  }}
+                >
+                  <TableCell className="w-8">
+                    <Checkbox
+                      checked={selected.includes(file.name)}
+                      tabIndex={-1}
+                      className="pointer-events-none"
+                    />
+                  </TableCell>
+                  <TableCell className="font-mono text-sm truncate max-w-[300px]">
+                    {file.name}
+                  </TableCell>
+                  {folders.map((entry) => {
+                    const isMarked = fileDeleteFolders?.has(entry.key) ?? false;
+                    const canClick = deleteMode && entry.exists;
+                    return (
+                      <TableCell
+                        key={entry.key}
+                        className={cn(
+                          "text-right text-sm",
+                          entry.exists ? FOLDER_COLORS[entry.key].text : "text-muted-foreground",
+                          canClick && "cursor-pointer hover:bg-muted/50",
+                          isMarked && "ring-2 ring-inset ring-red-500 bg-red-500/10"
+                        )}
+                        onClick={(e) => {
+                          if (canClick) {
+                            e.stopPropagation();
+                            toggleDeleteCell(file.name, entry.key);
+                          }
+                        }}
+                      >
+                        {entry.exists
+                          ? `${entry.width && entry.height ? `${entry.width}x${entry.height} @ ` : ""}${formatBytes(entry.size)}`
+                          : "\u2014"}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
       </ScrollArea>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Deletion</DialogTitle>
+            <DialogDescription>
+              The following files will be permanently deleted:
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-60 overflow-y-auto space-y-2 text-sm">
+            {(["input", "output", "optimized"] as FolderKey[]).map((folder) => {
+              const names: string[] = [];
+              for (const [name, folders] of deleteSelections) {
+                if (folders.has(folder)) names.push(name);
+              }
+              if (names.length === 0) return null;
+              return (
+                <div key={folder}>
+                  <p className={cn("font-medium", FOLDER_COLORS[folder].text)}>
+                    {FOLDER_COLORS[folder].label} ({names.length})
+                  </p>
+                  <ul className="ml-4 list-disc text-muted-foreground">
+                    {names.map((n) => <li key={n} className="font-mono text-xs">{n}</li>)}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleting}>
+              {deleting ? "Deleting..." : `Delete ${deleteTotal} files`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

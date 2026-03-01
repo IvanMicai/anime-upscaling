@@ -1,6 +1,7 @@
 package files
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,6 +129,40 @@ func ListOptimizedWithStatus(dir, inputDir, outputDir string, exts []string) ([]
 		}
 	}
 	return vfiles, nil
+}
+
+type DeleteItem struct {
+	Name    string   `json:"name"`
+	Folders []string `json:"folders"`
+}
+
+func DeleteFiles(items []DeleteItem, inputDir, outputDir, optimizedDir string) (int, []string) {
+	folderDirs := map[string]string{
+		"input":     inputDir,
+		"output":    outputDir,
+		"optimized": optimizedDir,
+	}
+
+	deleted := 0
+	var errors []string
+
+	for _, item := range items {
+		for _, folder := range item.Folders {
+			dir, ok := folderDirs[folder]
+			if !ok {
+				errors = append(errors, fmt.Sprintf("invalid folder %q for %s", folder, item.Name))
+				continue
+			}
+			path := filepath.Join(dir, item.Name)
+			if err := os.Remove(path); err != nil {
+				errors = append(errors, fmt.Sprintf("failed to delete %s/%s: %v", folder, item.Name, err))
+			} else {
+				deleted++
+			}
+		}
+	}
+
+	return deleted, errors
 }
 
 func FileExists(path string) bool {
