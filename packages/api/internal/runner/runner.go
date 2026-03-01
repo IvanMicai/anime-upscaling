@@ -246,6 +246,98 @@ func (r *Runner) FFprobeBatchResolutionMultiDir(ctx context.Context, mounts []Di
 	return result, nil
 }
 
+// FFprobeBatchResolutionMultiDirParallel is like FFprobeBatchResolutionMultiDir
+// but runs up to 8 ffprobe processes concurrently.
+func (r *Runner) FFprobeBatchResolutionMultiDirParallel(ctx context.Context, mounts []DirMount, filesByLabel map[string][]string) (map[string]map[string]VideoResolution, error) {
+	total := 0
+	for _, files := range filesByLabel {
+		total += len(files)
+	}
+	if total == 0 {
+		return nil, nil
+	}
+
+	type probeJob struct {
+		label   string
+		hostDir string
+		file    string
+	}
+	var jobs []probeJob
+	for _, m := range mounts {
+		for _, f := range filesByLabel[m.Label] {
+			jobs = append(jobs, probeJob{label: m.Label, hostDir: m.HostDir, file: f})
+		}
+	}
+
+	type probeResult struct {
+		label string
+		file  string
+		res   VideoResolution
+	}
+
+	var (
+		mu      sync.Mutex
+		results []probeResult
+		wg      sync.WaitGroup
+		sem     = make(chan struct{}, 8)
+	)
+
+	for _, j := range jobs {
+		if ctx.Err() != nil {
+			break
+		}
+		wg.Add(1)
+		go func(j probeJob) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			if ctx.Err() != nil {
+				return
+			}
+
+			absPath := j.hostDir + "/" + j.file
+			var buf bytes.Buffer
+			cmd := exec.CommandContext(ctx, r.cfg.FFprobeBin,
+				"-v", "error",
+				"-select_streams", "v:0",
+				"-show_entries", "stream=width,height",
+				"-of", "csv=p=0",
+				absPath,
+			)
+			cmd.Stdout = &buf
+			cmd.Stderr = &buf
+			if err := cmd.Run(); err != nil {
+				return
+			}
+
+			dims := strings.SplitN(strings.TrimSpace(buf.String()), ",", 2)
+			if len(dims) != 2 {
+				return
+			}
+			w, err1 := strconv.Atoi(strings.TrimSpace(dims[0]))
+			h, err2 := strconv.Atoi(strings.TrimSpace(dims[1]))
+			if err1 != nil || err2 != nil {
+				return
+			}
+
+			mu.Lock()
+			results = append(results, probeResult{label: j.label, file: j.file, res: VideoResolution{Width: w, Height: h}})
+			mu.Unlock()
+		}(j)
+	}
+	wg.Wait()
+
+	out := make(map[string]map[string]VideoResolution)
+	for _, r := range results {
+		if out[r.label] == nil {
+			out[r.label] = make(map[string]VideoResolution)
+		}
+		out[r.label][r.file] = r.res
+	}
+	return out, ctx.Err()
+}
+
 // FFprobeBatchResolutionMultiDirCached wraps FFprobeBatchResolutionMultiDir with
 // a per-directory in-memory cache (20-minute TTL). Returns results + cachedAt.
 func (r *Runner) FFprobeBatchResolutionMultiDirCached(ctx context.Context, mounts []DirMount, filesByLabel map[string][]string, forceRefresh bool) (map[string]map[string]VideoResolution, time.Time, error) {

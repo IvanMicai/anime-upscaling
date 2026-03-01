@@ -26,11 +26,11 @@ type FileStatus struct {
 
 type CacheData map[string]FileStatus
 
-func cachePath(cfg config.Config) string {
+func CachePath(cfg config.Config) string {
 	return cfg.BaseDir + "/cache-file-status.json"
 }
 
-func loadCache(path string) CacheData {
+func LoadCache(path string) CacheData {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return make(CacheData)
@@ -54,8 +54,8 @@ func BuildFileStatusCache(cfg config.Config) error {
 	fmt.Println("Building file status cache...")
 	start := time.Now()
 
-	path := cachePath(cfg)
-	old := loadCache(path)
+	path := CachePath(cfg)
+	old := LoadCache(path)
 
 	type dirInfo struct {
 		label string
@@ -67,22 +67,25 @@ func BuildFileStatusCache(cfg config.Config) error {
 		{"optimize", cfg.OptimizedDir},
 	}
 
-	// Scan all directories
-	scanned := make(map[string][]files.VideoFile)
+	// Scan all directories and index by map for O(1) lookup
+	scannedIndex := make(map[string]map[string]int64) // label -> name -> size
 	for _, d := range dirs {
 		vfiles, err := files.ListVideosWithSize(d.dir, cfg.VideoExts)
 		if err != nil {
-			// Directory doesn't exist — treat as empty
 			vfiles = nil
 		}
-		scanned[d.label] = vfiles
+		idx := make(map[string]int64, len(vfiles))
+		for _, f := range vfiles {
+			idx[f.Name] = f.Size
+		}
+		scannedIndex[d.label] = idx
 	}
 
 	// Collect all unique filenames
 	allNames := make(map[string]bool)
-	for _, vfiles := range scanned {
-		for _, f := range vfiles {
-			allNames[f.Name] = true
+	for _, idx := range scannedIndex {
+		for name := range idx {
+			allNames[name] = true
 		}
 	}
 
@@ -95,16 +98,8 @@ func BuildFileStatusCache(cfg config.Config) error {
 		oldStatus := old[name]
 
 		for _, d := range dirs {
-			var found *files.VideoFile
-			for _, f := range scanned[d.label] {
-				if f.Name == name {
-					found = &f
-					break
-				}
-			}
-
-			if found == nil {
-				// File not in this directory
+			size, found := scannedIndex[d.label][name]
+			if !found {
 				continue
 			}
 
@@ -119,7 +114,7 @@ func BuildFileStatusCache(cfg config.Config) error {
 				oldEntry = oldStatus.Optimize
 			}
 
-			if oldEntry != nil && oldEntry.Size == found.Size {
+			if oldEntry != nil && oldEntry.Size == size {
 				// Size matches — reuse cached resolution
 				entry := *oldEntry
 				switch d.label {
@@ -133,8 +128,7 @@ func BuildFileStatusCache(cfg config.Config) error {
 			} else {
 				// New or changed — need ffprobe
 				needProbe[d.label] = append(needProbe[d.label], name)
-				// Store size now, resolution will be filled after probe
-				entry := SourceEntry{Size: found.Size}
+				entry := SourceEntry{Size: size}
 				switch d.label {
 				case "input":
 					status.Input = &entry
@@ -171,7 +165,7 @@ func BuildFileStatusCache(cfg config.Config) error {
 			}
 		}
 
-		results, err := r.FFprobeBatchResolutionMultiDir(ctx, mounts, needProbe)
+		results, err := r.FFprobeBatchResolutionMultiDirParallel(ctx, mounts, needProbe)
 		if err != nil {
 			return fmt.Errorf("ffprobe batch: %w", err)
 		}
