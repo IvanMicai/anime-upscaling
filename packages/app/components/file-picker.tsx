@@ -122,34 +122,30 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
         >
           Input
         </button>
-        {(dir === "input" || dir === "optimized") && (
-          <button
-            type="button"
-            onClick={() => toggleFilter("upscaled")}
-            className={cn(
-              "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
-              filters.has("upscaled")
-                ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                : "bg-transparent text-muted-foreground border-border"
-            )}
-          >
-            Upscaled
-          </button>
-        )}
-        {(dir === "input" || dir === "output") && (
-          <button
-            type="button"
-            onClick={() => toggleFilter("optimized")}
-            className={cn(
-              "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
-              filters.has("optimized")
-                ? "bg-green-500/20 text-green-400 border-green-500/30"
-                : "bg-transparent text-muted-foreground border-border"
-            )}
-          >
-            Optimized
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => toggleFilter("upscaled")}
+          className={cn(
+            "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
+            filters.has("upscaled")
+              ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+              : "bg-transparent text-muted-foreground border-border"
+          )}
+        >
+          Upscaled
+        </button>
+        <button
+          type="button"
+          onClick={() => toggleFilter("optimized")}
+          className={cn(
+            "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
+            filters.has("optimized")
+              ? "bg-green-500/20 text-green-400 border-green-500/30"
+              : "bg-transparent text-muted-foreground border-border"
+          )}
+        >
+          Optimized
+        </button>
       </div>
       <div className="flex items-center gap-2">
         <Checkbox
@@ -191,32 +187,32 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
                 {file.name}
               </span>
               <div className="flex items-center gap-1.5 ml-auto shrink-0">
-                {dir === "optimized" && file.has_input && (
+                {dir !== "input" && file.has_input && (
                   <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">
                     {file.input_width && file.input_height
                       ? `${file.input_width}x${file.input_height} @ `
                       : ""}{formatBytes(file.input_size ?? 0)}
                   </Badge>
                 )}
-                {(dir === "input" || dir === "optimized") && file.has_upscaled && (
+                {dir !== "output" && file.has_upscaled && (
                   <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20">
                     {file.upscaled_width && file.upscaled_height
                       ? `${file.upscaled_width}x${file.upscaled_height} @ `
                       : ""}{formatBytes(file.upscaled_size ?? 0)}
                   </Badge>
                 )}
-                {(dir === "input" || dir === "output") && file.has_optimized && (
+                {dir !== "optimized" && file.has_optimized && (
                   <Badge className="bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20">
                     {file.optimized_width && file.optimized_height
                       ? `${file.optimized_width}x${file.optimized_height} @ `
                       : ""}{formatBytes(file.optimized_size ?? 0)}
                   </Badge>
                 )}
-                <span className="text-xs text-yellow-400">
+                <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">
                   {file.width && file.height
-                    ? `${file.width}x${file.height} `
+                    ? `${file.width}x${file.height} @ `
                     : ""}{formatBytes(file.size)}
-                </span>
+                </Badge>
               </div>
             </div>
           ))}
