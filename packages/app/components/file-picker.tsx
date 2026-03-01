@@ -80,7 +80,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
     if (filters.size === 0) return true;
     if (filters.has("upscaled") && file.has_upscaled) return true;
     if (filters.has("optimized") && file.has_optimized) return true;
-    if (filters.has("input") && file.has_input) return true;
+    if (filters.has("input") && (dir === "input" || file.has_input)) return true;
     return false;
   }
 
@@ -106,10 +106,51 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
     return <p className="text-sm text-muted-foreground">No files found in {dir}/.</p>;
   }
 
-  const hasStatus = files.some((f) => f.has_upscaled || f.has_optimized || f.has_input);
-
   return (
     <div className="flex flex-col h-full gap-2">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">Legend:</span>
+        <button
+          type="button"
+          onClick={() => toggleFilter("input")}
+          className={cn(
+            "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
+            filters.has("input")
+              ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+              : "bg-transparent text-muted-foreground border-border"
+          )}
+        >
+          Input
+        </button>
+        {(dir === "input" || dir === "optimized") && (
+          <button
+            type="button"
+            onClick={() => toggleFilter("upscaled")}
+            className={cn(
+              "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
+              filters.has("upscaled")
+                ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                : "bg-transparent text-muted-foreground border-border"
+            )}
+          >
+            Upscaled
+          </button>
+        )}
+        {(dir === "input" || dir === "output") && (
+          <button
+            type="button"
+            onClick={() => toggleFilter("optimized")}
+            className={cn(
+              "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
+              filters.has("optimized")
+                ? "bg-green-500/20 text-green-400 border-green-500/30"
+                : "bg-transparent text-muted-foreground border-border"
+            )}
+          >
+            Optimized
+          </button>
+        )}
+      </div>
       <div className="flex items-center gap-2">
         <Checkbox
           id="select-all"
@@ -133,52 +174,6 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
           </span>
         )}
       </div>
-      {hasStatus && (
-        <div className="flex items-center gap-2">
-          {(dir === "input" || dir === "optimized") && (
-            <button
-              type="button"
-              onClick={() => toggleFilter("upscaled")}
-              className={cn(
-                "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
-                filters.has("upscaled")
-                  ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                  : "bg-transparent text-muted-foreground border-border"
-              )}
-            >
-              Upscaled
-            </button>
-          )}
-          {(dir === "input" || dir === "output") && (
-            <button
-              type="button"
-              onClick={() => toggleFilter("optimized")}
-              className={cn(
-                "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
-                filters.has("optimized")
-                  ? "bg-green-500/20 text-green-400 border-green-500/30"
-                  : "bg-transparent text-muted-foreground border-border"
-              )}
-            >
-              Optimized
-            </button>
-          )}
-          {dir === "optimized" && (
-            <button
-              type="button"
-              onClick={() => toggleFilter("input")}
-              className={cn(
-                "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
-                filters.has("input")
-                  ? "bg-purple-500/20 text-purple-400 border-purple-500/30"
-                  : "bg-transparent text-muted-foreground border-border"
-              )}
-            >
-              Has Input
-            </button>
-          )}
-        </div>
-      )}
       <ScrollArea className="flex-1 min-h-0 rounded-md border p-2">
         <div className="space-y-1.5">
           {filtered.map((file, index) => (
@@ -197,7 +192,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
               </span>
               <div className="flex items-center gap-1.5 ml-auto shrink-0">
                 {dir === "optimized" && file.has_input && (
-                  <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 hover:bg-purple-500/20">
+                  <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">
                     {file.input_width && file.input_height
                       ? `${file.input_width}x${file.input_height} @ `
                       : ""}{formatBytes(file.input_size ?? 0)}
@@ -217,7 +212,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
                       : ""}{formatBytes(file.optimized_size ?? 0)}
                   </Badge>
                 )}
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-yellow-400">
                   {file.width && file.height
                     ? `${file.width}x${file.height} `
                     : ""}{formatBytes(file.size)}
