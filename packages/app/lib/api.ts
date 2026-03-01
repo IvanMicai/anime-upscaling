@@ -4,8 +4,6 @@ import type {
   CreateJobRequest,
   CreateJobResponse,
   CancelJobResponse,
-  Source,
-  SourceFilesResponse,
 } from "./types";
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -42,48 +40,5 @@ export function createJob(req: CreateJobRequest): Promise<CreateJobResponse> {
 export function cancelJob(id: string): Promise<CancelJobResponse> {
   return fetchJSON<CancelJobResponse>(`/api/jobs/${id}/cancel`, {
     method: "POST",
-  });
-}
-
-export function getSources(): Promise<Source[]> {
-  return fetchJSON<Source[]>("/api/sources");
-}
-
-export function createSource(req: { name: string; path: string }): Promise<Source> {
-  return fetchJSON<Source>("/api/sources", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  });
-}
-
-export function deleteSource(id: string): Promise<{ deleted: string }> {
-  return fetchJSON<{ deleted: string }>(`/api/sources/${id}`, {
-    method: "DELETE",
-  });
-}
-
-export function getSourceFiles(id: string, refresh = false): Promise<SourceFilesResponse> {
-  const q = refresh ? "?refresh=true" : "";
-  return fetchJSON<SourceFilesResponse>(`/api/sources/${id}/files${q}`);
-}
-
-export function importFiles(id: string, files: string[]): Promise<{ copied: number }> {
-  return fetchJSON<{ copied: number }>(`/api/sources/${id}/import`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ files }),
-  });
-}
-
-export function exportFiles(
-  id: string,
-  files: string[],
-  from: string
-): Promise<{ copied: number }> {
-  return fetchJSON<{ copied: number }>(`/api/sources/${id}/export`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ files, from }),
   });
 }
