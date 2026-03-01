@@ -9,12 +9,17 @@ import (
 	"strings"
 	"time"
 
+	"anime-upscaling/internal/cache"
 	"anime-upscaling/internal/config"
 	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/runner"
 )
 
 func CmdServe(cfg config.Config) error {
+	if err := cache.BuildFileStatusCache(cfg); err != nil {
+		fmt.Printf("Warning: cache build failed: %v\n", err)
+	}
+
 	jm := NewJobManager(cfg)
 
 	mux := http.NewServeMux()
