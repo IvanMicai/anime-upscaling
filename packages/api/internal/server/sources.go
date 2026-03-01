@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"path/filepath"
@@ -11,7 +10,7 @@ import (
 	"os"
 
 	"anime-upscaling/internal/config"
-	"anime-upscaling/internal/docker"
+	"anime-upscaling/internal/runner"
 	"anime-upscaling/internal/sources"
 )
 
@@ -22,12 +21,12 @@ func sourcesFile(cfg config.Config) string {
 // GET /api/sources — list all sources
 // POST /api/sources — add a new source
 func handleSources(cfg config.Config) http.HandlerFunc {
-	d := docker.NewDocker(cfg)
+	r := runner.NewRunner(cfg)
 
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, req *http.Request) {
 		sf := sourcesFile(cfg)
 
-		switch r.Method {
+		switch req.Method {
 		case http.MethodGet:
 			list, err := sources.Load(sf)
 			if err != nil {
@@ -37,33 +36,31 @@ func handleSources(cfg config.Config) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, list)
 
 		case http.MethodPost:
-			var req struct {
+			var body struct {
 				Name string `json:"name"`
 				Path string `json:"path"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 				return
 			}
-			if req.Name == "" || req.Path == "" {
+			if body.Name == "" || body.Path == "" {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name and path are required"})
 				return
 			}
 
-			// Validate path exists on host via Docker
-			ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-			defer cancel()
-			exists, err := d.PathExists(ctx, req.Path)
+			// Validate path exists
+			exists, err := r.PathExists(body.Path)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to validate path: " + err.Error()})
 				return
 			}
 			if !exists {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path does not exist on host: " + req.Path})
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path does not exist: " + body.Path})
 				return
 			}
 
-			s, err := sources.Add(sf, req.Name, req.Path)
+			s, err := sources.Add(sf, body.Name, body.Path)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
@@ -78,13 +75,13 @@ func handleSources(cfg config.Config) http.HandlerFunc {
 
 // Routes under /api/sources/{id}...
 func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
-	d := docker.NewDocker(cfg)
+	r := runner.NewRunner(cfg)
 
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, req *http.Request) {
 		sf := sourcesFile(cfg)
 
 		// Parse: /api/sources/{id} or /api/sources/{id}/files etc.
-		path := strings.TrimPrefix(r.URL.Path, "/api/sources/")
+		path := strings.TrimPrefix(req.URL.Path, "/api/sources/")
 		parts := strings.SplitN(path, "/", 2)
 		id := parts[0]
 		sub := ""
@@ -111,7 +108,7 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 		switch sub {
 		case "":
 			// DELETE /api/sources/{id}
-			if r.Method != http.MethodDelete {
+			if req.Method != http.MethodDelete {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
@@ -123,14 +120,12 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 
 		case "files":
 			// GET /api/sources/{id}/files?refresh=true
-			if r.Method != http.MethodGet {
+			if req.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			forceRefresh := r.URL.Query().Get("refresh") == "true"
-			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-			defer cancel()
-			fileList, err := d.ListFiles(ctx, src.Path, cfg.VideoExts)
+			forceRefresh := req.URL.Query().Get("refresh") == "true"
+			fileList, err := r.ListFiles(src.Path, cfg.VideoExts)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
@@ -155,12 +150,12 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 				OptimizedHeight int    `json:"optimized_height,omitempty"`
 			}
 
-			// Build mounts and filesByLabel for single multi-dir container call
+			// Build mounts and filesByLabel for batch ffprobe
 			names := make([]string, len(fileList))
 			for i, f := range fileList {
 				names[i] = f.Name
 			}
-			mounts := []docker.DirMount{{Label: "source", HostDir: src.Path}}
+			mounts := []runner.DirMount{{Label: "source", HostDir: src.Path}}
 			filesByLabel := map[string][]string{"source": names}
 
 			var inputNames, outputNames, optNames []string
@@ -176,19 +171,20 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 				}
 			}
 			if len(inputNames) > 0 {
-				mounts = append(mounts, docker.DirMount{Label: "input", HostDir: cfg.InputDir})
+				mounts = append(mounts, runner.DirMount{Label: "input", HostDir: cfg.InputDir})
 				filesByLabel["input"] = inputNames
 			}
 			if len(outputNames) > 0 {
-				mounts = append(mounts, docker.DirMount{Label: "output", HostDir: cfg.OutputDir})
+				mounts = append(mounts, runner.DirMount{Label: "output", HostDir: cfg.OutputDir})
 				filesByLabel["output"] = outputNames
 			}
 			if len(optNames) > 0 {
-				mounts = append(mounts, docker.DirMount{Label: "optimized", HostDir: cfg.OptimizedDir})
+				mounts = append(mounts, runner.DirMount{Label: "optimized", HostDir: cfg.OptimizedDir})
 				filesByLabel["optimized"] = optNames
 			}
 
-			allRes, cachedAt, _ := d.FFprobeBatchResolutionMultiDirCached(ctx, mounts, filesByLabel, forceRefresh)
+			ctx := req.Context()
+			allRes, cachedAt, _ := r.FFprobeBatchResolutionMultiDirCached(ctx, mounts, filesByLabel, forceRefresh)
 
 			result := make([]sourceFileWithStatus, 0, len(fileList))
 			for _, f := range fileList {
@@ -238,24 +234,22 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 
 		case "import":
 			// POST /api/sources/{id}/import
-			if r.Method != http.MethodPost {
+			if req.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			var req struct {
+			var body struct {
 				Files []string `json:"files"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 				return
 			}
-			if len(req.Files) == 0 {
+			if len(body.Files) == 0 {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "files list is required"})
 				return
 			}
-			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
-			defer cancel()
-			copied, err := d.CopyFiles(ctx, src.Path, cfg.InputDir, req.Files)
+			copied, err := r.CopyFiles(src.Path, cfg.InputDir, body.Files)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 					"error":  err.Error(),
@@ -267,24 +261,24 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 
 		case "export":
 			// POST /api/sources/{id}/export
-			if r.Method != http.MethodPost {
+			if req.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			var req struct {
+			var body struct {
 				Files []string `json:"files"`
 				From  string   `json:"from"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 				return
 			}
-			if len(req.Files) == 0 {
+			if len(body.Files) == 0 {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "files list is required"})
 				return
 			}
 			var fromDir string
-			switch req.From {
+			switch body.From {
 			case "output":
 				fromDir = cfg.OutputDir
 			case "optimized":
@@ -293,9 +287,7 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "from must be 'output' or 'optimized'"})
 				return
 			}
-			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
-			defer cancel()
-			copied, err := d.CopyFiles(ctx, fromDir, src.Path, req.Files)
+			copied, err := r.CopyFiles(fromDir, src.Path, body.Files)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
 					"error":  err.Error(),
@@ -306,7 +298,7 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, map[string]int{"copied": copied})
 
 		default:
-			http.NotFound(w, r)
+			http.NotFound(w, req)
 		}
 	}
 }

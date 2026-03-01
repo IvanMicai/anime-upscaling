@@ -56,7 +56,7 @@ Commands:
   optimize   Compress videos with ffmpeg H.265 (sequential)
   pipeline   Upscale (GPU) + compress (CPU) in parallel pipeline
   check      Verify video integrity (ffprobe + decode)
-  stop       Stop all running Docker containers
+  stop       Stop all running processes
   logs       Tail all log files with colors
   serve      Start HTTP API server`)
 }

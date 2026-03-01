@@ -6,14 +6,14 @@ import (
 	"strings"
 
 	"anime-upscaling/internal/config"
-	"anime-upscaling/internal/docker"
 	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/logger"
+	"anime-upscaling/internal/runner"
 )
 
 func cmdCheck(ctx context.Context, args []string) error {
 	cfg := config.NewConfig()
-	d := docker.NewDocker(cfg)
+	r := runner.NewRunner(cfg)
 
 	dirs := args
 	if len(dirs) == 0 {
@@ -62,7 +62,7 @@ func cmdCheck(ctx context.Context, args []string) error {
 			relPath := dirName + "/" + filename
 
 			// Stage 1: ffprobe
-			probeOut, probeErr := d.FFprobe(ctx, relPath)
+			probeOut, probeErr := r.FFprobe(ctx, relPath)
 			if probeErr != nil {
 				fmt.Printf("  %s[ERRO]%s  %s (ffprobe falhou)\n", logger.ColorRed, logger.ColorReset, relPath)
 				if probeOut != "" {
@@ -83,7 +83,7 @@ func cmdCheck(ctx context.Context, args []string) error {
 			}
 
 			// Stage 2: ffmpeg decode
-			decodeOut, decodeErr := d.FFmpegDecode(ctx, relPath, "", nil)
+			decodeOut, decodeErr := r.FFmpegDecode(ctx, relPath, "", nil)
 			if decodeErr != nil || decodeOut != "" {
 				if decodeErr != nil {
 					fmt.Printf("  %s[ERRO]%s  %s (decode falhou, %v)\n", logger.ColorRed, logger.ColorReset, relPath, decodeErr)

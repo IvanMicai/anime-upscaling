@@ -7,20 +7,20 @@ import (
 	"time"
 
 	"anime-upscaling/internal/config"
-	"anime-upscaling/internal/docker"
 	"anime-upscaling/internal/logger"
+	"anime-upscaling/internal/runner"
 )
 
 // CheckFile runs a full decode pass on a single file to verify integrity.
-func CheckFile(ctx context.Context, cfg config.Config, d *docker.Docker, filename string, index int, source string, onEvent func(logger.JobLog), onProgress func(docker.Progress)) {
-	ffmpegProgress := func(p docker.Progress) {
+func CheckFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, index int, source string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) {
+	ffmpegProgress := func(p runner.Progress) {
 		p.Source = "FFMPEG"
 		onProgress(p)
 	}
 
 	onEvent(logger.JobLog{Source: "FFMPEG", Level: "INFO", Index: index, Message: "Verificando: " + filename, Time: time.Now()})
 
-	output, err := d.FFmpegDecode(ctx, source+"/"+filename, "check", ffmpegProgress)
+	output, err := r.FFmpegDecode(ctx, source+"/"+filename, "check", ffmpegProgress)
 	if err != nil {
 		// Filter out stats lines, keep only actual error lines
 		var errors []string

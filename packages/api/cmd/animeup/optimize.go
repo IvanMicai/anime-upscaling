@@ -5,15 +5,15 @@ import (
 	"fmt"
 
 	"anime-upscaling/internal/config"
-	"anime-upscaling/internal/docker"
 	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/logger"
 	"anime-upscaling/internal/process"
+	"anime-upscaling/internal/runner"
 )
 
 func cmdOptimize(ctx context.Context) error {
 	cfg := config.NewConfig()
-	d := docker.NewDocker(cfg)
+	r := runner.NewRunner(cfg)
 
 	log, err := logger.NewLogger(cfg.LogFile)
 	if err != nil {
@@ -33,7 +33,7 @@ func cmdOptimize(ctx context.Context) error {
 	log.SetTotal(len(fileList))
 	log.Banner(fmt.Sprintf("Iniciando otimização de %d arquivos (%d CPUs)...", len(fileList), cfg.HalfCPUs))
 
-	err = process.RunOptimize(ctx, cfg, d, fileList, func(e logger.JobLog) {
+	err = process.RunOptimize(ctx, cfg, r, fileList, func(e logger.JobLog) {
 		log.Log(e.Source, e.Level, e.Index, e.Message)
 	}, nil)
 

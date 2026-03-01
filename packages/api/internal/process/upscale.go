@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"anime-upscaling/internal/config"
-	"anime-upscaling/internal/docker"
 	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/logger"
+	"anime-upscaling/internal/runner"
 )
 
 // RunUpscale processes all files using 2 GPU workers (CLI convenience wrapper).
-func RunUpscale(ctx context.Context, cfg config.Config, d *docker.Docker, fileList []string, scale int, onEvent func(logger.JobLog), onProgress func(docker.Progress)) error {
+func RunUpscale(ctx context.Context, cfg config.Config, r *runner.Runner, fileList []string, scale int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) error {
 	type work struct {
 		filename string
 		index    int
@@ -36,7 +36,7 @@ func RunUpscale(ctx context.Context, cfg config.Config, d *docker.Docker, fileLi
 				if ctx.Err() != nil {
 					return
 				}
-				UpscaleFile(ctx, cfg, d, gpuID, w.filename, w.index, scale, onEvent, safeProgress(onProgress))
+				UpscaleFile(ctx, cfg, r, gpuID, w.filename, w.index, scale, onEvent, safeProgress(onProgress))
 			}
 		}(gpuID)
 	}
@@ -44,16 +44,16 @@ func RunUpscale(ctx context.Context, cfg config.Config, d *docker.Docker, fileLi
 	return nil
 }
 
-func safeProgress(fn func(docker.Progress)) func(docker.Progress) {
+func safeProgress(fn func(runner.Progress)) func(runner.Progress) {
 	if fn == nil {
-		return func(docker.Progress) {}
+		return func(runner.Progress) {}
 	}
 	return fn
 }
 
 // UpscaleFile processes a single file on the given GPU.
 // Returns true if the file was successfully upscaled (or skipped).
-func UpscaleFile(ctx context.Context, cfg config.Config, d *docker.Docker, gpuID int, filename string, index int, scale int, onEvent func(logger.JobLog), onProgress func(docker.Progress)) bool {
+func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, scale int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
 	if err := os.MkdirAll(cfg.OutputDir, 0755); err != nil {
 		source := fmt.Sprintf("GPU %d", gpuID)
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir output: %v", err), Time: time.Now()})
@@ -61,7 +61,7 @@ func UpscaleFile(ctx context.Context, cfg config.Config, d *docker.Docker, gpuID
 	}
 
 	source := fmt.Sprintf("GPU %d", gpuID)
-	gpuProgress := func(p docker.Progress) {
+	gpuProgress := func(p runner.Progress) {
 		p.Source = source
 		onProgress(p)
 	}
@@ -74,8 +74,8 @@ func UpscaleFile(ctx context.Context, cfg config.Config, d *docker.Docker, gpuID
 
 	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
 
-	dockerLog := fmt.Sprintf("%s/docker_gpu%d.log", cfg.BaseDir, gpuID)
-	err := d.Video2x(ctx, gpuID, filename, dockerLog, scale, gpuProgress)
+	logFile := fmt.Sprintf("%s/gpu%d.log", cfg.BaseDir, gpuID)
+	err := r.Video2x(ctx, gpuID, filename, logFile, scale, gpuProgress)
 
 	if err != nil {
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao processar: %s (%v)", filename, err), Time: time.Now()})
@@ -87,7 +87,7 @@ func UpscaleFile(ctx context.Context, cfg config.Config, d *docker.Docker, gpuID
 		return false
 	}
 
-	d.Chown(ctx, cfg.OutputDir, filename)
+	r.Chown(ctx, cfg.OutputDir, filename)
 	onEvent(logger.JobLog{Source: source, Level: "OK", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
 	return true
 }

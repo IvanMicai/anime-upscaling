@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"anime-upscaling/internal/config"
-	"anime-upscaling/internal/docker"
 	"anime-upscaling/internal/files"
+	"anime-upscaling/internal/runner"
 )
 
 func CmdServe(cfg config.Config) error {
@@ -44,19 +44,19 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 // GET /api/files?dir=input&refresh=true
 func handleFiles(cfg config.Config) http.HandlerFunc {
-	d := docker.NewDocker(cfg)
+	r := runner.NewRunner(cfg)
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		dir := r.URL.Query().Get("dir")
+		dir := req.URL.Query().Get("dir")
 		if dir == "" {
 			dir = "input"
 		}
-		forceRefresh := r.URL.Query().Get("refresh") == "true"
+		forceRefresh := req.URL.Query().Get("refresh") == "true"
 
 		allowed := map[string]string{
 			"input":     cfg.InputDir,
@@ -91,17 +91,17 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 
 		var cachedAt time.Time
 
-		// Enrich with resolution data using a single multi-dir container
+		// Enrich with resolution data
 		if len(videoFiles) > 0 {
 			names := make([]string, len(videoFiles))
 			for i, f := range videoFiles {
 				names[i] = f.Name
 			}
-			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(req.Context(), 30*time.Second)
 			defer cancel()
 
 			// Build mounts and filesByLabel
-			mounts := []docker.DirMount{{Label: dir, HostDir: fullPath}}
+			mounts := []runner.DirMount{{Label: dir, HostDir: fullPath}}
 			filesByLabel := map[string][]string{dir: names}
 
 			if dir == "input" {
@@ -115,11 +115,11 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 					}
 				}
 				if len(upscaledNames) > 0 {
-					mounts = append(mounts, docker.DirMount{Label: "output", HostDir: cfg.OutputDir})
+					mounts = append(mounts, runner.DirMount{Label: "output", HostDir: cfg.OutputDir})
 					filesByLabel["output"] = upscaledNames
 				}
 				if len(optNames) > 0 {
-					mounts = append(mounts, docker.DirMount{Label: "optimized", HostDir: cfg.OptimizedDir})
+					mounts = append(mounts, runner.DirMount{Label: "optimized", HostDir: cfg.OptimizedDir})
 					filesByLabel["optimized"] = optNames
 				}
 			} else if dir == "output" {
@@ -130,7 +130,7 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 					}
 				}
 				if len(optNames) > 0 {
-					mounts = append(mounts, docker.DirMount{Label: "optimized", HostDir: cfg.OptimizedDir})
+					mounts = append(mounts, runner.DirMount{Label: "optimized", HostDir: cfg.OptimizedDir})
 					filesByLabel["optimized"] = optNames
 				}
 			} else if dir == "optimized" {
@@ -144,16 +144,16 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 					}
 				}
 				if len(inputNames) > 0 {
-					mounts = append(mounts, docker.DirMount{Label: "input", HostDir: cfg.InputDir})
+					mounts = append(mounts, runner.DirMount{Label: "input", HostDir: cfg.InputDir})
 					filesByLabel["input"] = inputNames
 				}
 				if len(upscaledNames) > 0 {
-					mounts = append(mounts, docker.DirMount{Label: "output", HostDir: cfg.OutputDir})
+					mounts = append(mounts, runner.DirMount{Label: "output", HostDir: cfg.OutputDir})
 					filesByLabel["output"] = upscaledNames
 				}
 			}
 
-			results, ca, _ := d.FFprobeBatchResolutionMultiDirCached(ctx, mounts, filesByLabel, forceRefresh)
+			results, ca, _ := r.FFprobeBatchResolutionMultiDirCached(ctx, mounts, filesByLabel, forceRefresh)
 			cachedAt = ca
 
 			if results != nil {
