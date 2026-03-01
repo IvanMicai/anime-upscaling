@@ -5,15 +5,15 @@ import (
 	"fmt"
 
 	"anime-upscaling/internal/config"
-	"anime-upscaling/internal/docker"
 	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/logger"
 	"anime-upscaling/internal/process"
+	"anime-upscaling/internal/runner"
 )
 
 func cmdPipeline(ctx context.Context) error {
 	cfg := config.NewConfig()
-	d := docker.NewDocker(cfg)
+	r := runner.NewRunner(cfg)
 
 	log, err := logger.NewLogger(cfg.LogFile)
 	if err != nil {
@@ -33,7 +33,7 @@ func cmdPipeline(ctx context.Context) error {
 	log.SetTotal(len(fileList))
 	log.Banner(fmt.Sprintf("Iniciando pipeline upscale+compressão de %d arquivos...", len(fileList)))
 
-	err = process.RunPipeline(ctx, cfg, d, fileList, 2, func(e logger.JobLog) {
+	err = process.RunPipeline(ctx, cfg, r, fileList, 2, func(e logger.JobLog) {
 		log.Log(e.Source, e.Level, e.Index, e.Message)
 	}, nil)
 

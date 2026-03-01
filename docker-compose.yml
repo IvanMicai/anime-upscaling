@@ -9,8 +9,14 @@ services:
     expose:
       - "${API_PORT:-4751}"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - ${PROCESS_DIR}:${PROCESS_DIR}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     restart: unless-stopped
 
   app:

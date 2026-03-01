@@ -8,22 +8,22 @@ import (
 	"time"
 
 	"anime-upscaling/internal/config"
-	"anime-upscaling/internal/docker"
 	"anime-upscaling/internal/logger"
 	"anime-upscaling/internal/process"
 	"anime-upscaling/internal/queue"
+	"anime-upscaling/internal/runner"
 )
 
 // logEntry is a type alias for logger.JobLog used within the server package.
 type logEntry = logger.JobLog
 
 type JobProgress struct {
-	Total      int                         `json:"total"`
-	Completed  int                         `json:"completed"`
-	Failed     int                         `json:"failed"`
-	Skipped    int                         `json:"skipped"`
-	Current    string                      `json:"current"`
-	Containers map[string]*docker.Progress `json:"containers,omitempty"`
+	Total      int                          `json:"total"`
+	Completed  int                          `json:"completed"`
+	Failed     int                          `json:"failed"`
+	Skipped    int                          `json:"skipped"`
+	Current    string                       `json:"current"`
+	Containers map[string]*runner.Progress `json:"containers,omitempty"`
 }
 
 type Job struct {
@@ -43,10 +43,10 @@ type Job struct {
 	listeners  []chan logEntry
 }
 
-func (j *Job) updateContainerProgress(p docker.Progress) {
+func (j *Job) updateContainerProgress(p runner.Progress) {
 	j.mu.Lock()
 	if j.Progress.Containers == nil {
-		j.Progress.Containers = make(map[string]*docker.Progress)
+		j.Progress.Containers = make(map[string]*runner.Progress)
 	}
 	j.Progress.Containers[p.Source] = &p
 	j.mu.Unlock()
@@ -122,11 +122,11 @@ func (j *Job) unsubscribe(ch chan logEntry) {
 	// Not found means job already finished and closed all channels
 }
 
-func copyContainers(m map[string]*docker.Progress) map[string]*docker.Progress {
+func copyContainers(m map[string]*runner.Progress) map[string]*runner.Progress {
 	if m == nil {
 		return nil
 	}
-	cp := make(map[string]*docker.Progress, len(m))
+	cp := make(map[string]*runner.Progress, len(m))
 	for k, v := range m {
 		p := *v
 		cp[k] = &p
@@ -179,7 +179,7 @@ type JobManager struct {
 	mu      sync.RWMutex
 	jobs    map[string]*Job
 	cfg     config.Config
-	docker  *docker.Docker
+	runner  *runner.Runner
 	gpuQ    *queue.GPUQueue
 	ffmpegQ *queue.Queue
 }
@@ -188,7 +188,7 @@ func NewJobManager(cfg config.Config) *JobManager {
 	return &JobManager{
 		jobs:    make(map[string]*Job),
 		cfg:     cfg,
-		docker:  docker.NewDocker(cfg),
+		runner:  runner.NewRunner(cfg),
 		gpuQ:    queue.NewGPUQueue(2),
 		ffmpegQ: queue.New(1),
 	}
@@ -218,12 +218,12 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 	m.jobs[job.ID] = job
 	m.mu.Unlock()
 
-	d := m.docker
+	r := m.runner
 	cfg := m.cfg
 	onEvent := func(e logEntry) {
 		job.addLog(e)
 	}
-	onProgress := func(p docker.Progress) {
+	onProgress := func(p runner.Progress) {
 		job.updateContainerProgress(p)
 	}
 
@@ -245,7 +245,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 					defer wg.Done()
 					defer m.gpuQ.Release(gpuID)
 					job.setRunningOnce()
-					process.UpscaleFile(ctx, cfg, d, gpuID, filename, idx, job.Scale, onEvent, onProgress)
+					process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, onEvent, onProgress)
 				}()
 			}
 
@@ -259,7 +259,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 				if err := m.ffmpegQ.Submit(ctx, func() {
 					defer wg.Done()
 					job.setRunningOnce()
-					process.OptimizeFile(ctx, cfg, d, filename, idx, jobSource, jobResolution, onEvent, onProgress)
+					process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, jobResolution, onEvent, onProgress)
 				}); err != nil {
 					wg.Done()
 					break // ctx cancelled
@@ -275,7 +275,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 				if err := m.ffmpegQ.Submit(ctx, func() {
 					defer wg.Done()
 					job.setRunningOnce()
-					process.CheckFile(ctx, cfg, d, filename, idx, jobSource, onEvent, onProgress)
+					process.CheckFile(ctx, cfg, r, filename, idx, jobSource, onEvent, onProgress)
 				}); err != nil {
 					wg.Done()
 					break // ctx cancelled
@@ -295,7 +295,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 				go func() {
 					defer m.gpuQ.Release(gpuID)
 					job.setRunningOnce()
-					ok := process.UpscaleFile(ctx, cfg, d, gpuID, filename, idx, job.Scale, onEvent, onProgress)
+					ok := process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, onEvent, onProgress)
 					if !ok || ctx.Err() != nil {
 						wg.Done()
 						return
@@ -303,7 +303,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 					// Phase 2: enqueue into FFmpeg queue
 					if err := m.ffmpegQ.Submit(ctx, func() {
 						defer wg.Done()
-						process.EncodeFile(ctx, cfg, d, filename, onEvent, onProgress)
+						process.EncodeFile(ctx, cfg, r, filename, onEvent, onProgress)
 					}); err != nil {
 						wg.Done() // ctx cancelled
 					}
@@ -359,13 +359,13 @@ func (m *JobManager) CancelJob(id string) *Job {
 	job.mu.Lock()
 	if job.Status == "running" || job.Status == "queued" {
 		job.cancel()
-		// Stop video2x containers for upscale/pipeline jobs
+		// Stop video2x processes for upscale/pipeline jobs
 		if job.Type == "upscale" || job.Type == "pipeline" {
-			go m.docker.StopByPrefix(context.Background(), docker.ContainerPrefix+"video2x-")
+			go func() { runner.StopByPrefix(runner.ProcessPrefix + "video2x-") }()
 		}
-		// Stop ffmpeg containers for optimize/pipeline/check jobs
+		// Stop ffmpeg processes for optimize/pipeline/check jobs
 		if job.Type == "optimize" || job.Type == "pipeline" || job.Type == "check" {
-			go m.docker.StopByPrefix(context.Background(), docker.ContainerPrefix+"ffmpeg-")
+			go func() { runner.StopByPrefix(runner.ProcessPrefix + "ffmpeg-") }()
 		}
 	}
 	job.mu.Unlock()

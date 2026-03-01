@@ -16,9 +16,9 @@ type Config struct {
 	GroupID      int
 	HalfCPUs     int
 	VideoExts    []string
-	Video2xImage string
-	FFmpegImage  string
-	AlpineImage  string
+	Video2xBin   string
+	FFmpegBin    string
+	FFprobeBin   string
 }
 
 func NewConfig() Config {
@@ -37,7 +37,7 @@ func NewConfig() Config {
 	}
 
 	return Config{
-		Port:    port,
+		Port:         port,
 		BaseDir:      baseDir,
 		InputDir:     baseDir + "/input",
 		OutputDir:    baseDir + "/output",
@@ -47,8 +47,8 @@ func NewConfig() Config {
 		GroupID:      os.Getgid(),
 		HalfCPUs:     halfCPUs,
 		VideoExts:    []string{".mkv", ".mp4", ".avi"},
-		Video2xImage: "ghcr.io/k4yt3x/video2x:6.4.0",
-		FFmpegImage:  "linuxserver/ffmpeg",
-		AlpineImage:  "alpine",
+		Video2xBin:   "video2x",
+		FFmpegBin:    "ffmpeg",
+		FFprobeBin:   "ffprobe",
 	}
 }

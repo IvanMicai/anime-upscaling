@@ -3,24 +3,24 @@ package main
 import (
 	"context"
 	"fmt"
-
-	"anime-upscaling/internal/config"
-	"anime-upscaling/internal/docker"
+	"os/exec"
 )
 
 func cmdStop(ctx context.Context) error {
-	cfg := config.NewConfig()
-	d := docker.NewDocker(cfg)
+	fmt.Println("Parando processos video2x e ffmpeg...")
 
-	fmt.Printf("Parando containers %s*...\n", docker.ContainerPrefix)
-	n, err := d.StopByPrefix(ctx, docker.ContainerPrefix)
-	if err != nil {
-		return fmt.Errorf("erro ao parar containers: %w", err)
+	killed := 0
+	for _, name := range []string{"video2x", "ffmpeg"} {
+		cmd := exec.CommandContext(ctx, "pkill", "-f", name)
+		if err := cmd.Run(); err == nil {
+			killed++
+		}
 	}
-	if n == 0 {
-		fmt.Println("Nenhum container rodando.")
+
+	if killed == 0 {
+		fmt.Println("Nenhum processo rodando.")
 	} else {
-		fmt.Printf("Containers parados (%d).\n", n)
+		fmt.Println("Processos parados.")
 	}
 	return nil
 }

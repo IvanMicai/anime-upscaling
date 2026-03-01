@@ -23,9 +23,9 @@ func cmdLogs(ctx context.Context) error {
 
 	logs := []tailedLog{
 		{cfg.BaseDir + "/process.log", "[PROCESS] ", ""},
-		{cfg.BaseDir + "/docker_gpu0.log", "[GPU0]    ", logger.ColorBlue},
-		{cfg.BaseDir + "/docker_gpu1.log", "[GPU1]    ", logger.ColorMagenta},
-		{cfg.BaseDir + "/docker_ffmpeg.log", "[FFMPEG]  ", logger.ColorCyan},
+		{cfg.BaseDir + "/gpu0.log", "[GPU0]    ", logger.ColorBlue},
+		{cfg.BaseDir + "/gpu1.log", "[GPU1]    ", logger.ColorMagenta},
+		{cfg.BaseDir + "/ffmpeg.log", "[FFMPEG]  ", logger.ColorCyan},
 	}
 
 	// Ensure log files exist

@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"anime-upscaling/internal/config"
-	"anime-upscaling/internal/docker"
 	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/logger"
+	"anime-upscaling/internal/runner"
 )
 
 // RunPipeline runs the full upscale+encode pipeline with 2 GPU workers feeding 1 FFmpeg worker (CLI convenience wrapper).
-func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileList []string, scale int, onEvent func(logger.JobLog), onProgress func(docker.Progress)) error {
+func RunPipeline(ctx context.Context, cfg config.Config, r *runner.Runner, fileList []string, scale int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) error {
 	type work struct {
 		filename string
 		index    int
@@ -38,7 +38,7 @@ func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileL
 				if ctx.Err() != nil {
 					return
 				}
-				ok := UpscaleFile(ctx, cfg, d, gpuID, w.filename, w.index, scale, onEvent, safeProgress(onProgress))
+				ok := UpscaleFile(ctx, cfg, r, gpuID, w.filename, w.index, scale, onEvent, safeProgress(onProgress))
 				if ok {
 					readyCh <- w.filename
 				}
@@ -55,13 +55,13 @@ func RunPipeline(ctx context.Context, cfg config.Config, d *docker.Docker, fileL
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		EncodeFile(ctx, cfg, d, filename, onEvent, safeProgress(onProgress))
+		EncodeFile(ctx, cfg, r, filename, onEvent, safeProgress(onProgress))
 	}
 	return nil
 }
 
 // EncodeFile compresses a single file from output/ to optimized/ using FFmpeg (pipeline phase 2).
-func EncodeFile(ctx context.Context, cfg config.Config, d *docker.Docker, filename string, onEvent func(logger.JobLog), onProgress func(docker.Progress)) {
+func EncodeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) {
 	for _, dir := range []string{cfg.OutputDir, cfg.OptimizedDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: 0, Message: fmt.Sprintf("mkdir: %v", err), Time: time.Now()})
@@ -69,7 +69,7 @@ func EncodeFile(ctx context.Context, cfg config.Config, d *docker.Docker, filena
 		}
 	}
 
-	ffmpegProgress := func(p docker.Progress) {
+	ffmpegProgress := func(p runner.Progress) {
 		p.Source = "FFMPEG"
 		onProgress(p)
 	}
@@ -82,7 +82,7 @@ func EncodeFile(ctx context.Context, cfg config.Config, d *docker.Docker, filena
 
 	onEvent(logger.JobLog{Source: "FFMPEG", Level: "INFO", Index: 0, Message: "Comprimindo: " + filename, Time: time.Now()})
 
-	err := d.FFmpegEncode(ctx,
+	err := r.FFmpegEncode(ctx,
 		"output/"+filename,
 		"optimized/"+filename,
 		22,

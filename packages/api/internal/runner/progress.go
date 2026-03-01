@@ -1,4 +1,4 @@
-package docker
+package runner
 
 import (
 	"io"
@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Progress holds parsed container progress data.
+// Progress holds parsed process progress data.
 type Progress struct {
 	Source      string  `json:"source,omitempty"`
 	Frame       int     `json:"frame"`
