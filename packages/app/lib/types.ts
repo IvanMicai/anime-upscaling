@@ -80,6 +80,15 @@ export interface CreateJobResponse extends Job {}
 
 export interface CancelJobResponse extends Job {}
 
+export interface DeleteFilesRequest {
+  items: { name: string; folders: string[] }[];
+}
+
+export interface DeleteFilesResponse {
+  deleted: number;
+  errors: string[];
+}
+
 export interface ApiError {
   error: string;
 }

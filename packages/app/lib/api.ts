@@ -4,6 +4,8 @@ import type {
   CreateJobRequest,
   CreateJobResponse,
   CancelJobResponse,
+  DeleteFilesRequest,
+  DeleteFilesResponse,
 } from "./types";
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -40,5 +42,13 @@ export function createJob(req: CreateJobRequest): Promise<CreateJobResponse> {
 export function cancelJob(id: string): Promise<CancelJobResponse> {
   return fetchJSON<CancelJobResponse>(`/api/jobs/${id}/cancel`, {
     method: "POST",
+  });
+}
+
+export function deleteFiles(req: DeleteFilesRequest): Promise<DeleteFilesResponse> {
+  return fetchJSON<DeleteFilesResponse>("/api/files", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
   });
 }

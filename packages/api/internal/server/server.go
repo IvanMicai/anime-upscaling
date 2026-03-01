@@ -55,6 +55,35 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 	}
 
 	return func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodDelete {
+			var body struct {
+				Items []files.DeleteItem `json:"items"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+				return
+			}
+			if len(body.Items) == 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no items to delete"})
+				return
+			}
+			deleted, errs := files.DeleteFiles(body.Items, cfg.InputDir, cfg.OutputDir, cfg.OptimizedDir)
+			// Invalidate cache after deletion
+			if deleted > 0 {
+				if err := cache.BuildFileStatusCache(cfg); err != nil {
+					fmt.Printf("Warning: cache rebuild after delete failed: %v\n", err)
+				}
+			}
+			if errs == nil {
+				errs = []string{}
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"deleted": deleted,
+				"errors":  errs,
+			})
+			return
+		}
+
 		if req.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
