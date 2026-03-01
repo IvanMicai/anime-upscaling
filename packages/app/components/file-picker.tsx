@@ -10,6 +10,42 @@ import { getFiles } from "@/lib/api";
 import { useShiftSelect } from "@/lib/use-shift-select";
 import type { VideoFile } from "@/lib/types";
 
+const FOLDER_COLORS = {
+  input:     { badge: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20", label: "Input" },
+  output:    { badge: "bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20",   label: "Upscaled" },
+  optimized: { badge: "bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20", label: "Optimized" },
+} as const;
+
+const FOLDER_FILTER_KEY = { input: "input", output: "upscaled", optimized: "optimized" } as const;
+type FolderKey = keyof typeof FOLDER_COLORS;
+
+function getFolderData(file: VideoFile, dir: string) {
+  const entries: { key: FolderKey; exists: boolean; size: number; width?: number; height?: number }[] = [
+    {
+      key: "input",
+      exists: dir === "input" ? true : !!file.has_input,
+      size: dir === "input" ? file.size : (file.input_size ?? 0),
+      width: dir === "input" ? file.width : file.input_width,
+      height: dir === "input" ? file.height : file.input_height,
+    },
+    {
+      key: "output",
+      exists: dir === "output" ? true : !!file.has_upscaled,
+      size: dir === "output" ? file.size : (file.upscaled_size ?? 0),
+      width: dir === "output" ? file.width : file.upscaled_width,
+      height: dir === "output" ? file.height : file.upscaled_height,
+    },
+    {
+      key: "optimized",
+      exists: dir === "optimized" ? true : !!file.has_optimized,
+      size: dir === "optimized" ? file.size : (file.optimized_size ?? 0),
+      width: dir === "optimized" ? file.width : file.optimized_width,
+      height: dir === "optimized" ? file.height : file.optimized_height,
+    },
+  ];
+  return entries;
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -110,42 +146,24 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
     <div className="flex flex-col h-full gap-2">
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">Legend:</span>
-        <button
-          type="button"
-          onClick={() => toggleFilter("input")}
-          className={cn(
-            "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
-            filters.has("input")
-              ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
-              : "bg-transparent text-muted-foreground border-border"
-          )}
-        >
-          Input
-        </button>
-        <button
-          type="button"
-          onClick={() => toggleFilter("upscaled")}
-          className={cn(
-            "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
-            filters.has("upscaled")
-              ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-              : "bg-transparent text-muted-foreground border-border"
-          )}
-        >
-          Upscaled
-        </button>
-        <button
-          type="button"
-          onClick={() => toggleFilter("optimized")}
-          className={cn(
-            "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
-            filters.has("optimized")
-              ? "bg-green-500/20 text-green-400 border-green-500/30"
-              : "bg-transparent text-muted-foreground border-border"
-          )}
-        >
-          Optimized
-        </button>
+        {(Object.keys(FOLDER_COLORS) as FolderKey[]).map((key) => {
+          const filterKey = FOLDER_FILTER_KEY[key];
+          const active = filters.has(filterKey);
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => toggleFilter(filterKey)}
+              className={cn(
+                "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
+                FOLDER_COLORS[key].badge,
+                active && "ring-2 ring-white/30"
+              )}
+            >
+              {FOLDER_COLORS[key].label}
+            </button>
+          );
+        })}
       </div>
       <div className="flex items-center gap-2">
         <Checkbox
@@ -187,32 +205,13 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
                 {file.name}
               </span>
               <div className="flex items-center gap-1.5 ml-auto shrink-0">
-                {dir !== "input" && file.has_input && (
-                  <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">
-                    {file.input_width && file.input_height
-                      ? `${file.input_width}x${file.input_height} @ `
-                      : ""}{formatBytes(file.input_size ?? 0)}
+                {getFolderData(file, dir).map((entry) => (
+                  <Badge key={entry.key} className={FOLDER_COLORS[entry.key].badge}>
+                    {entry.exists
+                      ? `${entry.width && entry.height ? `${entry.width}x${entry.height} @ ` : ""}${formatBytes(entry.size)}`
+                      : "\u2014"}
                   </Badge>
-                )}
-                {dir !== "output" && file.has_upscaled && (
-                  <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20">
-                    {file.upscaled_width && file.upscaled_height
-                      ? `${file.upscaled_width}x${file.upscaled_height} @ `
-                      : ""}{formatBytes(file.upscaled_size ?? 0)}
-                  </Badge>
-                )}
-                {dir !== "optimized" && file.has_optimized && (
-                  <Badge className="bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20">
-                    {file.optimized_width && file.optimized_height
-                      ? `${file.optimized_width}x${file.optimized_height} @ `
-                      : ""}{formatBytes(file.optimized_size ?? 0)}
-                  </Badge>
-                )}
-                <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">
-                  {file.width && file.height
-                    ? `${file.width}x${file.height} @ `
-                    : ""}{formatBytes(file.size)}
-                </Badge>
+                ))}
               </div>
             </div>
           ))}
