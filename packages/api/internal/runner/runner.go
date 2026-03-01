@@ -48,7 +48,14 @@ func (r *Runner) Video2x(ctx context.Context, gpuID int, filename, logPath strin
 		"-s", strconv.Itoa(scale),
 		"--realesrgan-model", "realesr-animevideov3",
 	)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("CUDA_VISIBLE_DEVICES=%d", gpuID))
+	env := os.Environ()
+	filtered := make([]string, 0, len(env))
+	for _, e := range env {
+		if !strings.HasPrefix(e, "CUDA_VISIBLE_DEVICES=") {
+			filtered = append(filtered, e)
+		}
+	}
+	cmd.Env = append(filtered, fmt.Sprintf("CUDA_VISIBLE_DEVICES=%d", gpuID))
 
 	var out io.Writer = f
 	if onProgress != nil {
