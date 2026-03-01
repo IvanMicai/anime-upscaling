@@ -42,7 +42,7 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// GET /api/files?dir=input
+// GET /api/files?dir=input&refresh=true
 func handleFiles(cfg config.Config) http.HandlerFunc {
 	d := docker.NewDocker(cfg)
 
@@ -56,6 +56,7 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 		if dir == "" {
 			dir = "input"
 		}
+		forceRefresh := r.URL.Query().Get("refresh") == "true"
 
 		allowed := map[string]string{
 			"input":     cfg.InputDir,
@@ -88,7 +89,9 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 			videoFiles = []files.VideoFile{}
 		}
 
-		// Enrich with resolution data
+		var cachedAt time.Time
+
+		// Enrich with resolution data using a single multi-dir container
 		if len(videoFiles) > 0 {
 			names := make([]string, len(videoFiles))
 			for i, f := range videoFiles {
@@ -97,53 +100,29 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer cancel()
 
-			// Primary directory resolution
-			resolutions, _ := d.FFprobeBatchResolutionCached(ctx, fullPath, names)
-			for i, f := range videoFiles {
-				if res, ok := resolutions[f.Name]; ok {
-					videoFiles[i].Width = res.Width
-					videoFiles[i].Height = res.Height
-				}
-			}
+			// Build mounts and filesByLabel
+			mounts := []docker.DirMount{{Label: dir, HostDir: fullPath}}
+			filesByLabel := map[string][]string{dir: names}
 
-			// Cross-directory resolutions
 			if dir == "input" {
-				// Probe upscaled files
-				var upscaledNames []string
+				var upscaledNames, optNames []string
 				for _, f := range videoFiles {
 					if f.HasUpscaled {
 						upscaledNames = append(upscaledNames, f.Name)
 					}
+					if f.HasOptimized {
+						optNames = append(optNames, f.Name)
+					}
 				}
 				if len(upscaledNames) > 0 {
-					if upRes, err := d.FFprobeBatchResolutionCached(ctx, cfg.OutputDir, upscaledNames); err == nil {
-						for i, f := range videoFiles {
-							if res, ok := upRes[f.Name]; ok {
-								videoFiles[i].UpscaledWidth = res.Width
-								videoFiles[i].UpscaledHeight = res.Height
-							}
-						}
-					}
-				}
-				// Probe optimized files
-				var optNames []string
-				for _, f := range videoFiles {
-					if f.HasOptimized {
-						optNames = append(optNames, f.Name)
-					}
+					mounts = append(mounts, docker.DirMount{Label: "output", HostDir: cfg.OutputDir})
+					filesByLabel["output"] = upscaledNames
 				}
 				if len(optNames) > 0 {
-					if optRes, err := d.FFprobeBatchResolutionCached(ctx, cfg.OptimizedDir, optNames); err == nil {
-						for i, f := range videoFiles {
-							if res, ok := optRes[f.Name]; ok {
-								videoFiles[i].OptimizedWidth = res.Width
-								videoFiles[i].OptimizedHeight = res.Height
-							}
-						}
-					}
+					mounts = append(mounts, docker.DirMount{Label: "optimized", HostDir: cfg.OptimizedDir})
+					filesByLabel["optimized"] = optNames
 				}
 			} else if dir == "output" {
-				// Probe optimized files
 				var optNames []string
 				for _, f := range videoFiles {
 					if f.HasOptimized {
@@ -151,47 +130,64 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 					}
 				}
 				if len(optNames) > 0 {
-					if optRes, err := d.FFprobeBatchResolutionCached(ctx, cfg.OptimizedDir, optNames); err == nil {
-						for i, f := range videoFiles {
-							if res, ok := optRes[f.Name]; ok {
-								videoFiles[i].OptimizedWidth = res.Width
-								videoFiles[i].OptimizedHeight = res.Height
-							}
-						}
-					}
+					mounts = append(mounts, docker.DirMount{Label: "optimized", HostDir: cfg.OptimizedDir})
+					filesByLabel["optimized"] = optNames
 				}
 			} else if dir == "optimized" {
-				// Probe input files
-				var inputNames []string
+				var inputNames, upscaledNames []string
 				for _, f := range videoFiles {
 					if f.HasInput {
 						inputNames = append(inputNames, f.Name)
 					}
-				}
-				if len(inputNames) > 0 {
-					if inRes, err := d.FFprobeBatchResolutionCached(ctx, cfg.InputDir, inputNames); err == nil {
-						for i, f := range videoFiles {
-							if res, ok := inRes[f.Name]; ok {
-								videoFiles[i].InputWidth = res.Width
-								videoFiles[i].InputHeight = res.Height
-							}
-						}
-					}
-				}
-				// Probe upscaled files
-				var upscaledNames []string
-				for _, f := range videoFiles {
 					if f.HasUpscaled {
 						upscaledNames = append(upscaledNames, f.Name)
 					}
 				}
+				if len(inputNames) > 0 {
+					mounts = append(mounts, docker.DirMount{Label: "input", HostDir: cfg.InputDir})
+					filesByLabel["input"] = inputNames
+				}
 				if len(upscaledNames) > 0 {
-					if upRes, err := d.FFprobeBatchResolutionCached(ctx, cfg.OutputDir, upscaledNames); err == nil {
-						for i, f := range videoFiles {
-							if res, ok := upRes[f.Name]; ok {
-								videoFiles[i].UpscaledWidth = res.Width
-								videoFiles[i].UpscaledHeight = res.Height
-							}
+					mounts = append(mounts, docker.DirMount{Label: "output", HostDir: cfg.OutputDir})
+					filesByLabel["output"] = upscaledNames
+				}
+			}
+
+			results, ca, _ := d.FFprobeBatchResolutionMultiDirCached(ctx, mounts, filesByLabel, forceRefresh)
+			cachedAt = ca
+
+			if results != nil {
+				// Primary dir resolution
+				if dirRes := results[dir]; dirRes != nil {
+					for i, f := range videoFiles {
+						if res, ok := dirRes[f.Name]; ok {
+							videoFiles[i].Width = res.Width
+							videoFiles[i].Height = res.Height
+						}
+					}
+				}
+				// Cross-dir resolutions
+				if upRes := results["output"]; upRes != nil && dir != "output" {
+					for i, f := range videoFiles {
+						if res, ok := upRes[f.Name]; ok {
+							videoFiles[i].UpscaledWidth = res.Width
+							videoFiles[i].UpscaledHeight = res.Height
+						}
+					}
+				}
+				if optRes := results["optimized"]; optRes != nil && dir != "optimized" {
+					for i, f := range videoFiles {
+						if res, ok := optRes[f.Name]; ok {
+							videoFiles[i].OptimizedWidth = res.Width
+							videoFiles[i].OptimizedHeight = res.Height
+						}
+					}
+				}
+				if inRes := results["input"]; inRes != nil && dir != "input" {
+					for i, f := range videoFiles {
+						if res, ok := inRes[f.Name]; ok {
+							videoFiles[i].InputWidth = res.Width
+							videoFiles[i].InputHeight = res.Height
 						}
 					}
 				}
@@ -199,8 +195,9 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"dir":   dir,
-			"files": videoFiles,
+			"dir":       dir,
+			"files":     videoFiles,
+			"cached_at": cachedAt.Format(time.RFC3339),
 		})
 	}
 }

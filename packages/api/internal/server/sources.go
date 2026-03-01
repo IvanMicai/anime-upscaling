@@ -122,11 +122,12 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, map[string]string{"deleted": id})
 
 		case "files":
-			// GET /api/sources/{id}/files
+			// GET /api/sources/{id}/files?refresh=true
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
+			forceRefresh := r.URL.Query().Get("refresh") == "true"
 			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer cancel()
 			fileList, err := d.ListFiles(ctx, src.Path, cfg.VideoExts)
@@ -134,12 +135,6 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
 			}
-			// Batch-fetch resolutions
-			names := make([]string, len(fileList))
-			for i, f := range fileList {
-				names[i] = f.Name
-			}
-			resolutions, _ := d.FFprobeBatchResolutionCached(ctx, src.Path, names)
 
 			type sourceFileWithStatus struct {
 				Name            string `json:"name"`
@@ -159,7 +154,15 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 				OptimizedWidth  int    `json:"optimized_width,omitempty"`
 				OptimizedHeight int    `json:"optimized_height,omitempty"`
 			}
-			// Probe cross-directory resolutions
+
+			// Build mounts and filesByLabel for single multi-dir container call
+			names := make([]string, len(fileList))
+			for i, f := range fileList {
+				names[i] = f.Name
+			}
+			mounts := []docker.DirMount{{Label: "source", HostDir: src.Path}}
+			filesByLabel := map[string][]string{"source": names}
+
 			var inputNames, outputNames, optNames []string
 			for _, f := range fileList {
 				if _, err := os.Stat(filepath.Join(cfg.InputDir, f.Name)); err == nil {
@@ -172,51 +175,66 @@ func handleSourceRoutes(cfg config.Config) http.HandlerFunc {
 					optNames = append(optNames, f.Name)
 				}
 			}
-			var inputRes, outputRes, optRes map[string]docker.VideoResolution
 			if len(inputNames) > 0 {
-				inputRes, _ = d.FFprobeBatchResolutionCached(ctx, cfg.InputDir, inputNames)
+				mounts = append(mounts, docker.DirMount{Label: "input", HostDir: cfg.InputDir})
+				filesByLabel["input"] = inputNames
 			}
 			if len(outputNames) > 0 {
-				outputRes, _ = d.FFprobeBatchResolutionCached(ctx, cfg.OutputDir, outputNames)
+				mounts = append(mounts, docker.DirMount{Label: "output", HostDir: cfg.OutputDir})
+				filesByLabel["output"] = outputNames
 			}
 			if len(optNames) > 0 {
-				optRes, _ = d.FFprobeBatchResolutionCached(ctx, cfg.OptimizedDir, optNames)
+				mounts = append(mounts, docker.DirMount{Label: "optimized", HostDir: cfg.OptimizedDir})
+				filesByLabel["optimized"] = optNames
 			}
+
+			allRes, cachedAt, _ := d.FFprobeBatchResolutionMultiDirCached(ctx, mounts, filesByLabel, forceRefresh)
 
 			result := make([]sourceFileWithStatus, 0, len(fileList))
 			for _, f := range fileList {
 				sf := sourceFileWithStatus{Name: f.Name, Size: f.Size}
-				if res, ok := resolutions[f.Name]; ok {
-					sf.Width = res.Width
-					sf.Height = res.Height
+				if allRes != nil {
+					if res, ok := allRes["source"][f.Name]; ok {
+						sf.Width = res.Width
+						sf.Height = res.Height
+					}
 				}
 				if info, err := os.Stat(filepath.Join(cfg.InputDir, f.Name)); err == nil {
 					sf.InInput = true
 					sf.InputSize = info.Size()
-					if res, ok := inputRes[f.Name]; ok {
-						sf.InputWidth = res.Width
-						sf.InputHeight = res.Height
+					if allRes != nil {
+						if res, ok := allRes["input"][f.Name]; ok {
+							sf.InputWidth = res.Width
+							sf.InputHeight = res.Height
+						}
 					}
 				}
 				if info, err := os.Stat(filepath.Join(cfg.OutputDir, f.Name)); err == nil {
 					sf.InOutput = true
 					sf.OutputSize = info.Size()
-					if res, ok := outputRes[f.Name]; ok {
-						sf.UpscaledWidth = res.Width
-						sf.UpscaledHeight = res.Height
+					if allRes != nil {
+						if res, ok := allRes["output"][f.Name]; ok {
+							sf.UpscaledWidth = res.Width
+							sf.UpscaledHeight = res.Height
+						}
 					}
 				}
 				if info, err := os.Stat(filepath.Join(cfg.OptimizedDir, f.Name)); err == nil {
 					sf.InOptimized = true
 					sf.OptimizedSize = info.Size()
-					if res, ok := optRes[f.Name]; ok {
-						sf.OptimizedWidth = res.Width
-						sf.OptimizedHeight = res.Height
+					if allRes != nil {
+						if res, ok := allRes["optimized"][f.Name]; ok {
+							sf.OptimizedWidth = res.Width
+							sf.OptimizedHeight = res.Height
+						}
 					}
 				}
 				result = append(result, sf)
 			}
-			writeJSON(w, http.StatusOK, map[string]interface{}{"files": result})
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"files":     result,
+				"cached_at": cachedAt.Format(time.RFC3339),
+			})
 
 		case "import":
 			// POST /api/sources/{id}/import

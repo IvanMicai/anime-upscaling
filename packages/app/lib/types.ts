@@ -65,6 +65,12 @@ export interface VideoFile {
 export interface FilesResponse {
   dir: string;
   files: VideoFile[];
+  cached_at?: string;
+}
+
+export interface SourceFilesResponse {
+  files: SourceFile[];
+  cached_at?: string;
 }
 
 export interface CreateJobRequest {
