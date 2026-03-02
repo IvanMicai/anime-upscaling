@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -112,6 +113,16 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 			if err := cache.BuildFileStatusCache(cfg); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "cache rebuild failed: " + err.Error()})
 				return
+			}
+		}
+
+		// Auto-refresh cache if older than 10 minutes
+		if !forceRefresh {
+			info, err := os.Stat(cachePath)
+			if err != nil || time.Since(info.ModTime()) > 10*time.Minute {
+				if err := cache.BuildFileStatusCache(cfg); err != nil {
+					fmt.Printf("Warning: auto cache refresh failed: %v\n", err)
+				}
 			}
 		}
 
