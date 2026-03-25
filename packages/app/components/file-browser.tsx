@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -21,25 +19,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { getFiles, deleteFiles } from "@/lib/api";
-import { useShiftSelect } from "@/lib/use-shift-select";
-import { FOLDER_COLORS, FOLDER_FILTER_KEY, getFolderData, formatBytes, formatCacheAge, type FolderKey } from "@/lib/file-utils";
+import { getFiles, deleteFiles, downloadFile } from "@/lib/api";
+import {
+  FOLDER_COLORS,
+  FOLDER_FILTER_KEY,
+  getFolderData,
+  formatBytes,
+  formatCacheAge,
+  type FolderKey,
+} from "@/lib/file-utils";
 import type { VideoFile } from "@/lib/types";
 
-interface FilePickerProps {
-  selected: string[];
-  onChange: (files: string[]) => void;
-  dir?: string;
-}
+const DIRS: FolderKey[] = ["input", "output", "optimized", "interpolated"];
 
-export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProps) {
+export function FileBrowser() {
+  const [dir, setDir] = useState<FolderKey>("input");
   const [files, setFiles] = useState<VideoFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<Set<string>>(new Set());
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const { handleToggle, resetLastClicked } = useShiftSelect(selected, onChange);
 
   // Delete mode state
   const [deleteMode, setDeleteMode] = useState(false);
@@ -49,8 +50,6 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
 
   useEffect(() => {
     setLoading(true);
-    onChange([]);
-    resetLastClicked();
     setFilters(new Set());
     setDeleteMode(false);
     setDeleteSelections(new Map());
@@ -81,8 +80,6 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
       else next.add(key);
       return next;
     });
-    onChange([]);
-    resetLastClicked();
   }
 
   function matchesFilter(file: VideoFile): boolean {
@@ -94,7 +91,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
     return false;
   }
 
-  // Delete mode helpers
+  // Delete helpers
   function toggleDeleteCell(fileName: string, folder: FolderKey) {
     setDeleteSelections((prev) => {
       const next = new Map(prev);
@@ -139,7 +136,6 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
       await deleteFiles({ items });
       setDeleteSelections(new Map());
       setConfirmOpen(false);
-      // Refresh file list
       const res = await getFiles(dir, true);
       setFiles(res.files ?? []);
       setCachedAt(res.cached_at ?? null);
@@ -152,33 +148,26 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
 
   const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
   const filtered = sorted.filter(matchesFilter);
-  const filteredNames = filtered.map((f) => f.name);
-
-  const allSelected = filtered.length > 0 && filtered.every((f) => selected.includes(f.name));
-
-  const selectedTotal = files
-    .filter((f) => selected.includes(f.name))
-    .reduce((sum, f) => sum + f.size, 0);
-
-  function toggleAll() {
-    onChange(allSelected ? [] : [...filteredNames]);
-  }
-
-  if (loading) {
-    return <p className="text-sm text-muted-foreground">Loading files...</p>;
-  }
-
-  if (files.length === 0) {
-    return <p className="text-sm text-muted-foreground">No files found in {dir}/.</p>;
-  }
 
   const deleteSummary = getDeleteSummary();
   const deleteTotal = getDeleteTotal();
 
   return (
-    <div className="flex flex-col h-full gap-2">
+    <div className="flex flex-col gap-3">
+      {/* Directory tabs */}
+      <Tabs value={dir} onValueChange={(v) => setDir(v as FolderKey)}>
+        <TabsList>
+          {DIRS.map((d) => (
+            <TabsTrigger key={d} value={d} className={FOLDER_COLORS[d].text}>
+              {FOLDER_COLORS[d].label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
+      {/* Legend + delete mode toggle */}
       <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Legend:</span>
+        <span className="text-xs text-muted-foreground">Filter:</span>
         {(Object.keys(FOLDER_COLORS) as FolderKey[]).map((key) => {
           const filterKey = FOLDER_FILTER_KEY[key];
           const active = filters.has(filterKey);
@@ -197,7 +186,20 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
             </button>
           );
         })}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {cachedAt && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              Cached {formatCacheAge(cachedAt)}
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                {refreshing ? "..." : "Refresh"}
+              </button>
+            </span>
+          )}
           <Button
             variant={deleteMode ? "destructive" : "outline"}
             size="xs"
@@ -209,29 +211,6 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
             {deleteMode ? "Exit Delete" : "Delete Mode"}
           </Button>
         </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id="select-all"
-          checked={allSelected}
-          onCheckedChange={toggleAll}
-        />
-        <Label htmlFor="select-all" className="text-sm font-medium">
-          Select All ({filtered.length} files{selected.length > 0 ? `, ${formatBytes(selectedTotal)}` : ""})
-        </Label>
-        {cachedAt && (
-          <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-            Cached {formatCacheAge(cachedAt)}
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="hover:text-foreground transition-colors disabled:opacity-50"
-            >
-              {refreshing ? "..." : "Refresh"}
-            </button>
-          </span>
-        )}
       </div>
 
       {/* Delete summary bar */}
@@ -256,76 +235,86 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
         </div>
       )}
 
-      <ScrollArea className="flex-1 min-h-0 rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-8" />
-              <TableHead>Filename</TableHead>
-              <TableHead className={cn("text-right", FOLDER_COLORS.input.text)}>
-                {FOLDER_COLORS.input.label}
-              </TableHead>
-              <TableHead className={cn("text-right", FOLDER_COLORS.output.text)}>
-                {FOLDER_COLORS.output.label}
-              </TableHead>
-              <TableHead className={cn("text-right", FOLDER_COLORS.optimized.text)}>
-                {FOLDER_COLORS.optimized.label}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((file, index) => {
-              const folders = getFolderData(file, dir);
-              const fileDeleteFolders = deleteSelections.get(file.name);
-              return (
-                <TableRow
-                  key={file.name}
-                  className="cursor-pointer"
-                  onClick={(e) => {
-                    if (!deleteMode) handleToggle(index, filteredNames, e.shiftKey);
-                  }}
-                >
-                  <TableCell className="w-8">
-                    <Checkbox
-                      checked={selected.includes(file.name)}
-                      tabIndex={-1}
-                      className="pointer-events-none"
-                    />
-                  </TableCell>
-                  <TableCell className="font-mono text-sm truncate max-w-[300px]">
-                    {file.name}
-                  </TableCell>
-                  {folders.map((entry) => {
-                    const isMarked = fileDeleteFolders?.has(entry.key) ?? false;
-                    const canClick = deleteMode && entry.exists;
-                    return (
-                      <TableCell
-                        key={entry.key}
-                        className={cn(
-                          "text-right text-sm",
-                          entry.exists ? FOLDER_COLORS[entry.key].text : "text-muted-foreground",
-                          canClick && "cursor-pointer hover:bg-muted/50",
-                          isMarked && "ring-2 ring-inset ring-red-500 bg-red-500/10"
-                        )}
-                        onClick={(e) => {
-                          if (canClick) {
-                            e.stopPropagation();
-                            toggleDeleteCell(file.name, entry.key);
-                          }
-                        }}
-                      >
-                        {entry.exists
-                          ? `${entry.width && entry.height ? `${entry.width}x${entry.height} @ ` : ""}${formatBytes(entry.size)}`
-                          : "\u2014"}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </ScrollArea>
+      {/* File table */}
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading files...</p>
+      ) : files.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No files found in {dir}/.</p>
+      ) : (
+        <ScrollArea className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Filename</TableHead>
+                {DIRS.map((d) => (
+                  <TableHead key={d} className={cn("text-right", FOLDER_COLORS[d].text)}>
+                    {FOLDER_COLORS[d].label}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((file) => {
+                const folders = getFolderData(file, dir);
+                const fileDeleteFolders = deleteSelections.get(file.name);
+                return (
+                  <TableRow key={file.name}>
+                    <TableCell className="font-mono text-sm truncate max-w-[300px]">
+                      {file.name}
+                    </TableCell>
+                    {folders.map((entry) => {
+                      const isMarked = fileDeleteFolders?.has(entry.key) ?? false;
+                      const canClickDelete = deleteMode && entry.exists;
+                      return (
+                        <TableCell
+                          key={entry.key}
+                          className={cn(
+                            "text-right text-sm",
+                            entry.exists ? FOLDER_COLORS[entry.key].text : "text-muted-foreground",
+                            canClickDelete && "cursor-pointer hover:bg-muted/50",
+                            isMarked && "ring-2 ring-inset ring-red-500 bg-red-500/10"
+                          )}
+                          onClick={() => {
+                            if (canClickDelete) toggleDeleteCell(file.name, entry.key);
+                          }}
+                        >
+                          {entry.exists ? (
+                            <span className="inline-flex items-center gap-1.5 justify-end">
+                              <span>
+                                {entry.width && entry.height ? `${entry.width}x${entry.height} @ ` : ""}
+                                {formatBytes(entry.size)}
+                              </span>
+                              {!deleteMode && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    downloadFile(entry.key, file.name);
+                                  }}
+                                  className="opacity-40 hover:opacity-100 transition-opacity"
+                                  title={`Download from ${FOLDER_COLORS[entry.key].label}`}
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="7 10 12 15 17 10" />
+                                    <line x1="12" y1="15" x2="12" y2="3" />
+                                  </svg>
+                                </button>
+                              )}
+                            </span>
+                          ) : (
+                            "\u2014"
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </ScrollArea>
+      )}
 
       {/* Delete confirmation dialog */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
@@ -337,7 +326,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-60 overflow-y-auto space-y-2 text-sm">
-            {(["input", "output", "optimized", "interpolated"] as FolderKey[]).map((folder) => {
+            {DIRS.map((folder) => {
               const names: string[] = [];
               for (const [name, folders] of deleteSelections) {
                 if (folders.has(folder)) names.push(name);

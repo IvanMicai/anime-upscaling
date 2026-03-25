@@ -52,3 +52,13 @@ export function deleteFiles(req: DeleteFilesRequest): Promise<DeleteFilesRespons
     body: JSON.stringify(req),
   });
 }
+
+export function downloadFile(dir: string, name: string): void {
+  const params = new URLSearchParams({ dir, name });
+  const a = document.createElement("a");
+  a.href = `/api/files/download?${params}`;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}

@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,6 +23,7 @@ func CmdServe(cfg config.Config) error {
 	jm := NewJobManager(cfg)
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/files/download", corsMiddleware(handleFileDownload(cfg)))
 	mux.HandleFunc("/api/files", corsMiddleware(handleFiles(cfg)))
 	mux.HandleFunc("/api/jobs", corsMiddleware(handleJobs(jm, cfg)))
 	mux.HandleFunc("/api/jobs/", corsMiddleware(handleJobRoutes(jm)))
@@ -41,6 +43,53 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		next(w, r)
+	}
+}
+
+// GET /api/files/download?dir=input&name=video.mkv
+func handleFileDownload(cfg config.Config) http.HandlerFunc {
+	allowed := map[string]string{
+		"input":        cfg.InputDir,
+		"output":       cfg.OutputDir,
+		"optimized":    cfg.OptimizedDir,
+		"interpolated": cfg.InterpolatedDir,
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		dir := r.URL.Query().Get("dir")
+		name := r.URL.Query().Get("name")
+
+		dirPath, ok := allowed[dir]
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid dir"})
+			return
+		}
+		if name == "" || strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid filename"})
+			return
+		}
+
+		fullPath := filepath.Join(dirPath, name)
+		f, err := os.Open(fullPath)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
+			return
+		}
+		defer f.Close()
+
+		info, err := f.Stat()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to stat file"})
+			return
+		}
+
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
+		io.Copy(w, f)
 	}
 }
 
