@@ -228,6 +228,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		Scale      int      `json:"scale"`
 		Resolution int      `json:"resolution"`
 		Multiplier int      `json:"multiplier"`
+		Threads    int      `json:"threads"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -254,6 +255,11 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 	if req.Type == "interpolate" && req.Multiplier != 2 && req.Multiplier != 3 && req.Multiplier != 4 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "multiplier must be 2, 3, or 4"})
 		return
+	}
+
+	// threads: 0 means auto (will use HalfCPUs at process level)
+	if req.Threads < 0 {
+		req.Threads = 0
 	}
 
 	if req.Resolution == 0 {
@@ -312,7 +318,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		}
 	}
 
-	job := jm.StartJob(req.Type, req.Files, req.Source, req.Scale, req.Resolution, req.Multiplier)
+	job := jm.StartJob(req.Type, req.Files, req.Source, req.Scale, req.Resolution, req.Multiplier, req.Threads)
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":     job.ID,
@@ -382,6 +388,7 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		Scale      int         `json:"scale"`
 		Resolution int         `json:"resolution"`
 		Multiplier int         `json:"multiplier,omitempty"`
+		Threads    int         `json:"threads,omitempty"`
 		Files      []string    `json:"files"`
 		Progress   JobProgress `json:"progress"`
 		CreatedAt  time.Time   `json:"created_at"`
@@ -395,6 +402,7 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		Scale:      snap.Scale,
 		Resolution: snap.Resolution,
 		Multiplier: snap.Multiplier,
+		Threads:    snap.Threads,
 		Files:      snap.Files,
 		Progress:   snap.Progress,
 		CreatedAt:  snap.CreatedAt,

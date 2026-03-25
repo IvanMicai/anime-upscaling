@@ -30,6 +30,7 @@ export interface Job {
   status: JobStatus;
   scale: number;
   multiplier?: number;
+  threads?: number;
   files: string[];
   progress: JobProgress;
   created_at: string;
@@ -80,6 +81,7 @@ export interface CreateJobRequest {
   scale?: 2 | 4;
   resolution?: 1 | 2 | 4;
   multiplier?: 2 | 3 | 4;
+  threads?: number;
 }
 
 export interface CreateJobResponse extends Job {}

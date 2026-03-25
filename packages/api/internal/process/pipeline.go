@@ -55,13 +55,13 @@ func RunPipeline(ctx context.Context, cfg config.Config, r *runner.Runner, fileL
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		EncodeFile(ctx, cfg, r, filename, onEvent, safeProgress(onProgress))
+		EncodeFile(ctx, cfg, r, filename, 0, onEvent, safeProgress(onProgress))
 	}
 	return nil
 }
 
 // EncodeFile compresses a single file from output/ to optimized/ using FFmpeg (pipeline phase 2).
-func EncodeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) {
+func EncodeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, threads int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) {
 	for _, dir := range []string{cfg.OutputDir, cfg.OptimizedDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: 0, Message: fmt.Sprintf("mkdir: %v", err), Time: time.Now()})
@@ -82,11 +82,16 @@ func EncodeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filena
 
 	onEvent(logger.JobLog{Source: "FFMPEG", Level: "INFO", Index: 0, Message: "Comprimindo: " + filename, Time: time.Now()})
 
+	t := threads
+	if t == 0 {
+		t = cfg.HalfCPUs
+	}
+
 	err := r.FFmpegEncode(ctx,
 		"output/"+filename,
 		"optimized/"+filename,
 		22,
-		cfg.HalfCPUs,
+		t,
 		"",
 		false,
 		1,
