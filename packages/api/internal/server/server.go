@@ -50,9 +50,10 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 
 	// Map dir query param to cache label
 	dirToLabel := map[string]string{
-		"input":     "input",
-		"output":    "output",
-		"optimized": "optimize",
+		"input":        "input",
+		"output":       "output",
+		"optimized":    "optimize",
+		"interpolated": "interpolated",
 	}
 
 	return func(w http.ResponseWriter, req *http.Request) {
@@ -68,7 +69,7 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no items to delete"})
 				return
 			}
-			deleted, errs := files.DeleteFiles(body.Items, cfg.InputDir, cfg.OutputDir, cfg.OptimizedDir)
+			deleted, errs := files.DeleteFiles(body.Items, cfg.InputDir, cfg.OutputDir, cfg.OptimizedDir, cfg.InterpolatedDir)
 			// Invalidate cache after deletion
 			if deleted > 0 {
 				if err := cache.BuildFileStatusCache(cfg); err != nil {
@@ -97,14 +98,15 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 		forceRefresh := req.URL.Query().Get("refresh") == "true"
 
 		allowed := map[string]string{
-			"input":     cfg.InputDir,
-			"output":    cfg.OutputDir,
-			"optimized": cfg.OptimizedDir,
+			"input":        cfg.InputDir,
+			"output":       cfg.OutputDir,
+			"optimized":    cfg.OptimizedDir,
+			"interpolated": cfg.InterpolatedDir,
 		}
 
 		fullPath, ok := allowed[dir]
 		if !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid dir: must be input, output, or optimized"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid dir: must be input, output, optimized, or interpolated"})
 			return
 		}
 
@@ -128,13 +130,16 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 
 		var videoFiles []files.VideoFile
 		var err error
-		if dir == "input" {
-			videoFiles, err = files.ListVideosWithStatus(fullPath, cfg.OutputDir, cfg.OptimizedDir, cfg.VideoExts)
-		} else if dir == "output" {
+		switch dir {
+		case "input":
+			videoFiles, err = files.ListVideosWithStatus(fullPath, cfg.OutputDir, cfg.OptimizedDir, cfg.InterpolatedDir, cfg.VideoExts)
+		case "output":
 			videoFiles, err = files.ListOutputWithStatus(fullPath, cfg.InputDir, cfg.OptimizedDir, cfg.VideoExts)
-		} else if dir == "optimized" {
+		case "optimized":
 			videoFiles, err = files.ListOptimizedWithStatus(fullPath, cfg.InputDir, cfg.OutputDir, cfg.VideoExts)
-		} else {
+		case "interpolated":
+			videoFiles, err = files.ListInterpolatedWithStatus(fullPath, cfg.InputDir, cfg.VideoExts)
+		default:
 			videoFiles, err = files.ListVideosWithSize(fullPath, cfg.VideoExts)
 		}
 		if err != nil {
@@ -165,6 +170,8 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 					primary = status.Output
 				case "optimize":
 					primary = status.Optimize
+				case "interpolated":
+					primary = status.Interpolated
 				}
 				if primary != nil {
 					videoFiles[i].Width = primary.Width
@@ -220,15 +227,16 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		Source     string   `json:"source"`
 		Scale      int      `json:"scale"`
 		Resolution int      `json:"resolution"`
+		Multiplier int      `json:"multiplier"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
 
-	validTypes := map[string]bool{"upscale": true, "optimize": true, "pipeline": true, "check": true}
+	validTypes := map[string]bool{"upscale": true, "optimize": true, "pipeline": true, "check": true, "interpolate": true}
 	if !validTypes[req.Type] {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be upscale, optimize, pipeline, or check"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be upscale, optimize, pipeline, check, or interpolate"})
 		return
 	}
 
@@ -237,6 +245,14 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 	}
 	if (req.Type == "upscale" || req.Type == "pipeline") && req.Scale != 2 && req.Scale != 4 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "scale must be 2 or 4"})
+		return
+	}
+
+	if req.Multiplier == 0 {
+		req.Multiplier = 2
+	}
+	if req.Type == "interpolate" && req.Multiplier != 2 && req.Multiplier != 3 && req.Multiplier != 4 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "multiplier must be 2, 3, or 4"})
 		return
 	}
 
@@ -270,6 +286,8 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		sourceDir = cfg.OutputDir
 	case "optimized":
 		sourceDir = cfg.OptimizedDir
+	case "interpolated":
+		sourceDir = cfg.InterpolatedDir
 	}
 
 	// If no files specified, use all videos in source dir
@@ -294,7 +312,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		}
 	}
 
-	job := jm.StartJob(req.Type, req.Files, req.Source, req.Scale, req.Resolution)
+	job := jm.StartJob(req.Type, req.Files, req.Source, req.Scale, req.Resolution, req.Multiplier)
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":     job.ID,
@@ -363,6 +381,7 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		Source     string      `json:"source"`
 		Scale      int         `json:"scale"`
 		Resolution int         `json:"resolution"`
+		Multiplier int         `json:"multiplier,omitempty"`
 		Files      []string    `json:"files"`
 		Progress   JobProgress `json:"progress"`
 		CreatedAt  time.Time   `json:"created_at"`
@@ -375,6 +394,7 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		Source:     snap.Source,
 		Scale:      snap.Scale,
 		Resolution: snap.Resolution,
+		Multiplier: snap.Multiplier,
 		Files:      snap.Files,
 		Progress:   snap.Progress,
 		CreatedAt:  snap.CreatedAt,

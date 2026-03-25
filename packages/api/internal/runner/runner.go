@@ -64,6 +64,39 @@ func (r *Runner) Video2x(ctx context.Context, gpuID int, filename, logPath strin
 	return cmd.Run()
 }
 
+// Video2xRife runs RIFE frame interpolation on a specific GPU.
+func (r *Runner) Video2xRife(ctx context.Context, gpuID int, filename, logPath string, multiplier int, onProgress func(Progress)) error {
+	f, err := os.Create(logPath)
+	if err != nil {
+		return fmt.Errorf("create log: %w", err)
+	}
+	defer f.Close()
+
+	inputPath := r.cfg.InputDir + "/" + filename
+	outputPath := r.cfg.InterpolatedDir + "/" + filename
+
+	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin,
+		"-i", inputPath,
+		"-o", outputPath,
+		"-p", "rife",
+		"-m", strconv.Itoa(multiplier),
+		"-d", strconv.Itoa(gpuID),
+	)
+
+	var out io.Writer = f
+	if onProgress != nil {
+		out = newProgressWriter(f, onProgress)
+	}
+	cmd.Stdout = out
+	cmd.Stderr = out
+
+	label := fmt.Sprintf("%svideo2x-rife-gpu%d", ProcessPrefix, gpuID)
+	tracker.register(label, cmd)
+	defer tracker.unregister(label)
+
+	return cmd.Run()
+}
+
 // FFmpegEncode compresses a video with H.265.
 // If onProgress is non-nil, stderr/stdout are intercepted to parse progress data.
 func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath string, crf int, threads int, processName string, copySubtitles bool, scaleDivisor int, onProgress func(Progress)) error {

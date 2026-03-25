@@ -8,22 +8,26 @@ import (
 )
 
 type VideoFile struct {
-	Name            string `json:"name"`
-	Size            int64  `json:"size"`
-	Width           int    `json:"width,omitempty"`
-	Height          int    `json:"height,omitempty"`
-	HasUpscaled     bool   `json:"has_upscaled,omitempty"`
-	HasOptimized    bool   `json:"has_optimized,omitempty"`
-	HasInput        bool   `json:"has_input,omitempty"`
-	UpscaledSize    int64  `json:"upscaled_size,omitempty"`
-	OptimizedSize   int64  `json:"optimized_size,omitempty"`
-	InputSize       int64  `json:"input_size,omitempty"`
-	UpscaledWidth   int    `json:"upscaled_width,omitempty"`
-	UpscaledHeight  int    `json:"upscaled_height,omitempty"`
-	OptimizedWidth  int    `json:"optimized_width,omitempty"`
-	OptimizedHeight int    `json:"optimized_height,omitempty"`
-	InputWidth      int    `json:"input_width,omitempty"`
-	InputHeight     int    `json:"input_height,omitempty"`
+	Name               string `json:"name"`
+	Size               int64  `json:"size"`
+	Width              int    `json:"width,omitempty"`
+	Height             int    `json:"height,omitempty"`
+	HasUpscaled        bool   `json:"has_upscaled,omitempty"`
+	HasOptimized       bool   `json:"has_optimized,omitempty"`
+	HasInput           bool   `json:"has_input,omitempty"`
+	HasInterpolated    bool   `json:"has_interpolated,omitempty"`
+	UpscaledSize       int64  `json:"upscaled_size,omitempty"`
+	OptimizedSize      int64  `json:"optimized_size,omitempty"`
+	InputSize          int64  `json:"input_size,omitempty"`
+	InterpolatedSize   int64  `json:"interpolated_size,omitempty"`
+	UpscaledWidth      int    `json:"upscaled_width,omitempty"`
+	UpscaledHeight     int    `json:"upscaled_height,omitempty"`
+	OptimizedWidth     int    `json:"optimized_width,omitempty"`
+	OptimizedHeight    int    `json:"optimized_height,omitempty"`
+	InputWidth         int    `json:"input_width,omitempty"`
+	InputHeight        int    `json:"input_height,omitempty"`
+	InterpolatedWidth  int    `json:"interpolated_width,omitempty"`
+	InterpolatedHeight int    `json:"interpolated_height,omitempty"`
 }
 
 func ListVideos(dir string, exts []string) ([]string, error) {
@@ -77,7 +81,7 @@ func ListVideosWithSize(dir string, exts []string) ([]VideoFile, error) {
 	return vfiles, nil
 }
 
-func ListVideosWithStatus(dir, outputDir, optimizedDir string, exts []string) ([]VideoFile, error) {
+func ListVideosWithStatus(dir, outputDir, optimizedDir, interpolatedDir string, exts []string) ([]VideoFile, error) {
 	vfiles, err := ListVideosWithSize(dir, exts)
 	if err != nil {
 		return nil, err
@@ -90,6 +94,10 @@ func ListVideosWithStatus(dir, outputDir, optimizedDir string, exts []string) ([
 		if info, err := os.Stat(filepath.Join(optimizedDir, f.Name)); err == nil {
 			vfiles[i].HasOptimized = true
 			vfiles[i].OptimizedSize = info.Size()
+		}
+		if info, err := os.Stat(filepath.Join(interpolatedDir, f.Name)); err == nil {
+			vfiles[i].HasInterpolated = true
+			vfiles[i].InterpolatedSize = info.Size()
 		}
 	}
 	return vfiles, nil
@@ -131,16 +139,31 @@ func ListOptimizedWithStatus(dir, inputDir, outputDir string, exts []string) ([]
 	return vfiles, nil
 }
 
+func ListInterpolatedWithStatus(dir, inputDir string, exts []string) ([]VideoFile, error) {
+	vfiles, err := ListVideosWithSize(dir, exts)
+	if err != nil {
+		return nil, err
+	}
+	for i, f := range vfiles {
+		if info, err := os.Stat(filepath.Join(inputDir, f.Name)); err == nil {
+			vfiles[i].HasInput = true
+			vfiles[i].InputSize = info.Size()
+		}
+	}
+	return vfiles, nil
+}
+
 type DeleteItem struct {
 	Name    string   `json:"name"`
 	Folders []string `json:"folders"`
 }
 
-func DeleteFiles(items []DeleteItem, inputDir, outputDir, optimizedDir string) (int, []string) {
+func DeleteFiles(items []DeleteItem, inputDir, outputDir, optimizedDir, interpolatedDir string) (int, []string) {
 	folderDirs := map[string]string{
-		"input":     inputDir,
-		"output":    outputDir,
-		"optimized": optimizedDir,
+		"input":        inputDir,
+		"output":       outputDir,
+		"optimized":    optimizedDir,
+		"interpolated": interpolatedDir,
 	}
 
 	deleted := 0

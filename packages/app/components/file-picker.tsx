@@ -27,12 +27,13 @@ import { useShiftSelect } from "@/lib/use-shift-select";
 import type { VideoFile } from "@/lib/types";
 
 const FOLDER_COLORS = {
-  input:     { badge: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20", text: "text-yellow-400", label: "Input" },
-  output:    { badge: "bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20", text: "text-blue-400", label: "Upscaled" },
-  optimized: { badge: "bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20", text: "text-green-400", label: "Optimized" },
+  input:        { badge: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20", text: "text-yellow-400", label: "Input" },
+  output:       { badge: "bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20", text: "text-blue-400", label: "Upscaled" },
+  optimized:    { badge: "bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20", text: "text-green-400", label: "Optimized" },
+  interpolated: { badge: "bg-purple-500/20 text-purple-400 border-purple-500/30 hover:bg-purple-500/20", text: "text-purple-400", label: "Interpolated" },
 } as const;
 
-const FOLDER_FILTER_KEY = { input: "input", output: "upscaled", optimized: "optimized" } as const;
+const FOLDER_FILTER_KEY = { input: "input", output: "upscaled", optimized: "optimized", interpolated: "interpolated" } as const;
 type FolderKey = keyof typeof FOLDER_COLORS;
 
 function getFolderData(file: VideoFile, dir: string) {
@@ -57,6 +58,13 @@ function getFolderData(file: VideoFile, dir: string) {
       size: dir === "optimized" ? file.size : (file.optimized_size ?? 0),
       width: dir === "optimized" ? file.width : file.optimized_width,
       height: dir === "optimized" ? file.height : file.optimized_height,
+    },
+    {
+      key: "interpolated",
+      exists: dir === "interpolated" ? true : !!file.has_interpolated,
+      size: dir === "interpolated" ? file.size : (file.interpolated_size ?? 0),
+      width: dir === "interpolated" ? file.width : file.interpolated_width,
+      height: dir === "interpolated" ? file.height : file.interpolated_height,
     },
   ];
   return entries;
@@ -141,6 +149,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
     if (filters.has("upscaled") && file.has_upscaled) return true;
     if (filters.has("optimized") && file.has_optimized) return true;
     if (filters.has("input") && (dir === "input" || file.has_input)) return true;
+    if (filters.has("interpolated") && file.has_interpolated) return true;
     return false;
   }
 
@@ -166,7 +175,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
   }
 
   function getDeleteSummary() {
-    const counts: Record<FolderKey, number> = { input: 0, output: 0, optimized: 0 };
+    const counts: Record<FolderKey, number> = { input: 0, output: 0, optimized: 0, interpolated: 0 };
     for (const folders of deleteSelections.values()) {
       for (const f of folders) counts[f]++;
     }
@@ -292,6 +301,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
               deleteSummary.input > 0 && `${deleteSummary.input} input`,
               deleteSummary.output > 0 && `${deleteSummary.output} upscaled`,
               deleteSummary.optimized > 0 && `${deleteSummary.optimized} optimized`,
+              deleteSummary.interpolated > 0 && `${deleteSummary.interpolated} interpolated`,
             ].filter(Boolean).join(", ")}
           </span>
           <div className="ml-auto flex gap-1.5">
@@ -386,7 +396,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-60 overflow-y-auto space-y-2 text-sm">
-            {(["input", "output", "optimized"] as FolderKey[]).map((folder) => {
+            {(["input", "output", "optimized", "interpolated"] as FolderKey[]).map((folder) => {
               const names: string[] = [];
               for (const [name, folders] of deleteSelections) {
                 if (folders.has(folder)) names.push(name);

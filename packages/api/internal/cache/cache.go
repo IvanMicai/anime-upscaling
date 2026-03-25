@@ -19,9 +19,10 @@ type SourceEntry struct {
 }
 
 type FileStatus struct {
-	Input    *SourceEntry `json:"input"`
-	Output   *SourceEntry `json:"output"`
-	Optimize *SourceEntry `json:"optimize"`
+	Input        *SourceEntry `json:"input"`
+	Output       *SourceEntry `json:"output"`
+	Optimize     *SourceEntry `json:"optimize"`
+	Interpolated *SourceEntry `json:"interpolated,omitempty"`
 }
 
 type CacheData map[string]FileStatus
@@ -65,6 +66,7 @@ func BuildFileStatusCache(cfg config.Config) error {
 		{"input", cfg.InputDir},
 		{"output", cfg.OutputDir},
 		{"optimize", cfg.OptimizedDir},
+		{"interpolated", cfg.InterpolatedDir},
 	}
 
 	// Scan all directories and index by map for O(1) lookup
@@ -112,6 +114,8 @@ func BuildFileStatusCache(cfg config.Config) error {
 				oldEntry = oldStatus.Output
 			case "optimize":
 				oldEntry = oldStatus.Optimize
+			case "interpolated":
+				oldEntry = oldStatus.Interpolated
 			}
 
 			if oldEntry != nil && oldEntry.Size == size {
@@ -124,6 +128,8 @@ func BuildFileStatusCache(cfg config.Config) error {
 					status.Output = &entry
 				case "optimize":
 					status.Optimize = &entry
+				case "interpolated":
+					status.Interpolated = &entry
 				}
 			} else {
 				// New or changed — need ffprobe
@@ -136,6 +142,8 @@ func BuildFileStatusCache(cfg config.Config) error {
 					status.Output = &entry
 				case "optimize":
 					status.Optimize = &entry
+				case "interpolated":
+					status.Interpolated = &entry
 				}
 			}
 		}
@@ -189,6 +197,11 @@ func BuildFileStatusCache(cfg config.Config) error {
 					if status.Optimize != nil {
 						status.Optimize.Width = res.Width
 						status.Optimize.Height = res.Height
+					}
+				case "interpolated":
+					if status.Interpolated != nil {
+						status.Interpolated.Width = res.Width
+						status.Interpolated.Height = res.Height
 					}
 				}
 				newCache[name] = status
