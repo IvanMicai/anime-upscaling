@@ -21,6 +21,7 @@ export default function NewJobPage() {
   const [source, setSource] = useState<"input" | "output" | "optimized">("input");
   const [scale, setScale] = useState<2 | 4>(2);
   const [resolution, setResolution] = useState<1 | 2 | 4>(1);
+  const [multiplier, setMultiplier] = useState<2 | 3 | 4>(2);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +37,9 @@ export default function NewJobPage() {
     if (v !== "optimize") {
       setResolution(1);
     }
+    if (v !== "interpolate") {
+      setMultiplier(2);
+    }
   }
 
   async function submit(files?: string[]) {
@@ -48,6 +52,7 @@ export default function NewJobPage() {
         ...(source !== "input" && { source }),
         ...((type === "upscale" || type === "pipeline") && { scale }),
         ...(type === "optimize" && resolution !== 1 && { resolution }),
+        ...(type === "interpolate" && { multiplier }),
       });
       router.push("/");
     } catch (err) {
@@ -76,6 +81,7 @@ export default function NewJobPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="upscale">Upscale</SelectItem>
+              <SelectItem value="interpolate">Interpolate</SelectItem>
               <SelectItem value="optimize">Optimize</SelectItem>
               <SelectItem value="pipeline">Pipeline</SelectItem>
               <SelectItem value="check">Check</SelectItem>
@@ -136,6 +142,25 @@ export default function NewJobPage() {
                 <SelectItem value="1">Original</SelectItem>
                 <SelectItem value="2">1/2</SelectItem>
                 <SelectItem value="4">1/4</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {type === "interpolate" && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Multiplier</label>
+            <Select
+              value={String(multiplier)}
+              onValueChange={(v) => setMultiplier(Number(v) as 2 | 3 | 4)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="2">2x</SelectItem>
+                <SelectItem value="3">3x</SelectItem>
+                <SelectItem value="4">4x</SelectItem>
               </SelectContent>
             </Select>
           </div>

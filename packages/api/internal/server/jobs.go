@@ -33,6 +33,7 @@ type Job struct {
 	Source     string       `json:"source"`
 	Scale      int          `json:"scale"`
 	Resolution int          `json:"resolution"`
+	Multiplier int          `json:"multiplier,omitempty"`
 	Files      []string     `json:"files"`
 	Progress   JobProgress  `json:"progress"`
 	Logs       []logEntry   `json:"-"`
@@ -146,6 +147,7 @@ func (j *Job) snapshot() Job {
 		Source:     j.Source,
 		Scale:      j.Scale,
 		Resolution: j.Resolution,
+		Multiplier: j.Multiplier,
 		Files:      j.Files,
 		Progress:   prog,
 		CreatedAt:  j.CreatedAt,
@@ -167,6 +169,7 @@ func (j *Job) snapshotWithLogs() Job {
 		Source:     j.Source,
 		Scale:      j.Scale,
 		Resolution: j.Resolution,
+		Multiplier: j.Multiplier,
 		Files:      j.Files,
 		Progress:   prog,
 		Logs:       logs,
@@ -198,7 +201,7 @@ func (m *JobManager) generateID() string {
 	return fmt.Sprintf("j_%d_%04x", time.Now().Unix(), rand.Intn(0xFFFF))
 }
 
-func (m *JobManager) StartJob(jobType string, files []string, source string, scale int, resolution int) *Job {
+func (m *JobManager) StartJob(jobType string, files []string, source string, scale int, resolution int, multiplier int) *Job {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	job := &Job{
@@ -208,6 +211,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 		Source:     source,
 		Scale:      scale,
 		Resolution: resolution,
+		Multiplier: multiplier,
 		Files:      files,
 		Progress:   JobProgress{Total: len(files)},
 		CreatedAt:  time.Now().UTC(),
@@ -309,6 +313,24 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 					}
 				}()
 			}
+
+		case "interpolate":
+			for i, f := range files {
+				wg.Add(1)
+				idx := i + 1
+				filename := f
+				gpuID, err := m.gpuQ.Acquire(ctx)
+				if err != nil {
+					wg.Done()
+					break // ctx cancelled
+				}
+				go func() {
+					defer wg.Done()
+					defer m.gpuQ.Release(gpuID)
+					job.setRunningOnce()
+					process.InterpolateFile(ctx, cfg, r, gpuID, filename, idx, job.Multiplier, onEvent, onProgress)
+				}()
+			}
 		}
 
 		wg.Wait()
@@ -359,8 +381,8 @@ func (m *JobManager) CancelJob(id string) *Job {
 	job.mu.Lock()
 	if job.Status == "running" || job.Status == "queued" {
 		job.cancel()
-		// Stop video2x processes for upscale/pipeline jobs
-		if job.Type == "upscale" || job.Type == "pipeline" {
+		// Stop video2x processes for upscale/pipeline/interpolate jobs
+		if job.Type == "upscale" || job.Type == "pipeline" || job.Type == "interpolate" {
 			go func() { runner.StopByPrefix(runner.ProcessPrefix + "video2x-") }()
 		}
 		// Stop ffmpeg processes for optimize/pipeline/check jobs

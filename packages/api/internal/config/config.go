@@ -6,12 +6,13 @@ import (
 )
 
 type Config struct {
-	Port         string
-	BaseDir      string
-	InputDir     string
-	OutputDir    string
-	OptimizedDir string
-	LogFile      string
+	Port            string
+	BaseDir         string
+	InputDir        string
+	OutputDir       string
+	OptimizedDir    string
+	InterpolatedDir string
+	LogFile         string
 	UserID       int
 	GroupID      int
 	HalfCPUs     int
@@ -41,7 +42,8 @@ func NewConfig() Config {
 		BaseDir:      baseDir,
 		InputDir:     baseDir + "/input",
 		OutputDir:    baseDir + "/output",
-		OptimizedDir: baseDir + "/optimized",
+		OptimizedDir:    baseDir + "/optimized",
+		InterpolatedDir: baseDir + "/interpolated",
 		LogFile:      baseDir + "/process.log",
 		UserID:       os.Getuid(),
 		GroupID:      os.Getgid(),

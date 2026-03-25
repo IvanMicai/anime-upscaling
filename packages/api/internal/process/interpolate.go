@@ -14,8 +14,8 @@ import (
 	"anime-upscaling/internal/runner"
 )
 
-// RunUpscale processes all files using 2 GPU workers (CLI convenience wrapper).
-func RunUpscale(ctx context.Context, cfg config.Config, r *runner.Runner, fileList []string, scale int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) error {
+// RunInterpolate processes all files using 2 GPU workers for frame interpolation.
+func RunInterpolate(ctx context.Context, cfg config.Config, r *runner.Runner, fileList []string, multiplier int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) error {
 	type work struct {
 		filename string
 		index    int
@@ -36,7 +36,7 @@ func RunUpscale(ctx context.Context, cfg config.Config, r *runner.Runner, fileLi
 				if ctx.Err() != nil {
 					return
 				}
-				UpscaleFile(ctx, cfg, r, gpuID, w.filename, w.index, scale, onEvent, safeProgress(onProgress))
+				InterpolateFile(ctx, cfg, r, gpuID, w.filename, w.index, multiplier, onEvent, safeProgress(onProgress))
 			}
 		}(gpuID)
 	}
@@ -44,19 +44,11 @@ func RunUpscale(ctx context.Context, cfg config.Config, r *runner.Runner, fileLi
 	return nil
 }
 
-func safeProgress(fn func(runner.Progress)) func(runner.Progress) {
-	if fn == nil {
-		return func(runner.Progress) {}
-	}
-	return fn
-}
-
-// UpscaleFile processes a single file on the given GPU.
-// Returns true if the file was successfully upscaled (or skipped).
-func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, scale int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
-	if err := os.MkdirAll(cfg.OutputDir, 0755); err != nil {
+// InterpolateFile processes a single file on the given GPU using RIFE frame interpolation.
+func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, multiplier int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
+	if err := os.MkdirAll(cfg.InterpolatedDir, 0755); err != nil {
 		source := fmt.Sprintf("GPU %d", gpuID)
-		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir output: %v", err), Time: time.Now()})
+		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir interpolated: %v", err), Time: time.Now()})
 		return false
 	}
 
@@ -66,21 +58,21 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 		onProgress(p)
 	}
 
-	outPath := filepath.Join(cfg.OutputDir, filename)
+	outPath := filepath.Join(cfg.InterpolatedDir, filename)
 	if files.FileExists(outPath) {
 		onEvent(logger.JobLog{Source: source, Level: "SKIP", Index: index, Message: "Pulando " + filename + " (já existe)", Time: time.Now()})
 		return true
 	}
 
-	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
+	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Interpolando: " + filename, Time: time.Now()})
 
 	logFile := fmt.Sprintf("%s/gpu%d.log", cfg.BaseDir, gpuID)
-	err := r.Video2x(ctx, gpuID, filename, logFile, scale, gpuProgress)
+	err := r.Video2xRife(ctx, gpuID, filename, logFile, multiplier, gpuProgress)
 
 	if err != nil {
 		// Clean up partial output on failure
 		os.Remove(outPath)
-		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao processar: %s (%v)", filename, err), Time: time.Now()})
+		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao interpolar: %s (%v)", filename, err), Time: time.Now()})
 		return false
 	}
 
@@ -89,7 +81,7 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 		return false
 	}
 
-	r.Chown(ctx, cfg.OutputDir, filename)
+	r.Chown(ctx, cfg.InterpolatedDir, filename)
 	onEvent(logger.JobLog{Source: source, Level: "OK", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
 	return true
 }

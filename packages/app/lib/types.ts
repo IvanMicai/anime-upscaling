@@ -1,4 +1,4 @@
-export type JobType = "upscale" | "optimize" | "pipeline" | "check";
+export type JobType = "upscale" | "optimize" | "pipeline" | "check" | "interpolate";
 
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -29,6 +29,7 @@ export interface Job {
   type: JobType;
   status: JobStatus;
   scale: number;
+  multiplier?: number;
   files: string[];
   progress: JobProgress;
   created_at: string;
@@ -51,15 +52,19 @@ export interface VideoFile {
   has_upscaled?: boolean;
   has_optimized?: boolean;
   has_input?: boolean;
+  has_interpolated?: boolean;
   upscaled_size?: number;
   optimized_size?: number;
   input_size?: number;
+  interpolated_size?: number;
   upscaled_width?: number;
   upscaled_height?: number;
   optimized_width?: number;
   optimized_height?: number;
   input_width?: number;
   input_height?: number;
+  interpolated_width?: number;
+  interpolated_height?: number;
 }
 
 export interface FilesResponse {
@@ -74,6 +79,7 @@ export interface CreateJobRequest {
   source?: "input" | "output" | "optimized";
   scale?: 2 | 4;
   resolution?: 1 | 2 | 4;
+  multiplier?: 2 | 3 | 4;
 }
 
 export interface CreateJobResponse extends Job {}
