@@ -34,6 +34,7 @@ type Job struct {
 	Scale      int          `json:"scale"`
 	Resolution int          `json:"resolution"`
 	Multiplier int          `json:"multiplier,omitempty"`
+	Threads    int          `json:"threads,omitempty"`
 	Files      []string     `json:"files"`
 	Progress   JobProgress  `json:"progress"`
 	Logs       []logEntry   `json:"-"`
@@ -148,6 +149,7 @@ func (j *Job) snapshot() Job {
 		Scale:      j.Scale,
 		Resolution: j.Resolution,
 		Multiplier: j.Multiplier,
+		Threads:    j.Threads,
 		Files:      j.Files,
 		Progress:   prog,
 		CreatedAt:  j.CreatedAt,
@@ -170,6 +172,7 @@ func (j *Job) snapshotWithLogs() Job {
 		Scale:      j.Scale,
 		Resolution: j.Resolution,
 		Multiplier: j.Multiplier,
+		Threads:    j.Threads,
 		Files:      j.Files,
 		Progress:   prog,
 		Logs:       logs,
@@ -201,7 +204,7 @@ func (m *JobManager) generateID() string {
 	return fmt.Sprintf("j_%d_%04x", time.Now().Unix(), rand.Intn(0xFFFF))
 }
 
-func (m *JobManager) StartJob(jobType string, files []string, source string, scale int, resolution int, multiplier int) *Job {
+func (m *JobManager) StartJob(jobType string, files []string, source string, scale int, resolution int, multiplier int, threads int) *Job {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	job := &Job{
@@ -212,6 +215,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 		Scale:      scale,
 		Resolution: resolution,
 		Multiplier: multiplier,
+		Threads:    threads,
 		Files:      files,
 		Progress:   JobProgress{Total: len(files)},
 		CreatedAt:  time.Now().UTC(),
@@ -256,6 +260,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 		case "optimize":
 			jobSource := source
 			jobResolution := job.Resolution
+			jobThreads := job.Threads
 			for i, f := range files {
 				wg.Add(1)
 				idx := i + 1
@@ -263,7 +268,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 				if err := m.ffmpegQ.Submit(ctx, func() {
 					defer wg.Done()
 					job.setRunningOnce()
-					process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, jobResolution, onEvent, onProgress)
+					process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, jobResolution, jobThreads, onEvent, onProgress)
 				}); err != nil {
 					wg.Done()
 					break // ctx cancelled
@@ -287,6 +292,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 			}
 
 		case "pipeline":
+			pipelineThreads := job.Threads
 			for i, f := range files {
 				wg.Add(1)
 				idx := i + 1
@@ -307,7 +313,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 					// Phase 2: enqueue into FFmpeg queue
 					if err := m.ffmpegQ.Submit(ctx, func() {
 						defer wg.Done()
-						process.EncodeFile(ctx, cfg, r, filename, onEvent, onProgress)
+						process.EncodeFile(ctx, cfg, r, filename, pipelineThreads, onEvent, onProgress)
 					}); err != nil {
 						wg.Done() // ctx cancelled
 					}

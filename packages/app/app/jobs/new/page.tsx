@@ -22,6 +22,7 @@ export default function NewJobPage() {
   const [scale, setScale] = useState<2 | 4>(2);
   const [resolution, setResolution] = useState<1 | 2 | 4>(1);
   const [multiplier, setMultiplier] = useState<2 | 3 | 4>(2);
+  const [threads, setThreads] = useState(0);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +54,7 @@ export default function NewJobPage() {
         ...((type === "upscale" || type === "pipeline") && { scale }),
         ...(type === "optimize" && resolution !== 1 && { resolution }),
         ...(type === "interpolate" && { multiplier }),
+        ...(threads > 0 && { threads }),
       });
       router.push("/");
     } catch (err) {
@@ -161,6 +163,29 @@ export default function NewJobPage() {
                 <SelectItem value="2">2x</SelectItem>
                 <SelectItem value="3">3x</SelectItem>
                 <SelectItem value="4">4x</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {(type === "optimize" || type === "pipeline") && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Threads</label>
+            <Select
+              value={String(threads)}
+              onValueChange={(v) => setThreads(Number(v))}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Auto</SelectItem>
+                <SelectItem value="1">1</SelectItem>
+                <SelectItem value="2">2</SelectItem>
+                <SelectItem value="4">4</SelectItem>
+                <SelectItem value="8">8</SelectItem>
+                <SelectItem value="16">16</SelectItem>
+                <SelectItem value="32">32</SelectItem>
               </SelectContent>
             </Select>
           </div>
