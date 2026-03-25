@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Link from "next/link";
 import { LogoutButton } from "@/components/logout-button";
 import "./globals.css";
 
@@ -31,12 +32,17 @@ export default function RootLayout({
         <div className="mx-auto max-w-5xl px-4 py-8">
           <header className="mb-8 flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold">AnimeUp</h1>
+              <Link href="/">
+                <h1 className="text-2xl font-bold">AnimeUp</h1>
+              </Link>
               <p className="text-sm text-muted-foreground">
                 Video Processing Dashboard
               </p>
             </div>
             <div className="flex items-center gap-4">
+              <Link href="/files" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Files
+              </Link>
               <LogoutButton />
             </div>
           </header>

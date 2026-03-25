@@ -39,6 +39,18 @@ async function proxy(req: NextRequest) {
     });
   }
 
+  // Binary download: stream through without buffering
+  if (path.startsWith("/api/files/download")) {
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: {
+        "Content-Type": upstream.headers.get("content-type") || "application/octet-stream",
+        "Content-Disposition": upstream.headers.get("content-disposition") || "",
+        "Content-Length": upstream.headers.get("content-length") || "",
+      },
+    });
+  }
+
   // Regular JSON response
   const body = await upstream.text();
   return new Response(body, {
