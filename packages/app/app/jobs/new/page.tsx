@@ -22,6 +22,9 @@ export default function NewJobPage() {
   const [scale, setScale] = useState<2 | 4>(2);
   const [resolution, setResolution] = useState<1 | 2 | 4>(1);
   const [multiplier, setMultiplier] = useState<2 | 3 | 4>(2);
+  const [rifeModel, setRifeModel] = useState("rife-v4.6");
+  const [sceneThresh, setSceneThresh] = useState(10);
+  const [rifeUHD, setRifeUHD] = useState(false);
   const [threads, setThreads] = useState(0);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -40,6 +43,9 @@ export default function NewJobPage() {
     }
     if (v !== "interpolate") {
       setMultiplier(2);
+      setRifeModel("rife-v4.6");
+      setSceneThresh(10);
+      setRifeUHD(false);
     }
   }
 
@@ -53,7 +59,12 @@ export default function NewJobPage() {
         ...(source !== "input" && { source }),
         ...((type === "upscale" || type === "pipeline") && { scale }),
         ...(type === "optimize" && resolution !== 1 && { resolution }),
-        ...(type === "interpolate" && { multiplier }),
+        ...(type === "interpolate" && {
+          multiplier,
+          rife_model: rifeModel,
+          scene_thresh: sceneThresh,
+          rife_uhd: rifeUHD,
+        }),
         ...(threads > 0 && { threads }),
       });
       router.push("/");
@@ -150,22 +161,73 @@ export default function NewJobPage() {
         )}
 
         {type === "interpolate" && (
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Multiplier</label>
-            <Select
-              value={String(multiplier)}
-              onValueChange={(v) => setMultiplier(Number(v) as 2 | 3 | 4)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="2">2x</SelectItem>
-                <SelectItem value="3">3x</SelectItem>
-                <SelectItem value="4">4x</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Multiplier</label>
+              <Select
+                value={String(multiplier)}
+                onValueChange={(v) => setMultiplier(Number(v) as 2 | 3 | 4)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="2">2x</SelectItem>
+                  <SelectItem value="3">3x</SelectItem>
+                  <SelectItem value="4">4x</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">RIFE Model</label>
+              <Select value={rifeModel} onValueChange={setRifeModel}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rife-v4.6">rife-v4.6</SelectItem>
+                  <SelectItem value="rife-v4.25">rife-v4.25</SelectItem>
+                  <SelectItem value="rife-v4.25-lite">rife-v4.25-lite</SelectItem>
+                  <SelectItem value="rife-v4.26">rife-v4.26</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Scene Detection</label>
+              <Select
+                value={String(sceneThresh)}
+                onValueChange={(v) => setSceneThresh(Number(v))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">High (5)</SelectItem>
+                  <SelectItem value="10">Medium (10)</SelectItem>
+                  <SelectItem value="20">Low (20)</SelectItem>
+                  <SelectItem value="100">Off (100)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">UHD Mode</label>
+              <Select
+                value={rifeUHD ? "on" : "off"}
+                onValueChange={(v) => setRifeUHD(v === "on")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="off">Off</SelectItem>
+                  <SelectItem value="on">On</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </>
         )}
 
         {(type === "optimize" || type === "pipeline") && (

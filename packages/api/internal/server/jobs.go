@@ -33,8 +33,11 @@ type Job struct {
 	Source     string       `json:"source"`
 	Scale      int          `json:"scale"`
 	Resolution int          `json:"resolution"`
-	Multiplier int          `json:"multiplier,omitempty"`
-	Threads    int          `json:"threads,omitempty"`
+	Multiplier  int          `json:"multiplier,omitempty"`
+	RifeModel   string       `json:"rife_model,omitempty"`
+	SceneThresh float64      `json:"scene_thresh,omitempty"`
+	RifeUHD     bool         `json:"rife_uhd,omitempty"`
+	Threads     int          `json:"threads,omitempty"`
 	Files      []string     `json:"files"`
 	Progress   JobProgress  `json:"progress"`
 	Logs       []logEntry   `json:"-"`
@@ -142,18 +145,21 @@ func (j *Job) snapshot() Job {
 	prog := j.Progress
 	prog.Containers = copyContainers(j.Progress.Containers)
 	return Job{
-		ID:         j.ID,
-		Type:       j.Type,
-		Status:     j.Status,
-		Source:     j.Source,
-		Scale:      j.Scale,
-		Resolution: j.Resolution,
-		Multiplier: j.Multiplier,
-		Threads:    j.Threads,
-		Files:      j.Files,
-		Progress:   prog,
-		CreatedAt:  j.CreatedAt,
-		FinishedAt: j.FinishedAt,
+		ID:          j.ID,
+		Type:        j.Type,
+		Status:      j.Status,
+		Source:      j.Source,
+		Scale:       j.Scale,
+		Resolution:  j.Resolution,
+		Multiplier:  j.Multiplier,
+		RifeModel:   j.RifeModel,
+		SceneThresh: j.SceneThresh,
+		RifeUHD:     j.RifeUHD,
+		Threads:     j.Threads,
+		Files:       j.Files,
+		Progress:    prog,
+		CreatedAt:   j.CreatedAt,
+		FinishedAt:  j.FinishedAt,
 	}
 }
 
@@ -165,19 +171,22 @@ func (j *Job) snapshotWithLogs() Job {
 	prog := j.Progress
 	prog.Containers = copyContainers(j.Progress.Containers)
 	return Job{
-		ID:         j.ID,
-		Type:       j.Type,
-		Status:     j.Status,
-		Source:     j.Source,
-		Scale:      j.Scale,
-		Resolution: j.Resolution,
-		Multiplier: j.Multiplier,
-		Threads:    j.Threads,
-		Files:      j.Files,
-		Progress:   prog,
-		Logs:       logs,
-		CreatedAt:  j.CreatedAt,
-		FinishedAt: j.FinishedAt,
+		ID:          j.ID,
+		Type:        j.Type,
+		Status:      j.Status,
+		Source:      j.Source,
+		Scale:       j.Scale,
+		Resolution:  j.Resolution,
+		Multiplier:  j.Multiplier,
+		RifeModel:   j.RifeModel,
+		SceneThresh: j.SceneThresh,
+		RifeUHD:     j.RifeUHD,
+		Threads:     j.Threads,
+		Files:       j.Files,
+		Progress:    prog,
+		Logs:        logs,
+		CreatedAt:   j.CreatedAt,
+		FinishedAt:  j.FinishedAt,
 	}
 }
 
@@ -204,22 +213,25 @@ func (m *JobManager) generateID() string {
 	return fmt.Sprintf("j_%d_%04x", time.Now().Unix(), rand.Intn(0xFFFF))
 }
 
-func (m *JobManager) StartJob(jobType string, files []string, source string, scale int, resolution int, multiplier int, threads int) *Job {
+func (m *JobManager) StartJob(jobType string, files []string, source string, scale int, resolution int, multiplier int, threads int, rifeModel string, sceneThresh float64, rifeUHD bool) *Job {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	job := &Job{
-		ID:         m.generateID(),
-		Type:       jobType,
-		Status:     "queued",
-		Source:     source,
-		Scale:      scale,
-		Resolution: resolution,
-		Multiplier: multiplier,
-		Threads:    threads,
-		Files:      files,
-		Progress:   JobProgress{Total: len(files)},
-		CreatedAt:  time.Now().UTC(),
-		cancel:     cancel,
+		ID:          m.generateID(),
+		Type:        jobType,
+		Status:      "queued",
+		Source:      source,
+		Scale:       scale,
+		Resolution:  resolution,
+		Multiplier:  multiplier,
+		RifeModel:   rifeModel,
+		SceneThresh: sceneThresh,
+		RifeUHD:     rifeUHD,
+		Threads:     threads,
+		Files:       files,
+		Progress:    JobProgress{Total: len(files)},
+		CreatedAt:   time.Now().UTC(),
+		cancel:      cancel,
 	}
 
 	m.mu.Lock()
@@ -321,6 +333,11 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 			}
 
 		case "interpolate":
+			rifeOpts := runner.RifeOptions{
+				Model:       job.RifeModel,
+				SceneThresh: job.SceneThresh,
+				UHD:         job.RifeUHD,
+			}
 			for i, f := range files {
 				wg.Add(1)
 				idx := i + 1
@@ -334,7 +351,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 					defer wg.Done()
 					defer m.gpuQ.Release(gpuID)
 					job.setRunningOnce()
-					process.InterpolateFile(ctx, cfg, r, gpuID, filename, idx, job.Multiplier, onEvent, onProgress)
+					process.InterpolateFile(ctx, cfg, r, gpuID, filename, idx, job.Multiplier, rifeOpts, onEvent, onProgress)
 				}()
 			}
 		}
