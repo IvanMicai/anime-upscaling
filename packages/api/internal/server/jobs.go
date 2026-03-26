@@ -36,7 +36,6 @@ type Job struct {
 	Multiplier  int          `json:"multiplier,omitempty"`
 	RifeModel   string       `json:"rife_model,omitempty"`
 	SceneThresh float64      `json:"scene_thresh,omitempty"`
-	RifeUHD     bool         `json:"rife_uhd,omitempty"`
 	Threads     int          `json:"threads,omitempty"`
 	Files      []string     `json:"files"`
 	Progress   JobProgress  `json:"progress"`
@@ -154,7 +153,6 @@ func (j *Job) snapshot() Job {
 		Multiplier:  j.Multiplier,
 		RifeModel:   j.RifeModel,
 		SceneThresh: j.SceneThresh,
-		RifeUHD:     j.RifeUHD,
 		Threads:     j.Threads,
 		Files:       j.Files,
 		Progress:    prog,
@@ -180,7 +178,6 @@ func (j *Job) snapshotWithLogs() Job {
 		Multiplier:  j.Multiplier,
 		RifeModel:   j.RifeModel,
 		SceneThresh: j.SceneThresh,
-		RifeUHD:     j.RifeUHD,
 		Threads:     j.Threads,
 		Files:       j.Files,
 		Progress:    prog,
@@ -213,7 +210,7 @@ func (m *JobManager) generateID() string {
 	return fmt.Sprintf("j_%d_%04x", time.Now().Unix(), rand.Intn(0xFFFF))
 }
 
-func (m *JobManager) StartJob(jobType string, files []string, source string, scale int, resolution int, multiplier int, threads int, rifeModel string, sceneThresh float64, rifeUHD bool) *Job {
+func (m *JobManager) StartJob(jobType string, files []string, source string, scale int, resolution int, multiplier int, threads int, rifeModel string, sceneThresh float64) *Job {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	job := &Job{
@@ -226,7 +223,6 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 		Multiplier:  multiplier,
 		RifeModel:   rifeModel,
 		SceneThresh: sceneThresh,
-		RifeUHD:     rifeUHD,
 		Threads:     threads,
 		Files:       files,
 		Progress:    JobProgress{Total: len(files)},
@@ -336,7 +332,6 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 			rifeOpts := runner.RifeOptions{
 				Model:       job.RifeModel,
 				SceneThresh: job.SceneThresh,
-				UHD:         job.RifeUHD,
 			}
 			for i, f := range files {
 				wg.Add(1)

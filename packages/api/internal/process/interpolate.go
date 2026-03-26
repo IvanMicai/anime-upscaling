@@ -64,6 +64,12 @@ func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, g
 		return true
 	}
 
+	// Auto-enable UHD mode for high-resolution input (>= 1440p)
+	inputPath := filepath.Join(cfg.InputDir, filename)
+	if res, err := r.ProbeResolution(ctx, inputPath); err == nil && res.Height >= 1440 {
+		rifeOpts.UHD = true
+	}
+
 	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Interpolando: " + filename, Time: time.Now()})
 
 	logFile := fmt.Sprintf("%s/gpu%d.log", cfg.BaseDir, gpuID)

@@ -280,7 +280,6 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		Threads     int      `json:"threads"`
 		RifeModel   string   `json:"rife_model"`
 		SceneThresh float64  `json:"scene_thresh"`
-		RifeUHD     bool     `json:"rife_uhd"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -391,7 +390,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		}
 	}
 
-	job := jm.StartJob(req.Type, req.Files, req.Source, req.Scale, req.Resolution, req.Multiplier, req.Threads, req.RifeModel, req.SceneThresh, req.RifeUHD)
+	job := jm.StartJob(req.Type, req.Files, req.Source, req.Scale, req.Resolution, req.Multiplier, req.Threads, req.RifeModel, req.SceneThresh)
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":     job.ID,
@@ -463,7 +462,6 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		Multiplier  int         `json:"multiplier,omitempty"`
 		RifeModel   string      `json:"rife_model,omitempty"`
 		SceneThresh float64     `json:"scene_thresh,omitempty"`
-		RifeUHD     bool        `json:"rife_uhd,omitempty"`
 		Threads     int         `json:"threads,omitempty"`
 		Files       []string    `json:"files"`
 		Progress    JobProgress `json:"progress"`
@@ -480,7 +478,6 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		Multiplier:  snap.Multiplier,
 		RifeModel:   snap.RifeModel,
 		SceneThresh: snap.SceneThresh,
-		RifeUHD:     snap.RifeUHD,
 		Threads:     snap.Threads,
 		Files:       snap.Files,
 		Progress:    snap.Progress,

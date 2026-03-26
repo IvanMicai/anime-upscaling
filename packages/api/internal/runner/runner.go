@@ -219,6 +219,33 @@ func (r *Runner) Chown(ctx context.Context, dir, filename string) error {
 	return os.Chown(dir+"/"+filename, r.cfg.UserID, r.cfg.GroupID)
 }
 
+// ProbeResolution returns the resolution of a single video file.
+func (r *Runner) ProbeResolution(ctx context.Context, absPath string) (VideoResolution, error) {
+	var buf bytes.Buffer
+	cmd := exec.CommandContext(ctx, r.cfg.FFprobeBin,
+		"-v", "error",
+		"-select_streams", "v:0",
+		"-show_entries", "stream=width,height",
+		"-of", "csv=p=0",
+		absPath,
+	)
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		return VideoResolution{}, fmt.Errorf("ffprobe: %w", err)
+	}
+	dims := strings.SplitN(strings.TrimSpace(buf.String()), ",", 2)
+	if len(dims) != 2 {
+		return VideoResolution{}, fmt.Errorf("unexpected ffprobe output: %s", buf.String())
+	}
+	w, err1 := strconv.Atoi(strings.TrimSpace(dims[0]))
+	h, err2 := strconv.Atoi(strings.TrimSpace(dims[1]))
+	if err1 != nil || err2 != nil {
+		return VideoResolution{}, fmt.Errorf("parse resolution: %v / %v", err1, err2)
+	}
+	return VideoResolution{Width: w, Height: h}, nil
+}
+
 // VideoResolution holds the width and height of a video stream.
 type VideoResolution struct {
 	Width  int
