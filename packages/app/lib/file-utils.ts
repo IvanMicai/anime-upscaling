@@ -1,8 +1,8 @@
-import type { VideoFile } from "./types";
+import type { VideoFile, AudioTrack, SubtitleTrack } from "./types";
 
 export const FOLDER_COLORS = {
   input:        { badge: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20", text: "text-yellow-400", label: "Input" },
-  output:       { badge: "bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20", text: "text-blue-400", label: "Upscaled" },
+  output:       { badge: "bg-blue-500/20 text-blue-400 border-blue-500/30 hover:bg-blue-500/20", text: "text-blue-400", label: "Upscaling" },
   optimized:    { badge: "bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/20", text: "text-green-400", label: "Optimized" },
   interpolated: { badge: "bg-purple-500/20 text-purple-400 border-purple-500/30 hover:bg-purple-500/20", text: "text-purple-400", label: "Interpolated" },
 } as const;
@@ -10,14 +10,28 @@ export const FOLDER_COLORS = {
 export const FOLDER_FILTER_KEY = { input: "input", output: "upscaled", optimized: "optimized", interpolated: "interpolated" } as const;
 export type FolderKey = keyof typeof FOLDER_COLORS;
 
-export function getFolderData(file: VideoFile, dir: string) {
-  const entries: { key: FolderKey; exists: boolean; size: number; width?: number; height?: number }[] = [
+export const COLUMN_ORDER: FolderKey[] = ["input", "output", "interpolated", "optimized"];
+
+export interface FolderEntry {
+  key: FolderKey;
+  exists: boolean;
+  size: number;
+  width?: number;
+  height?: number;
+  audio?: AudioTrack[];
+  subtitles?: SubtitleTrack[];
+}
+
+export function getFolderData(file: VideoFile, dir: string): FolderEntry[] {
+  const entries: FolderEntry[] = [
     {
       key: "input",
       exists: dir === "input" ? true : !!file.has_input,
       size: dir === "input" ? file.size : (file.input_size ?? 0),
       width: dir === "input" ? file.width : file.input_width,
       height: dir === "input" ? file.height : file.input_height,
+      audio: dir === "input" ? file.audio : file.input_audio,
+      subtitles: dir === "input" ? file.subtitles : file.input_subtitles,
     },
     {
       key: "output",
@@ -25,13 +39,8 @@ export function getFolderData(file: VideoFile, dir: string) {
       size: dir === "output" ? file.size : (file.upscaled_size ?? 0),
       width: dir === "output" ? file.width : file.upscaled_width,
       height: dir === "output" ? file.height : file.upscaled_height,
-    },
-    {
-      key: "optimized",
-      exists: dir === "optimized" ? true : !!file.has_optimized,
-      size: dir === "optimized" ? file.size : (file.optimized_size ?? 0),
-      width: dir === "optimized" ? file.width : file.optimized_width,
-      height: dir === "optimized" ? file.height : file.optimized_height,
+      audio: dir === "output" ? file.audio : file.upscaled_audio,
+      subtitles: dir === "output" ? file.subtitles : file.upscaled_subtitles,
     },
     {
       key: "interpolated",
@@ -39,9 +48,45 @@ export function getFolderData(file: VideoFile, dir: string) {
       size: dir === "interpolated" ? file.size : (file.interpolated_size ?? 0),
       width: dir === "interpolated" ? file.width : file.interpolated_width,
       height: dir === "interpolated" ? file.height : file.interpolated_height,
+      audio: dir === "interpolated" ? file.audio : file.interpolated_audio,
+      subtitles: dir === "interpolated" ? file.subtitles : file.interpolated_subtitles,
+    },
+    {
+      key: "optimized",
+      exists: dir === "optimized" ? true : !!file.has_optimized,
+      size: dir === "optimized" ? file.size : (file.optimized_size ?? 0),
+      width: dir === "optimized" ? file.width : file.optimized_width,
+      height: dir === "optimized" ? file.height : file.optimized_height,
+      audio: dir === "optimized" ? file.audio : file.optimized_audio,
+      subtitles: dir === "optimized" ? file.subtitles : file.optimized_subtitles,
     },
   ];
   return entries;
+}
+
+const RESOLUTION_LABELS: Record<number, string> = {
+  480: "480p",
+  720: "720p",
+  1080: "1080p",
+  1440: "1440p",
+  2160: "4K",
+  4320: "8K",
+};
+
+export function formatResolutionLabel(height: number): string {
+  return RESOLUTION_LABELS[height] ?? `${height}p`;
+}
+
+export function formatBytesCompact(bytes: number): string {
+  if (bytes === 0) return "0B";
+  const units = ["B", "K", "M", "G", "T"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const value = bytes / Math.pow(1024, i);
+  const rounded = Math.round(value * 10) / 10;
+  if (rounded === Math.floor(rounded)) {
+    return `${Math.floor(rounded)}${units[i]}`;
+  }
+  return `${rounded.toFixed(1)}${units[i]}`;
 }
 
 export function formatBytes(bytes: number): string {

@@ -13,9 +13,18 @@ import (
 )
 
 type SourceEntry struct {
-	Size   int64 `json:"size"`
-	Width  int   `json:"width"`
-	Height int   `json:"height"`
+	Size      int64                  `json:"size"`
+	Width     int                    `json:"width"`
+	Height    int                    `json:"height"`
+	Audio     []runner.AudioTrack    `json:"audio,omitempty"`
+	Subtitles []runner.SubtitleTrack `json:"subtitles,omitempty"`
+}
+
+const currentCacheVersion = 2
+
+type cacheEnvelope struct {
+	Version int       `json:"version"`
+	Data    CacheData `json:"data"`
 }
 
 type FileStatus struct {
@@ -36,15 +45,18 @@ func LoadCache(path string) CacheData {
 	if err != nil {
 		return make(CacheData)
 	}
-	var cache CacheData
-	if err := json.Unmarshal(data, &cache); err != nil {
-		return make(CacheData)
+	// Try versioned envelope first
+	var env cacheEnvelope
+	if err := json.Unmarshal(data, &env); err == nil && env.Version == currentCacheVersion && env.Data != nil {
+		return env.Data
 	}
-	return cache
+	// Version mismatch or legacy format — return empty to force rebuild
+	return make(CacheData)
 }
 
 func saveCache(path string, cache CacheData) error {
-	data, err := json.MarshalIndent(cache, "", "  ")
+	env := cacheEnvelope{Version: currentCacheVersion, Data: cache}
+	data, err := json.MarshalIndent(env, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal cache: %w", err)
 	}
@@ -173,7 +185,7 @@ func BuildFileStatusCache(cfg config.Config) error {
 			}
 		}
 
-		results, err := r.FFprobeBatchResolutionMultiDirParallel(ctx, mounts, needProbe)
+		results, err := r.FFprobeBatchFullMetadataParallel(ctx, mounts, needProbe)
 		if err != nil {
 			return fmt.Errorf("ffprobe batch: %w", err)
 		}
@@ -187,21 +199,29 @@ func BuildFileStatusCache(cfg config.Config) error {
 					if status.Input != nil {
 						status.Input.Width = res.Width
 						status.Input.Height = res.Height
+						status.Input.Audio = res.Audio
+						status.Input.Subtitles = res.Subtitles
 					}
 				case "output":
 					if status.Output != nil {
 						status.Output.Width = res.Width
 						status.Output.Height = res.Height
+						status.Output.Audio = res.Audio
+						status.Output.Subtitles = res.Subtitles
 					}
 				case "optimize":
 					if status.Optimize != nil {
 						status.Optimize.Width = res.Width
 						status.Optimize.Height = res.Height
+						status.Optimize.Audio = res.Audio
+						status.Optimize.Subtitles = res.Subtitles
 					}
 				case "interpolated":
 					if status.Interpolated != nil {
 						status.Interpolated.Width = res.Width
 						status.Interpolated.Height = res.Height
+						status.Interpolated.Audio = res.Audio
+						status.Interpolated.Subtitles = res.Subtitles
 					}
 				}
 				newCache[name] = status

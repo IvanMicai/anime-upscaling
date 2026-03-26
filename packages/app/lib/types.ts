@@ -47,6 +47,21 @@ export interface LogEntry {
   time: string;
 }
 
+export interface AudioTrack {
+  index: number;
+  language?: string;
+  title?: string;
+  codec?: string;
+  channels?: number;
+}
+
+export interface SubtitleTrack {
+  index: number;
+  language?: string;
+  title?: string;
+  codec?: string;
+}
+
 export interface VideoFile {
   name: string;
   size: number;
@@ -68,6 +83,16 @@ export interface VideoFile {
   input_height?: number;
   interpolated_width?: number;
   interpolated_height?: number;
+  audio?: AudioTrack[];
+  subtitles?: SubtitleTrack[];
+  input_audio?: AudioTrack[];
+  input_subtitles?: SubtitleTrack[];
+  upscaled_audio?: AudioTrack[];
+  upscaled_subtitles?: SubtitleTrack[];
+  optimized_audio?: AudioTrack[];
+  optimized_subtitles?: SubtitleTrack[];
+  interpolated_audio?: AudioTrack[];
+  interpolated_subtitles?: SubtitleTrack[];
 }
 
 export interface FilesResponse {

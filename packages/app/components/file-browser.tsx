@@ -19,20 +19,62 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { getFiles, deleteFiles, downloadFile } from "@/lib/api";
 import {
   FOLDER_COLORS,
   FOLDER_FILTER_KEY,
+  COLUMN_ORDER,
   getFolderData,
   formatBytes,
+  formatBytesCompact,
+  formatResolutionLabel,
   formatCacheAge,
   type FolderKey,
+  type FolderEntry,
 } from "@/lib/file-utils";
 import type { VideoFile } from "@/lib/types";
 
-const DIRS: FolderKey[] = ["input", "output", "optimized", "interpolated"];
+const TAB_ORDER: FolderKey[] = ["input", "output", "optimized", "interpolated"];
+
+function FileTooltipContent({ entry }: { entry: FolderEntry }) {
+  return (
+    <div className="space-y-1 text-xs">
+      {entry.width && entry.height && (
+        <div>Resolution: {entry.width}x{entry.height}</div>
+      )}
+      <div>Size: {formatBytes(entry.size)}</div>
+      {entry.audio && entry.audio.length > 0 && (
+        <div>
+          <div className="font-medium">Audio ({entry.audio.length}):</div>
+          {entry.audio.map((a, i) => (
+            <div key={i} className="ml-2 text-muted-foreground">
+              {[a.title, a.language, a.codec, a.channels ? `${a.channels}ch` : null]
+                .filter(Boolean).join(" · ") || `Track ${a.index}`}
+            </div>
+          ))}
+        </div>
+      )}
+      {entry.subtitles && entry.subtitles.length > 0 && (
+        <div>
+          <div className="font-medium">Subtitles ({entry.subtitles.length}):</div>
+          {entry.subtitles.map((s, i) => (
+            <div key={i} className="ml-2 text-muted-foreground">
+              {[s.title, s.language, s.codec].filter(Boolean).join(" · ") || `Track ${s.index}`}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function FileBrowser() {
   const [dir, setDir] = useState<FolderKey>("input");
@@ -157,7 +199,7 @@ export function FileBrowser() {
       {/* Directory tabs */}
       <Tabs value={dir} onValueChange={(v) => setDir(v as FolderKey)}>
         <TabsList>
-          {DIRS.map((d) => (
+          {TAB_ORDER.map((d) => (
             <TabsTrigger key={d} value={d} className={FOLDER_COLORS[d].text}>
               {FOLDER_COLORS[d].label}
             </TabsTrigger>
@@ -241,79 +283,93 @@ export function FileBrowser() {
       ) : files.length === 0 ? (
         <p className="text-sm text-muted-foreground">No files found in {dir}/.</p>
       ) : (
-        <ScrollArea className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Filename</TableHead>
-                {DIRS.map((d) => (
-                  <TableHead key={d} className={cn("text-right", FOLDER_COLORS[d].text)}>
-                    {FOLDER_COLORS[d].label}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((file) => {
-                const folders = getFolderData(file, dir);
-                const fileDeleteFolders = deleteSelections.get(file.name);
-                return (
-                  <TableRow key={file.name}>
-                    <TableCell className="font-mono text-sm truncate max-w-[300px]">
-                      {file.name}
-                    </TableCell>
-                    {folders.map((entry) => {
-                      const isMarked = fileDeleteFolders?.has(entry.key) ?? false;
-                      const canClickDelete = deleteMode && entry.exists;
-                      return (
-                        <TableCell
-                          key={entry.key}
-                          className={cn(
-                            "text-right text-sm",
-                            entry.exists ? FOLDER_COLORS[entry.key].text : "text-muted-foreground",
-                            canClickDelete && "cursor-pointer hover:bg-muted/50",
-                            isMarked && "ring-2 ring-inset ring-red-500 bg-red-500/10"
-                          )}
-                          onClick={() => {
-                            if (canClickDelete) toggleDeleteCell(file.name, entry.key);
-                          }}
-                        >
-                          {entry.exists ? (
-                            <span className="inline-flex items-center gap-1.5 justify-end">
-                              <span>
-                                {entry.width && entry.height ? `${entry.width}x${entry.height} @ ` : ""}
-                                {formatBytes(entry.size)}
-                              </span>
-                              {!deleteMode && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    downloadFile(entry.key, file.name);
-                                  }}
-                                  className="opacity-40 hover:opacity-100 transition-opacity"
-                                  title={`Download from ${FOLDER_COLORS[entry.key].label}`}
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                    <polyline points="7 10 12 15 17 10" />
-                                    <line x1="12" y1="15" x2="12" y2="3" />
-                                  </svg>
-                                </button>
-                              )}
-                            </span>
-                          ) : (
-                            "\u2014"
-                          )}
-                        </TableCell>
-                      );
-                    })}
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </ScrollArea>
+        <TooltipProvider>
+          <ScrollArea className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Filename</TableHead>
+                  {COLUMN_ORDER.map((d) => (
+                    <TableHead key={d} className={cn("text-right", FOLDER_COLORS[d].text)}>
+                      {FOLDER_COLORS[d].label}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((file) => {
+                  const folders = getFolderData(file, dir);
+                  const fileDeleteFolders = deleteSelections.get(file.name);
+                  return (
+                    <TableRow key={file.name}>
+                      <TableCell className="font-mono text-sm truncate max-w-[300px]">
+                        {file.name}
+                      </TableCell>
+                      {folders.map((entry) => {
+                        const isMarked = fileDeleteFolders?.has(entry.key) ?? false;
+                        const canClickDelete = deleteMode && entry.exists;
+                        return (
+                          <TableCell
+                            key={entry.key}
+                            className={cn(
+                              "text-right text-sm",
+                              entry.exists ? FOLDER_COLORS[entry.key].text : "text-muted-foreground",
+                              canClickDelete && "cursor-pointer hover:bg-muted/50",
+                              isMarked && "ring-2 ring-inset ring-red-500 bg-red-500/10"
+                            )}
+                            onClick={() => {
+                              if (canClickDelete) toggleDeleteCell(file.name, entry.key);
+                            }}
+                          >
+                            {entry.exists ? (
+                              deleteMode ? (
+                                <span>
+                                  {entry.width && entry.height ? `${formatResolutionLabel(entry.height)} | ` : ""}
+                                  {formatBytesCompact(entry.size)}
+                                </span>
+                              ) : (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex items-center gap-1.5 justify-end cursor-default">
+                                      <span>
+                                        {entry.width && entry.height ? `${formatResolutionLabel(entry.height)} | ` : ""}
+                                        {formatBytesCompact(entry.size)}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          downloadFile(entry.key, file.name);
+                                        }}
+                                        className="opacity-40 hover:opacity-100 transition-opacity"
+                                        title={`Download from ${FOLDER_COLORS[entry.key].label}`}
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                          <polyline points="7 10 12 15 17 10" />
+                                          <line x1="12" y1="15" x2="12" y2="3" />
+                                        </svg>
+                                      </button>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-xs">
+                                    <FileTooltipContent entry={entry} />
+                                  </TooltipContent>
+                                </Tooltip>
+                              )
+                            ) : (
+                              "\u2014"
+                            )}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        </TooltipProvider>
       )}
 
       {/* Delete confirmation dialog */}
@@ -326,7 +382,7 @@ export function FileBrowser() {
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-60 overflow-y-auto space-y-2 text-sm">
-            {DIRS.map((folder) => {
+            {COLUMN_ORDER.map((folder) => {
               const names: string[] = [];
               for (const [name, folders] of deleteSelections) {
                 if (folders.has(folder)) names.push(name);
