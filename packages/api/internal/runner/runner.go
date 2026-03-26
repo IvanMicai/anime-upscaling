@@ -64,8 +64,15 @@ func (r *Runner) Video2x(ctx context.Context, gpuID int, filename, logPath strin
 	return cmd.Run()
 }
 
+// RifeOptions holds quality-related options for RIFE frame interpolation.
+type RifeOptions struct {
+	Model       string  // RIFE model name (e.g. "rife-v4.6")
+	SceneThresh float64 // Scene detection threshold 0-100 (0=very sensitive, 100=off)
+	UHD         bool    // Enable Ultra HD mode
+}
+
 // Video2xRife runs RIFE frame interpolation on a specific GPU.
-func (r *Runner) Video2xRife(ctx context.Context, gpuID int, filename, logPath string, multiplier int, onProgress func(Progress)) error {
+func (r *Runner) Video2xRife(ctx context.Context, gpuID int, filename, logPath string, multiplier int, opts RifeOptions, onProgress func(Progress)) error {
 	f, err := os.Create(logPath)
 	if err != nil {
 		return fmt.Errorf("create log: %w", err)
@@ -75,13 +82,22 @@ func (r *Runner) Video2xRife(ctx context.Context, gpuID int, filename, logPath s
 	inputPath := r.cfg.InputDir + "/" + filename
 	outputPath := r.cfg.InterpolatedDir + "/" + filename
 
-	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin,
+	args := []string{
 		"-i", inputPath,
 		"-o", outputPath,
 		"-p", "rife",
 		"-m", strconv.Itoa(multiplier),
 		"-d", strconv.Itoa(gpuID),
-	)
+	}
+	if opts.Model != "" {
+		args = append(args, "--rife-model", opts.Model)
+	}
+	if opts.UHD {
+		args = append(args, "--rife-uhd")
+	}
+	args = append(args, "--scene-thresh", fmt.Sprintf("%.1f", opts.SceneThresh))
+
+	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin, args...)
 
 	var out io.Writer = f
 	if onProgress != nil {

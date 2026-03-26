@@ -15,7 +15,7 @@ import (
 )
 
 // RunInterpolate processes all files using 2 GPU workers for frame interpolation.
-func RunInterpolate(ctx context.Context, cfg config.Config, r *runner.Runner, fileList []string, multiplier int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) error {
+func RunInterpolate(ctx context.Context, cfg config.Config, r *runner.Runner, fileList []string, multiplier int, rifeOpts runner.RifeOptions, onEvent func(logger.JobLog), onProgress func(runner.Progress)) error {
 	type work struct {
 		filename string
 		index    int
@@ -36,7 +36,7 @@ func RunInterpolate(ctx context.Context, cfg config.Config, r *runner.Runner, fi
 				if ctx.Err() != nil {
 					return
 				}
-				InterpolateFile(ctx, cfg, r, gpuID, w.filename, w.index, multiplier, onEvent, safeProgress(onProgress))
+				InterpolateFile(ctx, cfg, r, gpuID, w.filename, w.index, multiplier, rifeOpts, onEvent, safeProgress(onProgress))
 			}
 		}(gpuID)
 	}
@@ -45,7 +45,7 @@ func RunInterpolate(ctx context.Context, cfg config.Config, r *runner.Runner, fi
 }
 
 // InterpolateFile processes a single file on the given GPU using RIFE frame interpolation.
-func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, multiplier int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
+func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, multiplier int, rifeOpts runner.RifeOptions, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
 	if err := os.MkdirAll(cfg.InterpolatedDir, 0755); err != nil {
 		source := fmt.Sprintf("GPU %d", gpuID)
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir interpolated: %v", err), Time: time.Now()})
@@ -67,7 +67,7 @@ func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, g
 	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Interpolando: " + filename, Time: time.Now()})
 
 	logFile := fmt.Sprintf("%s/gpu%d.log", cfg.BaseDir, gpuID)
-	err := r.Video2xRife(ctx, gpuID, filename, logFile, multiplier, gpuProgress)
+	err := r.Video2xRife(ctx, gpuID, filename, logFile, multiplier, rifeOpts, gpuProgress)
 
 	if err != nil {
 		// Clean up partial output on failure

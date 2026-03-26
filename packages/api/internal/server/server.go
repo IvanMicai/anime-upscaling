@@ -271,13 +271,16 @@ func handleListJobs(jm *JobManager, w http.ResponseWriter, r *http.Request) {
 
 func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Type       string   `json:"type"`
-		Files      []string `json:"files"`
-		Source     string   `json:"source"`
-		Scale      int      `json:"scale"`
-		Resolution int      `json:"resolution"`
-		Multiplier int      `json:"multiplier"`
-		Threads    int      `json:"threads"`
+		Type        string   `json:"type"`
+		Files       []string `json:"files"`
+		Source      string   `json:"source"`
+		Scale       int      `json:"scale"`
+		Resolution  int      `json:"resolution"`
+		Multiplier  int      `json:"multiplier"`
+		Threads     int      `json:"threads"`
+		RifeModel   string   `json:"rife_model"`
+		SceneThresh float64  `json:"scene_thresh"`
+		RifeUHD     bool     `json:"rife_uhd"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -303,6 +306,27 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 	}
 	if req.Type == "interpolate" && req.Multiplier != 2 && req.Multiplier != 3 && req.Multiplier != 4 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "multiplier must be 2, 3, or 4"})
+		return
+	}
+
+	// RIFE model validation
+	if req.RifeModel == "" {
+		req.RifeModel = "rife-v4.6"
+	}
+	validRifeModels := map[string]bool{
+		"rife-v4.6": true, "rife-v4.25": true, "rife-v4.25-lite": true, "rife-v4.26": true,
+	}
+	if req.Type == "interpolate" && !validRifeModels[req.RifeModel] {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "rife_model must be one of: rife-v4.6, rife-v4.25, rife-v4.25-lite, rife-v4.26"})
+		return
+	}
+
+	// Scene detection threshold default and validation
+	if req.SceneThresh == 0 {
+		req.SceneThresh = 10.0
+	}
+	if req.Type == "interpolate" && (req.SceneThresh < 0 || req.SceneThresh > 100) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "scene_thresh must be between 0 and 100"})
 		return
 	}
 
@@ -367,7 +391,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		}
 	}
 
-	job := jm.StartJob(req.Type, req.Files, req.Source, req.Scale, req.Resolution, req.Multiplier, req.Threads)
+	job := jm.StartJob(req.Type, req.Files, req.Source, req.Scale, req.Resolution, req.Multiplier, req.Threads, req.RifeModel, req.SceneThresh, req.RifeUHD)
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":     job.ID,
@@ -430,32 +454,38 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 	snap := job.snapshotWithLogs()
 	// Include logs in the JSON output for detail endpoint
 	type jobDetail struct {
-		ID         string      `json:"id"`
-		Type       string      `json:"type"`
-		Status     string      `json:"status"`
-		Source     string      `json:"source"`
-		Scale      int         `json:"scale"`
-		Resolution int         `json:"resolution"`
-		Multiplier int         `json:"multiplier,omitempty"`
-		Threads    int         `json:"threads,omitempty"`
-		Files      []string    `json:"files"`
-		Progress   JobProgress `json:"progress"`
-		CreatedAt  time.Time   `json:"created_at"`
-		FinishedAt *time.Time  `json:"finished_at,omitempty"`
+		ID          string      `json:"id"`
+		Type        string      `json:"type"`
+		Status      string      `json:"status"`
+		Source      string      `json:"source"`
+		Scale       int         `json:"scale"`
+		Resolution  int         `json:"resolution"`
+		Multiplier  int         `json:"multiplier,omitempty"`
+		RifeModel   string      `json:"rife_model,omitempty"`
+		SceneThresh float64     `json:"scene_thresh,omitempty"`
+		RifeUHD     bool        `json:"rife_uhd,omitempty"`
+		Threads     int         `json:"threads,omitempty"`
+		Files       []string    `json:"files"`
+		Progress    JobProgress `json:"progress"`
+		CreatedAt   time.Time   `json:"created_at"`
+		FinishedAt  *time.Time  `json:"finished_at,omitempty"`
 	}
 	writeJSON(w, http.StatusOK, jobDetail{
-		ID:         snap.ID,
-		Type:       snap.Type,
-		Status:     snap.Status,
-		Source:     snap.Source,
-		Scale:      snap.Scale,
-		Resolution: snap.Resolution,
-		Multiplier: snap.Multiplier,
-		Threads:    snap.Threads,
-		Files:      snap.Files,
-		Progress:   snap.Progress,
-		CreatedAt:  snap.CreatedAt,
-		FinishedAt: snap.FinishedAt,
+		ID:          snap.ID,
+		Type:        snap.Type,
+		Status:      snap.Status,
+		Source:      snap.Source,
+		Scale:       snap.Scale,
+		Resolution:  snap.Resolution,
+		Multiplier:  snap.Multiplier,
+		RifeModel:   snap.RifeModel,
+		SceneThresh: snap.SceneThresh,
+		RifeUHD:     snap.RifeUHD,
+		Threads:     snap.Threads,
+		Files:       snap.Files,
+		Progress:    snap.Progress,
+		CreatedAt:   snap.CreatedAt,
+		FinishedAt:  snap.FinishedAt,
 	})
 }
 
