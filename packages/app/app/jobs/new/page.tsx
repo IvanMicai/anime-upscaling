@@ -24,7 +24,6 @@ export default function NewJobPage() {
   const [multiplier, setMultiplier] = useState<2 | 3 | 4>(2);
   const [rifeModel, setRifeModel] = useState("rife-v4.6");
   const [sceneThresh, setSceneThresh] = useState(10);
-  const [rifeUHD, setRifeUHD] = useState(false);
   const [threads, setThreads] = useState(0);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -45,7 +44,6 @@ export default function NewJobPage() {
       setMultiplier(2);
       setRifeModel("rife-v4.6");
       setSceneThresh(10);
-      setRifeUHD(false);
     }
   }
 
@@ -63,7 +61,6 @@ export default function NewJobPage() {
           multiplier,
           rife_model: rifeModel,
           scene_thresh: sceneThresh,
-          rife_uhd: rifeUHD,
         }),
         ...(threads > 0 && { threads }),
       });
@@ -212,21 +209,6 @@ export default function NewJobPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">UHD Mode</label>
-              <Select
-                value={rifeUHD ? "on" : "off"}
-                onValueChange={(v) => setRifeUHD(v === "on")}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="off">Off</SelectItem>
-                  <SelectItem value="on">On</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </>
         )}
 

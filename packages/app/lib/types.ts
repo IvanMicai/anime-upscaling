@@ -32,7 +32,6 @@ export interface Job {
   multiplier?: number;
   rife_model?: string;
   scene_thresh?: number;
-  rife_uhd?: boolean;
   threads?: number;
   files: string[];
   progress: JobProgress;
@@ -86,7 +85,6 @@ export interface CreateJobRequest {
   multiplier?: 2 | 3 | 4;
   rife_model?: string;
   scene_thresh?: number;
-  rife_uhd?: boolean;
   threads?: number;
 }
 
