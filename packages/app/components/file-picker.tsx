@@ -21,11 +21,60 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { getFiles, deleteFiles } from "@/lib/api";
 import { useShiftSelect } from "@/lib/use-shift-select";
-import { FOLDER_COLORS, FOLDER_FILTER_KEY, getFolderData, formatBytes, formatCacheAge, type FolderKey } from "@/lib/file-utils";
+import {
+  FOLDER_COLORS,
+  FOLDER_FILTER_KEY,
+  COLUMN_ORDER,
+  getFolderData,
+  formatBytes,
+  formatBytesCompact,
+  formatResolutionLabel,
+  formatCacheAge,
+  type FolderKey,
+  type FolderEntry,
+} from "@/lib/file-utils";
 import type { VideoFile } from "@/lib/types";
+
+function FileTooltipContent({ entry }: { entry: FolderEntry }) {
+  return (
+    <div className="space-y-1 text-xs">
+      {entry.width && entry.height && (
+        <div>Resolution: {entry.width}x{entry.height}</div>
+      )}
+      <div>Size: {formatBytes(entry.size)}</div>
+      {entry.audio && entry.audio.length > 0 && (
+        <div>
+          <div className="font-medium">Audio ({entry.audio.length}):</div>
+          {entry.audio.map((a, i) => (
+            <div key={i} className="ml-2 text-muted-foreground">
+              {[a.title, a.language, a.codec, a.channels ? `${a.channels}ch` : null]
+                .filter(Boolean).join(" · ") || `Track ${a.index}`}
+            </div>
+          ))}
+        </div>
+      )}
+      {entry.subtitles && entry.subtitles.length > 0 && (
+        <div>
+          <div className="font-medium">Subtitles ({entry.subtitles.length}):</div>
+          {entry.subtitles.map((s, i) => (
+            <div key={i} className="ml-2 text-muted-foreground">
+              {[s.title, s.language, s.codec].filter(Boolean).join(" · ") || `Track ${s.index}`}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface FilePickerProps {
   selected: string[];
@@ -256,76 +305,93 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
         </div>
       )}
 
-      <ScrollArea className="flex-1 min-h-0 rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-8" />
-              <TableHead>Filename</TableHead>
-              <TableHead className={cn("text-right", FOLDER_COLORS.input.text)}>
-                {FOLDER_COLORS.input.label}
-              </TableHead>
-              <TableHead className={cn("text-right", FOLDER_COLORS.output.text)}>
-                {FOLDER_COLORS.output.label}
-              </TableHead>
-              <TableHead className={cn("text-right", FOLDER_COLORS.optimized.text)}>
-                {FOLDER_COLORS.optimized.label}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((file, index) => {
-              const folders = getFolderData(file, dir);
-              const fileDeleteFolders = deleteSelections.get(file.name);
-              return (
-                <TableRow
-                  key={file.name}
-                  className="cursor-pointer"
-                  onClick={(e) => {
-                    if (!deleteMode) handleToggle(index, filteredNames, e.shiftKey);
-                  }}
-                >
-                  <TableCell className="w-8">
-                    <Checkbox
-                      checked={selected.includes(file.name)}
-                      tabIndex={-1}
-                      className="pointer-events-none"
-                    />
-                  </TableCell>
-                  <TableCell className="font-mono text-sm truncate max-w-[300px]">
-                    {file.name}
-                  </TableCell>
-                  {folders.map((entry) => {
-                    const isMarked = fileDeleteFolders?.has(entry.key) ?? false;
-                    const canClick = deleteMode && entry.exists;
-                    return (
-                      <TableCell
-                        key={entry.key}
-                        className={cn(
-                          "text-right text-sm",
-                          entry.exists ? FOLDER_COLORS[entry.key].text : "text-muted-foreground",
-                          canClick && "cursor-pointer hover:bg-muted/50",
-                          isMarked && "ring-2 ring-inset ring-red-500 bg-red-500/10"
-                        )}
-                        onClick={(e) => {
-                          if (canClick) {
-                            e.stopPropagation();
-                            toggleDeleteCell(file.name, entry.key);
-                          }
-                        }}
-                      >
-                        {entry.exists
-                          ? `${entry.width && entry.height ? `${entry.width}x${entry.height} @ ` : ""}${formatBytes(entry.size)}`
-                          : "\u2014"}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </ScrollArea>
+      <TooltipProvider>
+        <ScrollArea className="flex-1 min-h-0 rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-8" />
+                <TableHead>Filename</TableHead>
+                {COLUMN_ORDER.map((d) => (
+                  <TableHead key={d} className={cn("text-right", FOLDER_COLORS[d].text)}>
+                    {FOLDER_COLORS[d].label}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((file, index) => {
+                const folders = getFolderData(file, dir);
+                const fileDeleteFolders = deleteSelections.get(file.name);
+                return (
+                  <TableRow
+                    key={file.name}
+                    className="cursor-pointer"
+                    onClick={(e) => {
+                      if (!deleteMode) handleToggle(index, filteredNames, e.shiftKey);
+                    }}
+                  >
+                    <TableCell className="w-8">
+                      <Checkbox
+                        checked={selected.includes(file.name)}
+                        tabIndex={-1}
+                        className="pointer-events-none"
+                      />
+                    </TableCell>
+                    <TableCell className="font-mono text-sm truncate max-w-[300px]">
+                      {file.name}
+                    </TableCell>
+                    {folders.map((entry) => {
+                      const isMarked = fileDeleteFolders?.has(entry.key) ?? false;
+                      const canClick = deleteMode && entry.exists;
+                      return (
+                        <TableCell
+                          key={entry.key}
+                          className={cn(
+                            "text-right text-sm",
+                            entry.exists ? FOLDER_COLORS[entry.key].text : "text-muted-foreground",
+                            canClick && "cursor-pointer hover:bg-muted/50",
+                            isMarked && "ring-2 ring-inset ring-red-500 bg-red-500/10"
+                          )}
+                          onClick={(e) => {
+                            if (canClick) {
+                              e.stopPropagation();
+                              toggleDeleteCell(file.name, entry.key);
+                            }
+                          }}
+                        >
+                          {entry.exists ? (
+                            deleteMode ? (
+                              <span>
+                                {entry.width && entry.height ? `${formatResolutionLabel(entry.height)} | ` : ""}
+                                {formatBytesCompact(entry.size)}
+                              </span>
+                            ) : (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="cursor-default">
+                                    {entry.width && entry.height ? `${formatResolutionLabel(entry.height)} | ` : ""}
+                                    {formatBytesCompact(entry.size)}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-xs">
+                                  <FileTooltipContent entry={entry} />
+                                </TooltipContent>
+                              </Tooltip>
+                            )
+                          ) : (
+                            "\u2014"
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </ScrollArea>
+      </TooltipProvider>
 
       {/* Delete confirmation dialog */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
@@ -337,7 +403,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-60 overflow-y-auto space-y-2 text-sm">
-            {(["input", "output", "optimized", "interpolated"] as FolderKey[]).map((folder) => {
+            {COLUMN_ORDER.map((folder) => {
               const names: string[] = [];
               for (const [name, folders] of deleteSelections) {
                 if (folders.has(folder)) names.push(name);

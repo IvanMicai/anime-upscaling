@@ -3,6 +3,7 @@ package runner
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -250,6 +251,168 @@ func (r *Runner) ProbeResolution(ctx context.Context, absPath string) (VideoReso
 type VideoResolution struct {
 	Width  int
 	Height int
+}
+
+// AudioTrack holds metadata for an audio stream.
+type AudioTrack struct {
+	Index    int    `json:"index"`
+	Language string `json:"language,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Codec    string `json:"codec,omitempty"`
+	Channels int    `json:"channels,omitempty"`
+}
+
+// SubtitleTrack holds metadata for a subtitle stream.
+type SubtitleTrack struct {
+	Index    int    `json:"index"`
+	Language string `json:"language,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Codec    string `json:"codec,omitempty"`
+}
+
+// VideoProbeResult holds full metadata from ffprobe.
+type VideoProbeResult struct {
+	Width     int
+	Height    int
+	Audio     []AudioTrack
+	Subtitles []SubtitleTrack
+}
+
+// ffprobeJSON mirrors the JSON output of ffprobe -show_entries stream=... -of json
+type ffprobeJSON struct {
+	Streams []ffprobeStream `json:"streams"`
+}
+
+type ffprobeStream struct {
+	Index     int            `json:"index"`
+	CodecType string         `json:"codec_type"`
+	CodecName string         `json:"codec_name"`
+	Width     int            `json:"width,omitempty"`
+	Height    int            `json:"height,omitempty"`
+	Channels  int            `json:"channels,omitempty"`
+	Tags      map[string]string `json:"tags,omitempty"`
+}
+
+// ProbeFullMetadata returns resolution + audio/subtitle track info for a single file.
+func (r *Runner) ProbeFullMetadata(ctx context.Context, absPath string) (VideoProbeResult, error) {
+	var buf bytes.Buffer
+	cmd := exec.CommandContext(ctx, r.cfg.FFprobeBin,
+		"-v", "error",
+		"-show_entries", "stream=index,codec_type,codec_name,width,height,channels",
+		"-show_entries", "stream_tags=language,title",
+		"-of", "json",
+		absPath,
+	)
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		return VideoProbeResult{}, fmt.Errorf("ffprobe: %w", err)
+	}
+
+	var probe ffprobeJSON
+	if err := json.Unmarshal(buf.Bytes(), &probe); err != nil {
+		return VideoProbeResult{}, fmt.Errorf("parse ffprobe json: %w", err)
+	}
+
+	var result VideoProbeResult
+	for _, s := range probe.Streams {
+		switch s.CodecType {
+		case "video":
+			if result.Width == 0 && result.Height == 0 {
+				result.Width = s.Width
+				result.Height = s.Height
+			}
+		case "audio":
+			result.Audio = append(result.Audio, AudioTrack{
+				Index:    s.Index,
+				Language: s.Tags["language"],
+				Title:    s.Tags["title"],
+				Codec:    s.CodecName,
+				Channels: s.Channels,
+			})
+		case "subtitle":
+			result.Subtitles = append(result.Subtitles, SubtitleTrack{
+				Index:    s.Index,
+				Language: s.Tags["language"],
+				Title:    s.Tags["title"],
+				Codec:    s.CodecName,
+			})
+		}
+	}
+	return result, nil
+}
+
+// FFprobeBatchFullMetadataParallel probes all files across multiple directories
+// for full metadata (resolution + audio + subtitles), running up to 8 concurrently.
+func (r *Runner) FFprobeBatchFullMetadataParallel(ctx context.Context, mounts []DirMount, filesByLabel map[string][]string) (map[string]map[string]VideoProbeResult, error) {
+	total := 0
+	for _, files := range filesByLabel {
+		total += len(files)
+	}
+	if total == 0 {
+		return nil, nil
+	}
+
+	type probeJob struct {
+		label   string
+		hostDir string
+		file    string
+	}
+	var jobs []probeJob
+	for _, m := range mounts {
+		for _, f := range filesByLabel[m.Label] {
+			jobs = append(jobs, probeJob{label: m.Label, hostDir: m.HostDir, file: f})
+		}
+	}
+
+	type probeResult struct {
+		label string
+		file  string
+		res   VideoProbeResult
+	}
+
+	var (
+		mu      sync.Mutex
+		results []probeResult
+		wg      sync.WaitGroup
+		sem     = make(chan struct{}, 8)
+	)
+
+	for _, j := range jobs {
+		if ctx.Err() != nil {
+			break
+		}
+		wg.Add(1)
+		go func(j probeJob) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			if ctx.Err() != nil {
+				return
+			}
+
+			absPath := j.hostDir + "/" + j.file
+			res, err := r.ProbeFullMetadata(ctx, absPath)
+			if err != nil {
+				return
+			}
+
+			mu.Lock()
+			results = append(results, probeResult{label: j.label, file: j.file, res: res})
+			mu.Unlock()
+		}(j)
+	}
+	wg.Wait()
+
+	out := make(map[string]map[string]VideoProbeResult)
+	for _, r := range results {
+		if out[r.label] == nil {
+			out[r.label] = make(map[string]VideoProbeResult)
+		}
+		out[r.label][r.file] = r.res
+	}
+	return out, ctx.Err()
 }
 
 // DirMount represents a directory for batch ffprobe operations.

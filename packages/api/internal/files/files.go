@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"anime-upscaling/internal/runner"
 )
 
 type VideoFile struct {
@@ -28,6 +30,17 @@ type VideoFile struct {
 	InputHeight        int    `json:"input_height,omitempty"`
 	InterpolatedWidth  int    `json:"interpolated_width,omitempty"`
 	InterpolatedHeight int    `json:"interpolated_height,omitempty"`
+
+	Audio                 []runner.AudioTrack    `json:"audio,omitempty"`
+	Subtitles             []runner.SubtitleTrack  `json:"subtitles,omitempty"`
+	InputAudio            []runner.AudioTrack    `json:"input_audio,omitempty"`
+	InputSubtitles        []runner.SubtitleTrack  `json:"input_subtitles,omitempty"`
+	UpscaledAudio         []runner.AudioTrack    `json:"upscaled_audio,omitempty"`
+	UpscaledSubtitles     []runner.SubtitleTrack  `json:"upscaled_subtitles,omitempty"`
+	OptimizedAudio        []runner.AudioTrack    `json:"optimized_audio,omitempty"`
+	OptimizedSubtitles    []runner.SubtitleTrack  `json:"optimized_subtitles,omitempty"`
+	InterpolatedAudio     []runner.AudioTrack    `json:"interpolated_audio,omitempty"`
+	InterpolatedSubtitles []runner.SubtitleTrack  `json:"interpolated_subtitles,omitempty"`
 }
 
 func ListVideos(dir string, exts []string) ([]string, error) {
