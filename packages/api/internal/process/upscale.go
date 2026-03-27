@@ -36,7 +36,7 @@ func RunUpscale(ctx context.Context, cfg config.Config, r *runner.Runner, fileLi
 				if ctx.Err() != nil {
 					return
 				}
-				UpscaleFile(ctx, cfg, r, gpuID, w.filename, w.index, scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, onEvent, safeProgress(onProgress))
+				UpscaleFile(ctx, cfg, r, gpuID, w.filename, w.index, scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, cfg.InputDir, onEvent, safeProgress(onProgress))
 			}
 		}(gpuID)
 	}
@@ -53,7 +53,7 @@ func safeProgress(fn func(runner.Progress)) func(runner.Progress) {
 
 // UpscaleFile processes a single file on the given GPU.
 // Returns true if the file was successfully upscaled (or skipped).
-func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, scale int, opts runner.UpscaleOptions, inputDir, outputDir string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
+func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, scale int, opts runner.UpscaleOptions, inputDir, outputDir string, originalInputDir string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		source := fmt.Sprintf("GPU %d", gpuID)
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir output: %v", err), Time: time.Now()})
@@ -87,6 +87,14 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 	if !files.FileExists(outPath) {
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: "video2x retornou 0 mas output não existe: " + filename, Time: time.Now()})
 		return false
+	}
+
+	// Remux audio+subtitles from the original input file onto the processed output
+	originalPath := filepath.Join(originalInputDir, filename)
+	if files.FileExists(originalPath) {
+		if err := r.FFmpegRemuxAudio(ctx, outPath, originalPath); err != nil {
+			onEvent(logger.JobLog{Source: source, Level: "WARN", Index: index, Message: fmt.Sprintf("Remux áudio falhou: %s (%v)", filename, err), Time: time.Now()})
+		}
 	}
 
 	r.Chown(ctx, outputDir, filename)

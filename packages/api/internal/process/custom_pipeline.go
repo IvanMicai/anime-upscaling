@@ -29,6 +29,7 @@ func RunCustomPipelineForFile(
 	onProgress func(runner.Progress),
 ) bool {
 	currentInputDir := cfg.InputDir
+	originalInputDir := cfg.InputDir
 
 	for stepIdx, step := range steps {
 		if ctx.Err() != nil {
@@ -61,7 +62,7 @@ func RunCustomPipelineForFile(
 				Time:    time.Now(),
 			})
 
-			ok := UpscaleFile(ctx, cfg, r, gpuID, filename, index, scale, upOpts, currentInputDir, cfg.OutputDir, onEvent, onProgress)
+			ok := UpscaleFile(ctx, cfg, r, gpuID, filename, index, scale, upOpts, currentInputDir, cfg.OutputDir, originalInputDir, onEvent, onProgress)
 			gpuQ.Release(gpuID)
 
 			if !ok {
@@ -99,7 +100,7 @@ func RunCustomPipelineForFile(
 				Time:    time.Now(),
 			})
 
-			ok := InterpolateFile(ctx, cfg, r, gpuID, filename, index, multiplier, rifeOpts, currentInputDir, cfg.InterpolatedDir, onEvent, onProgress)
+			ok := InterpolateFile(ctx, cfg, r, gpuID, filename, index, multiplier, rifeOpts, currentInputDir, cfg.InterpolatedDir, originalInputDir, onEvent, onProgress)
 			gpuQ.Release(gpuID)
 
 			if !ok {
