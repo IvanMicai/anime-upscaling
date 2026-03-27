@@ -19,6 +19,11 @@ type PipelineStep struct {
 	Quality     string  `json:"quality,omitempty"`
 	Resolution  int     `json:"resolution,omitempty"`
 	Threads     int     `json:"threads,omitempty"`
+	Codec       string  `json:"codec,omitempty"`
+	Preset      string  `json:"preset,omitempty"`
+	Tune        string  `json:"tune,omitempty"`
+	PixFmt      string  `json:"pix_fmt,omitempty"`
+	AudioCodec  string  `json:"audio_codec,omitempty"`
 }
 
 // Pipeline is a named, ordered sequence of processing steps.
@@ -36,6 +41,32 @@ var QualityToCRF = map[string]int{
 	"alta":  19,
 	"media": 22,
 	"baixa": 26,
+}
+
+// ValidCodecs lists allowed video codec values for optimize steps.
+var ValidCodecs = map[string]bool{
+	"": true, "libx265": true, "libx264": true, "libvpx-vp9": true, "copy": true,
+}
+
+// ValidPresets lists allowed encoding speed presets.
+var ValidPresets = map[string]bool{
+	"": true, "ultrafast": true, "superfast": true, "veryfast": true,
+	"fast": true, "medium": true, "slow": true, "slower": true, "veryslow": true,
+}
+
+// ValidTunes lists allowed tune modes.
+var ValidTunes = map[string]bool{
+	"": true, "none": true, "animation": true, "film": true, "grain": true, "zerolatency": true,
+}
+
+// ValidPixFmts lists allowed pixel formats.
+var ValidPixFmts = map[string]bool{
+	"": true, "yuv420p10le": true, "yuv420p": true, "yuv444p": true,
+}
+
+// ValidAudioCodecs lists allowed audio codec values.
+var ValidAudioCodecs = map[string]bool{
+	"": true, "copy": true, "aac": true, "libopus": true, "libmp3lame": true,
 }
 
 // ValidOperations lists allowed step operation types.

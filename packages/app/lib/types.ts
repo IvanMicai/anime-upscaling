@@ -147,6 +147,11 @@ export interface PipelineStep {
   quality?: QualityPreset;
   resolution?: 1 | 2 | 4;
   threads?: number;
+  codec?: "libx265" | "libx264" | "libvpx-vp9" | "copy";
+  preset?: "ultrafast" | "superfast" | "veryfast" | "fast" | "medium" | "slow" | "slower" | "veryslow";
+  tune?: "animation" | "film" | "grain" | "zerolatency" | "none";
+  pix_fmt?: "yuv420p10le" | "yuv420p" | "yuv444p";
+  audio_codec?: "copy" | "aac" | "libopus" | "libmp3lame";
 }
 
 export const QUALITY_PRESETS: Record<QualityPreset, { crf: number; label: string }> = {
@@ -155,6 +160,45 @@ export const QUALITY_PRESETS: Record<QualityPreset, { crf: number; label: string
   media: { crf: 22, label: "Média" },
   baixa: { crf: 26, label: "Baixa" },
 };
+
+export const CODEC_OPTIONS = [
+  { value: "libx265", label: "H.265 / HEVC", desc: "Melhor compressão, arquivos menores" },
+  { value: "libx264", label: "H.264 / AVC", desc: "Compatibilidade universal" },
+  { value: "libvpx-vp9", label: "VP9", desc: "Codec aberto do Google/YouTube" },
+  { value: "copy", label: "Copiar stream", desc: "Sem re-encode, quase instantâneo" },
+] as const;
+
+export const PRESET_OPTIONS = [
+  { value: "ultrafast", label: "Ultrafast", desc: "Mais rápido, arquivo maior" },
+  { value: "superfast", label: "Superfast", desc: "Muito rápido" },
+  { value: "veryfast", label: "Veryfast", desc: "Bem rápido" },
+  { value: "fast", label: "Fast", desc: "Rápido, bom equilíbrio" },
+  { value: "medium", label: "Medium", desc: "Padrão do FFmpeg" },
+  { value: "slow", label: "Slow", desc: "Lento, arquivo menor" },
+  { value: "slower", label: "Slower", desc: "Bem lento" },
+  { value: "veryslow", label: "Veryslow", desc: "Menor arquivo possível" },
+] as const;
+
+export const TUNE_OPTIONS = [
+  { value: "animation", label: "Animação", desc: "Otimizado para anime/cartoon" },
+  { value: "film", label: "Filme", desc: "Para conteúdo live-action" },
+  { value: "grain", label: "Grão", desc: "Preserva textura granulada de filmes" },
+  { value: "zerolatency", label: "Zero Latência", desc: "Para streaming em tempo real" },
+  { value: "none", label: "Nenhum", desc: "Sem otimização de tune" },
+] as const;
+
+export const PIX_FMT_OPTIONS = [
+  { value: "yuv420p10le", label: "10-bit (yuv420p10le)", desc: "Melhor qualidade de cor e degradês" },
+  { value: "yuv420p", label: "8-bit (yuv420p)", desc: "Máxima compatibilidade" },
+  { value: "yuv444p", label: "4:4:4 (yuv444p)", desc: "100% nitidez de cor, arquivo maior" },
+] as const;
+
+export const AUDIO_CODEC_OPTIONS = [
+  { value: "copy", label: "Copiar original", desc: "Mantém áudio sem alteração" },
+  { value: "aac", label: "AAC", desc: "Compatível com MP4/streaming" },
+  { value: "libopus", label: "Opus", desc: "Melhor qualidade em baixo bitrate" },
+  { value: "libmp3lame", label: "MP3", desc: "Compatibilidade universal" },
+] as const;
 
 export interface Pipeline {
   id: string;

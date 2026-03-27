@@ -114,9 +114,38 @@ func (r *Runner) Video2xRife(ctx context.Context, gpuID int, filename, logPath s
 	return cmd.Run()
 }
 
-// FFmpegEncode compresses a video with H.265.
+// EncodeOptions holds codec and encoding parameters for FFmpeg.
+type EncodeOptions struct {
+	Codec      string // "libx265" (default), "libx264", "libvpx-vp9", "copy"
+	Preset     string // "fast" (default), "ultrafast"..."veryslow"
+	Tune       string // "animation" (default), "film", "grain", "zerolatency", "none" (no tune)
+	PixFmt     string // "yuv420p10le" (default), "yuv420p", "yuv444p"
+	AudioCodec string // "copy" (default), "aac", "libopus", "libmp3lame"
+}
+
+// WithDefaults returns a copy with zero-value fields replaced by defaults.
+func (o EncodeOptions) WithDefaults() EncodeOptions {
+	if o.Codec == "" {
+		o.Codec = "libx265"
+	}
+	if o.Preset == "" {
+		o.Preset = "fast"
+	}
+	if o.Tune == "" {
+		o.Tune = "animation"
+	}
+	if o.PixFmt == "" {
+		o.PixFmt = "yuv420p10le"
+	}
+	if o.AudioCodec == "" {
+		o.AudioCodec = "copy"
+	}
+	return o
+}
+
+// FFmpegEncode encodes a video with configurable codec and settings.
 // If onProgress is non-nil, stderr/stdout are intercepted to parse progress data.
-func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath string, crf int, threads int, processName string, copySubtitles bool, scaleDivisor int, onProgress func(Progress)) error {
+func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath string, crf int, threads int, opts EncodeOptions, processName string, copySubtitles bool, scaleDivisor int, onProgress func(Progress)) error {
 	f, err := os.OpenFile(r.cfg.BaseDir+"/ffmpeg.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("open ffmpeg log: %w", err)
@@ -129,21 +158,31 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	args := []string{
 		"-i", inputPath,
 	}
+	opts = opts.WithDefaults()
+
 	if copySubtitles {
 		args = append(args, "-map", "0")
 	}
-	if scaleDivisor > 1 {
+	if scaleDivisor > 1 && opts.Codec != "copy" {
 		args = append(args, "-vf", fmt.Sprintf("scale=iw/%d:ih/%d", scaleDivisor, scaleDivisor))
 	}
-	args = append(args,
-		"-c:v", "libx265",
-		"-preset", "fast",
-		"-crf", strconv.Itoa(crf),
-		"-tune", "animation",
-		"-pix_fmt", "yuv420p10le",
-		"-threads", strconv.Itoa(threads),
-		"-c:a", "copy",
-	)
+
+	if opts.Codec == "copy" {
+		args = append(args, "-c:v", "copy")
+	} else {
+		args = append(args, "-c:v", opts.Codec)
+		if opts.Codec != "libvpx-vp9" {
+			args = append(args, "-preset", opts.Preset)
+		}
+		args = append(args, "-crf", strconv.Itoa(crf))
+		if opts.Tune != "none" && opts.Codec != "libvpx-vp9" {
+			args = append(args, "-tune", opts.Tune)
+		}
+		args = append(args, "-pix_fmt", opts.PixFmt)
+		args = append(args, "-threads", strconv.Itoa(threads))
+	}
+	args = append(args, "-c:a", opts.AudioCodec)
+
 	if copySubtitles {
 		args = append(args, "-c:s", "copy")
 	}

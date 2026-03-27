@@ -1,4 +1,4 @@
-cd /mnt/SSD2/process/anime-upscaling/
+cd /mnt/SSD2/anime-upscaling/
 git pull
 docker compose down
 docker compose build

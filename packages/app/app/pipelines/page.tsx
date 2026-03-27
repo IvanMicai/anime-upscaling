@@ -54,7 +54,7 @@ export default function PipelinesPage() {
     }
   }
 
-  const initial = { width: 1920, height: 1080, fps: 24, optimized: false, crf: null };
+  const initial = { width: 1920, height: 1080, fps: 24, optimized: false, crf: null, codec: null };
 
   return (
     <div>

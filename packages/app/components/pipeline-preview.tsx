@@ -8,6 +8,7 @@ interface VideoState {
   fps: number;
   optimized: boolean;
   crf: number | null;
+  codec: string | null;
 }
 
 const BPP_BY_CRF: Record<number, number> = {
@@ -17,8 +18,19 @@ const BPP_BY_CRF: Record<number, number> = {
   26: 0.020,
 };
 
+const CODEC_LABELS: Record<string, string> = {
+  libx265: "H.265",
+  libx264: "H.264",
+  "libvpx-vp9": "VP9",
+  copy: "copy",
+};
+
+export function codecLabel(codec: string | null): string {
+  return CODEC_LABELS[codec ?? "libx265"] ?? "H.265";
+}
+
 export function computePreview(steps: PipelineStep[]): VideoState {
-  const state: VideoState = { width: 1920, height: 1080, fps: 24, optimized: false, crf: null };
+  const state: VideoState = { width: 1920, height: 1080, fps: 24, optimized: false, crf: null, codec: null };
   for (const step of steps) {
     switch (step.operation) {
       case "upscale":
@@ -33,7 +45,8 @@ export function computePreview(steps: PipelineStep[]): VideoState {
         state.width = Math.floor(state.width / div);
         state.height = Math.floor(state.height / div);
         state.optimized = true;
-        state.crf = QUALITY_PRESETS[step.quality ?? "alta"].crf;
+        state.crf = step.codec === "copy" ? null : QUALITY_PRESETS[step.quality ?? "alta"].crf;
+        state.codec = step.codec ?? "libx265";
         break;
       }
     }
@@ -60,7 +73,7 @@ export function formatResolution(state: VideoState): string {
 
 export function formatStateLabel(state: VideoState): string {
   const parts = [`${state.height}p`, `${state.fps}fps`];
-  if (state.optimized) parts.push("(optimized)");
+  if (state.optimized) parts.push(`(${codecLabel(state.codec)})`);
   return parts.join(" ");
 }
 
@@ -78,7 +91,9 @@ export function formatStepSummary(steps: PipelineStep[]): string {
       case "interpolate":
         return `Interpolate ${s.multiplier ?? 2}x`;
       case "optimize":
-        return `Optimize (${QUALITY_PRESETS[s.quality ?? "alta"].label})`;
+        return s.codec === "copy"
+          ? `Optimize (copy)`
+          : `Optimize (${QUALITY_PRESETS[s.quality ?? "alta"].label}, ${codecLabel(s.codec ?? null)})`;
     }
   }).join(" → ");
 }
@@ -96,7 +111,7 @@ export function PipelinePreview({ steps }: PipelinePreviewProps) {
     );
   }
 
-  const initial = { width: 1920, height: 1080, fps: 24, optimized: false, crf: null };
+  const initial = { width: 1920, height: 1080, fps: 24, optimized: false, crf: null, codec: null };
   const final_ = computePreview(steps);
   const sizeEst = formatSizeEstimate(final_);
 
