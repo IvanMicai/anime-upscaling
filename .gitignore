@@ -2,7 +2,5 @@
 .env
 packages/app/node_modules/
 packages/app/.next/
-bin/app/
-pids/
 logs/
 sources.json
