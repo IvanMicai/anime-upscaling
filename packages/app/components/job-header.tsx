@@ -69,14 +69,6 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
             {formatTime(job.finished_at)}
           </div>
         </div>
-        {job.files && job.files.length > 0 && (
-          <div>
-            <span className="text-muted-foreground">Files: </span>
-            <span className="font-mono">
-              {job.files.join(", ")}
-            </span>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
