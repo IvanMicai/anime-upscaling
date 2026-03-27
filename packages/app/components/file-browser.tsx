@@ -47,10 +47,10 @@ const TAB_ORDER: FolderKey[] = ["input", "output", "optimized", "interpolated"];
 function FileTooltipContent({ entry }: { entry: FolderEntry }) {
   return (
     <div className="space-y-1 text-xs">
+      <div>Size: {formatBytes(entry.size)}</div>
       {entry.width && entry.height && (
         <div>Resolution: {entry.width}x{entry.height}</div>
       )}
-      <div>Size: {formatBytes(entry.size)}</div>
       {entry.audio && entry.audio.length > 0 && (
         <div>
           <div className="font-medium">Audio ({entry.audio.length}):</div>
@@ -256,24 +256,28 @@ export function FileBrowser() {
       </div>
 
       {/* Delete summary bar */}
-      {deleteMode && deleteTotal > 0 && (
+      {deleteMode && (
         <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm">
           <span className="text-red-400">
-            {[
-              deleteSummary.input > 0 && `${deleteSummary.input} input`,
-              deleteSummary.output > 0 && `${deleteSummary.output} upscaled`,
-              deleteSummary.optimized > 0 && `${deleteSummary.optimized} optimized`,
-              deleteSummary.interpolated > 0 && `${deleteSummary.interpolated} interpolated`,
-            ].filter(Boolean).join(", ")}
+            {deleteTotal > 0
+              ? [
+                  deleteSummary.input > 0 && `${deleteSummary.input} input`,
+                  deleteSummary.output > 0 && `${deleteSummary.output} upscaled`,
+                  deleteSummary.optimized > 0 && `${deleteSummary.optimized} optimized`,
+                  deleteSummary.interpolated > 0 && `${deleteSummary.interpolated} interpolated`,
+                ].filter(Boolean).join(", ")
+              : "Select files to delete"}
           </span>
-          <div className="ml-auto flex gap-1.5">
-            <Button variant="ghost" size="xs" onClick={clearDeleteSelections}>
-              Clear
-            </Button>
-            <Button variant="destructive" size="xs" onClick={() => setConfirmOpen(true)}>
-              Delete selected
-            </Button>
-          </div>
+          {deleteTotal > 0 && (
+            <div className="ml-auto flex gap-1.5">
+              <Button variant="ghost" size="xs" onClick={clearDeleteSelections}>
+                Clear
+              </Button>
+              <Button variant="destructive" size="xs" onClick={() => setConfirmOpen(true)}>
+                Delete selected
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -324,16 +328,16 @@ export function FileBrowser() {
                             {entry.exists ? (
                               deleteMode ? (
                                 <span>
-                                  {entry.width && entry.height ? `${formatResolutionLabel(entry.height)} | ` : ""}
                                   {formatBytesCompact(entry.size)}
+                                  {entry.width && entry.height ? ` | ${formatResolutionLabel(entry.height)}` : ""}
                                 </span>
                               ) : (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <span className="inline-flex items-center gap-1.5 justify-end cursor-default">
                                       <span>
-                                        {entry.width && entry.height ? `${formatResolutionLabel(entry.height)} | ` : ""}
                                         {formatBytesCompact(entry.size)}
+                                        {entry.width && entry.height ? ` | ${formatResolutionLabel(entry.height)}` : ""}
                                       </span>
                                       <button
                                         type="button"

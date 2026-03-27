@@ -1,19 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { FilePicker } from "@/components/file-picker";
-import { createJob } from "@/lib/api";
-import type { JobType } from "@/lib/types";
+import { createJob, getPipelines, runPipeline } from "@/lib/api";
+import type { JobType, Pipeline } from "@/lib/types";
 
 export default function NewJobPage() {
   const router = useRouter();
@@ -28,8 +31,24 @@ export default function NewJobPage() {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
+
+  useEffect(() => {
+    getPipelines()
+      .then(setPipelines)
+      .catch(() => setPipelines([]));
+  }, []);
+
+  const isPipelineSelected = selectedPipelineId !== null;
 
   function handleTypeChange(v: string) {
+    if (v.startsWith("pipeline:")) {
+      setSelectedPipelineId(v.substring("pipeline:".length));
+      setSource("input");
+      return;
+    }
+    setSelectedPipelineId(null);
     setType(v as JobType);
     if (v !== "optimize" && v !== "check") {
       setSource("input");
@@ -51,19 +70,23 @@ export default function NewJobPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await createJob({
-        type,
-        files,
-        ...(source !== "input" && { source }),
-        ...((type === "upscale" || type === "pipeline") && { scale }),
-        ...(type === "optimize" && resolution !== 1 && { resolution }),
-        ...(type === "interpolate" && {
-          multiplier,
-          rife_model: rifeModel,
-          scene_thresh: sceneThresh,
-        }),
-        ...(threads > 0 && { threads }),
-      });
+      if (selectedPipelineId) {
+        await runPipeline(selectedPipelineId, { files });
+      } else {
+        await createJob({
+          type,
+          files,
+          ...(source !== "input" && { source }),
+          ...((type === "upscale" || type === "pipeline") && { scale }),
+          ...(type === "optimize" && resolution !== 1 && { resolution }),
+          ...(type === "interpolate" && {
+            multiplier,
+            rife_model: rifeModel,
+            scene_thresh: sceneThresh,
+          }),
+          ...(threads > 0 && { threads }),
+        });
+      }
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create job");
@@ -83,7 +106,7 @@ export default function NewJobPage() {
         <div className="space-y-2">
           <label className="text-sm font-medium">Type</label>
           <Select
-            value={type}
+            value={isPipelineSelected ? `pipeline:${selectedPipelineId}` : type}
             onValueChange={handleTypeChange}
           >
             <SelectTrigger>
@@ -95,11 +118,24 @@ export default function NewJobPage() {
               <SelectItem value="optimize">Optimize</SelectItem>
               <SelectItem value="pipeline">Pipeline</SelectItem>
               <SelectItem value="check">Check</SelectItem>
+              {pipelines.length > 0 && (
+                <>
+                  <SelectSeparator />
+                  <SelectGroup>
+                    <SelectLabel>Saved Pipelines</SelectLabel>
+                    {pipelines.map((p) => (
+                      <SelectItem key={p.id} value={`pipeline:${p.id}`}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </>
+              )}
             </SelectContent>
           </Select>
         </div>
 
-        {(type === "optimize" || type === "check") && (
+        {!isPipelineSelected && (type === "optimize" || type === "check") && (
           <div className="space-y-2">
             <label className="text-sm font-medium">Source</label>
             <Select
@@ -120,7 +156,7 @@ export default function NewJobPage() {
           </div>
         )}
 
-        {(type === "upscale" || type === "pipeline") && (
+        {!isPipelineSelected && (type === "upscale" || type === "pipeline") && (
           <div className="space-y-2">
             <label className="text-sm font-medium">Scale</label>
             <Select
@@ -138,7 +174,7 @@ export default function NewJobPage() {
           </div>
         )}
 
-        {type === "optimize" && (
+        {!isPipelineSelected && type === "optimize" && (
           <div className="space-y-2">
             <label className="text-sm font-medium">Resolution</label>
             <Select
@@ -157,7 +193,7 @@ export default function NewJobPage() {
           </div>
         )}
 
-        {type === "interpolate" && (
+        {!isPipelineSelected && type === "interpolate" && (
           <>
             <div className="space-y-2">
               <label className="text-sm font-medium">Multiplier</label>
@@ -212,7 +248,7 @@ export default function NewJobPage() {
           </>
         )}
 
-        {(type === "optimize" || type === "pipeline") && (
+        {!isPipelineSelected && (type === "optimize" || type === "pipeline") && (
           <div className="space-y-2">
             <label className="text-sm font-medium">Threads</label>
             <Select
