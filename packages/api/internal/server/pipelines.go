@@ -198,15 +198,21 @@ func validateSteps(steps []pipeline.PipelineStep) error {
 			if s.Scale != 0 && s.Scale != 2 && s.Scale != 4 {
 				return fmt.Errorf("step %d: scale must be 2 or 4", i+1)
 			}
+			if !pipeline.ValidProcessors[s.Processor] {
+				return fmt.Errorf("step %d: invalid processor %q", i+1, s.Processor)
+			}
+			if !pipeline.ValidUpscaleModels[s.Model] {
+				return fmt.Errorf("step %d: invalid model %q", i+1, s.Model)
+			}
+			if s.NoiseLevel < 0 || s.NoiseLevel > 3 {
+				return fmt.Errorf("step %d: noise_level must be between 0 and 3", i+1)
+			}
 		case "interpolate":
 			if s.Multiplier != 0 && s.Multiplier != 2 && s.Multiplier != 3 && s.Multiplier != 4 {
 				return fmt.Errorf("step %d: multiplier must be 2, 3, or 4", i+1)
 			}
-			validModels := map[string]bool{
-				"": true, "rife-v4.6": true, "rife-v4.25": true, "rife-v4.25-lite": true, "rife-v4.26": true,
-			}
-			if !validModels[s.RifeModel] {
-				return fmt.Errorf("step %d: invalid rife_model", i+1)
+			if !pipeline.ValidRifeModels[s.RifeModel] {
+				return fmt.Errorf("step %d: invalid rife_model %q", i+1, s.RifeModel)
 			}
 			if s.SceneThresh < 0 || s.SceneThresh > 100 {
 				return fmt.Errorf("step %d: scene_thresh must be between 0 and 100", i+1)

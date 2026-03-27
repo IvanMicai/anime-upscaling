@@ -44,6 +44,11 @@ func RunCustomPipelineForFile(
 			if scale == 0 {
 				scale = 2
 			}
+			upOpts := runner.UpscaleOptions{
+				Processor:  step.Processor,
+				Model:      step.Model,
+				NoiseLevel: step.NoiseLevel,
+			}
 
 			gpuID, err := gpuQ.Acquire(ctx)
 			if err != nil {
@@ -56,7 +61,7 @@ func RunCustomPipelineForFile(
 				Time:    time.Now(),
 			})
 
-			ok := UpscaleFile(ctx, cfg, r, gpuID, filename, index, scale, currentInputDir, cfg.OutputDir, onEvent, onProgress)
+			ok := UpscaleFile(ctx, cfg, r, gpuID, filename, index, scale, upOpts, currentInputDir, cfg.OutputDir, onEvent, onProgress)
 			gpuQ.Release(gpuID)
 
 			if !ok {

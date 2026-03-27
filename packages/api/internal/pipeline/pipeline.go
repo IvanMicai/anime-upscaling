@@ -13,6 +13,9 @@ import (
 type PipelineStep struct {
 	Operation   string  `json:"operation"`
 	Scale       int     `json:"scale,omitempty"`
+	Processor   string  `json:"processor,omitempty"`
+	Model       string  `json:"model,omitempty"`
+	NoiseLevel  int     `json:"noise_level,omitempty"`
 	Multiplier  int     `json:"multiplier,omitempty"`
 	RifeModel   string  `json:"rife_model,omitempty"`
 	SceneThresh float64 `json:"scene_thresh,omitempty"`
@@ -41,6 +44,32 @@ var QualityToCRF = map[string]int{
 	"alta":  19,
 	"media": 22,
 	"baixa": 26,
+}
+
+// ValidProcessors lists allowed upscale processors.
+var ValidProcessors = map[string]bool{
+	"": true, "realesrgan": true, "libplacebo": true, "realcugan": true,
+}
+
+// ValidUpscaleModels lists all valid model/shader names across processors.
+var ValidUpscaleModels = map[string]bool{
+	"": true,
+	// realesrgan
+	"realesr-animevideov3": true, "realesrgan-plus-anime": true, "realesrgan-plus": true,
+	// libplacebo
+	"anime4k-v4-a": true, "anime4k-v4-a+a": true, "anime4k-v4-b": true,
+	"anime4k-v4-b+b": true, "anime4k-v4-c": true, "anime4k-v4-c+a": true, "anime4k-v4.1-gan": true,
+	// realcugan
+	"models-se": true, "models-pro": true, "models-nose": true,
+}
+
+// ValidRifeModels lists all valid RIFE model names.
+var ValidRifeModels = map[string]bool{
+	"": true,
+	"rife-v4.6": true, "rife-v4.26": true, "rife-v4.25": true, "rife-v4.25-lite": true,
+	"rife-v4": true, "rife-v3.1": true, "rife-v3.0": true,
+	"rife-v2.4": true, "rife-v2.3": true, "rife-v2": true,
+	"rife-anime": true, "rife-UHD": true, "rife-HD": true, "rife": true,
 }
 
 // ValidCodecs lists allowed video codec values for optimize steps.

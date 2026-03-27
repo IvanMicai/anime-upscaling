@@ -1,5 +1,5 @@
 import type { PipelineStep } from "@/lib/types";
-import { QUALITY_PRESETS } from "@/lib/types";
+import { QUALITY_PRESETS, PROCESSOR_OPTIONS } from "@/lib/types";
 import { formatBytes } from "@/lib/file-utils";
 
 interface VideoState {
@@ -86,10 +86,12 @@ export function formatSizeEstimate(state: VideoState): string | null {
 export function formatStepSummary(steps: PipelineStep[]): string {
   return steps.map((s) => {
     switch (s.operation) {
-      case "upscale":
-        return `Upscale ${s.scale ?? 2}x`;
+      case "upscale": {
+        const procLabel = PROCESSOR_OPTIONS.find(p => p.value === (s.processor ?? "realesrgan"))?.label ?? "RealESRGAN";
+        return `Upscale ${s.scale ?? 2}x (${procLabel})`;
+      }
       case "interpolate":
-        return `Interpolate ${s.multiplier ?? 2}x`;
+        return `Interpolate ${s.multiplier ?? 2}x (${s.rife_model ?? "rife-v4.6"})`;
       case "optimize":
         return s.codec === "copy"
           ? `Optimize (copy)`
