@@ -36,7 +36,7 @@ func RunInterpolate(ctx context.Context, cfg config.Config, r *runner.Runner, fi
 				if ctx.Err() != nil {
 					return
 				}
-				InterpolateFile(ctx, cfg, r, gpuID, w.filename, w.index, multiplier, rifeOpts, onEvent, safeProgress(onProgress))
+				InterpolateFile(ctx, cfg, r, gpuID, w.filename, w.index, multiplier, rifeOpts, cfg.InputDir, cfg.InterpolatedDir, onEvent, safeProgress(onProgress))
 			}
 		}(gpuID)
 	}
@@ -45,8 +45,8 @@ func RunInterpolate(ctx context.Context, cfg config.Config, r *runner.Runner, fi
 }
 
 // InterpolateFile processes a single file on the given GPU using RIFE frame interpolation.
-func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, multiplier int, rifeOpts runner.RifeOptions, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
-	if err := os.MkdirAll(cfg.InterpolatedDir, 0755); err != nil {
+func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, multiplier int, rifeOpts runner.RifeOptions, inputDir, outputDir string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		source := fmt.Sprintf("GPU %d", gpuID)
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir interpolated: %v", err), Time: time.Now()})
 		return false
@@ -58,22 +58,22 @@ func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, g
 		onProgress(p)
 	}
 
-	outPath := filepath.Join(cfg.InterpolatedDir, filename)
+	outPath := filepath.Join(outputDir, filename)
 	if files.FileExists(outPath) {
 		onEvent(logger.JobLog{Source: source, Level: "SKIP", Index: index, Message: "Pulando " + filename + " (já existe)", Time: time.Now()})
 		return true
 	}
 
 	// Auto-enable UHD mode for high-resolution input (>= 1440p)
-	inputPath := filepath.Join(cfg.InputDir, filename)
-	if res, err := r.ProbeResolution(ctx, inputPath); err == nil && res.Height >= 1440 {
+	probePath := filepath.Join(inputDir, filename)
+	if res, err := r.ProbeResolution(ctx, probePath); err == nil && res.Height >= 1440 {
 		rifeOpts.UHD = true
 	}
 
 	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Interpolando: " + filename, Time: time.Now()})
 
 	logFile := fmt.Sprintf("%s/gpu%d.log", cfg.BaseDir, gpuID)
-	err := r.Video2xRife(ctx, gpuID, filename, logFile, multiplier, rifeOpts, gpuProgress)
+	err := r.Video2xRife(ctx, gpuID, filename, logFile, multiplier, rifeOpts, inputDir, outputDir, gpuProgress)
 
 	if err != nil {
 		// Clean up partial output on failure
@@ -87,7 +87,7 @@ func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, g
 		return false
 	}
 
-	r.Chown(ctx, cfg.InterpolatedDir, filename)
+	r.Chown(ctx, outputDir, filename)
 	onEvent(logger.JobLog{Source: source, Level: "OK", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
 	return true
 }

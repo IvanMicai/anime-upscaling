@@ -6,6 +6,10 @@ import type {
   CancelJobResponse,
   DeleteFilesRequest,
   DeleteFilesResponse,
+  Pipeline,
+  CreatePipelineRequest,
+  UpdatePipelineRequest,
+  RunPipelineRequest,
 } from "./types";
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -48,6 +52,44 @@ export function cancelJob(id: string): Promise<CancelJobResponse> {
 export function deleteFiles(req: DeleteFilesRequest): Promise<DeleteFilesResponse> {
   return fetchJSON<DeleteFilesResponse>("/api/files", {
     method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+// Pipeline API
+
+export function getPipelines(): Promise<Pipeline[]> {
+  return fetchJSON<Pipeline[]>("/api/pipelines");
+}
+
+export function getPipeline(id: string): Promise<Pipeline> {
+  return fetchJSON<Pipeline>(`/api/pipelines/${id}`);
+}
+
+export function createPipeline(req: CreatePipelineRequest): Promise<Pipeline> {
+  return fetchJSON<Pipeline>("/api/pipelines", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export function updatePipeline(id: string, req: UpdatePipelineRequest): Promise<Pipeline> {
+  return fetchJSON<Pipeline>(`/api/pipelines/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export function deletePipeline(id: string): Promise<void> {
+  return fetchJSON<void>(`/api/pipelines/${id}`, { method: "DELETE" });
+}
+
+export function runPipeline(id: string, req: RunPipelineRequest): Promise<CreateJobResponse> {
+  return fetchJSON<CreateJobResponse>(`/api/pipelines/${id}/run`, {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });

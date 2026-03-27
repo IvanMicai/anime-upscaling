@@ -9,6 +9,7 @@ import (
 
 	"anime-upscaling/internal/config"
 	"anime-upscaling/internal/logger"
+	"anime-upscaling/internal/pipeline"
 	"anime-upscaling/internal/process"
 	"anime-upscaling/internal/queue"
 	"anime-upscaling/internal/runner"
@@ -27,24 +28,26 @@ type JobProgress struct {
 }
 
 type Job struct {
-	ID         string       `json:"id"`
-	Type       string       `json:"type"`
-	Status     string       `json:"status"`
-	Source     string       `json:"source"`
-	Scale      int          `json:"scale"`
-	Resolution int          `json:"resolution"`
-	Multiplier  int          `json:"multiplier,omitempty"`
-	RifeModel   string       `json:"rife_model,omitempty"`
-	SceneThresh float64      `json:"scene_thresh,omitempty"`
-	Threads     int          `json:"threads,omitempty"`
-	Files      []string     `json:"files"`
-	Progress   JobProgress  `json:"progress"`
-	Logs       []logEntry   `json:"-"`
-	CreatedAt  time.Time    `json:"created_at"`
-	FinishedAt *time.Time   `json:"finished_at,omitempty"`
-	cancel     context.CancelFunc
-	mu         sync.Mutex
-	listeners  []chan logEntry
+	ID            string                  `json:"id"`
+	Type          string                  `json:"type"`
+	Status        string                  `json:"status"`
+	Source        string                  `json:"source"`
+	Scale         int                     `json:"scale"`
+	Resolution    int                     `json:"resolution"`
+	Multiplier    int                     `json:"multiplier,omitempty"`
+	RifeModel     string                  `json:"rife_model,omitempty"`
+	SceneThresh   float64                 `json:"scene_thresh,omitempty"`
+	Threads       int                     `json:"threads,omitempty"`
+	PipelineName  string                  `json:"pipeline_name,omitempty"`
+	PipelineSteps []pipeline.PipelineStep `json:"pipeline_steps,omitempty"`
+	Files         []string                `json:"files"`
+	Progress      JobProgress             `json:"progress"`
+	Logs          []logEntry              `json:"-"`
+	CreatedAt     time.Time               `json:"created_at"`
+	FinishedAt    *time.Time              `json:"finished_at,omitempty"`
+	cancel        context.CancelFunc
+	mu            sync.Mutex
+	listeners     []chan logEntry
 }
 
 func (j *Job) updateContainerProgress(p runner.Progress) {
@@ -144,20 +147,22 @@ func (j *Job) snapshot() Job {
 	prog := j.Progress
 	prog.Containers = copyContainers(j.Progress.Containers)
 	return Job{
-		ID:          j.ID,
-		Type:        j.Type,
-		Status:      j.Status,
-		Source:      j.Source,
-		Scale:       j.Scale,
-		Resolution:  j.Resolution,
-		Multiplier:  j.Multiplier,
-		RifeModel:   j.RifeModel,
-		SceneThresh: j.SceneThresh,
-		Threads:     j.Threads,
-		Files:       j.Files,
-		Progress:    prog,
-		CreatedAt:   j.CreatedAt,
-		FinishedAt:  j.FinishedAt,
+		ID:            j.ID,
+		Type:          j.Type,
+		Status:        j.Status,
+		Source:        j.Source,
+		Scale:         j.Scale,
+		Resolution:    j.Resolution,
+		Multiplier:    j.Multiplier,
+		RifeModel:     j.RifeModel,
+		SceneThresh:   j.SceneThresh,
+		Threads:       j.Threads,
+		PipelineName:  j.PipelineName,
+		PipelineSteps: j.PipelineSteps,
+		Files:         j.Files,
+		Progress:      prog,
+		CreatedAt:     j.CreatedAt,
+		FinishedAt:    j.FinishedAt,
 	}
 }
 
@@ -169,21 +174,23 @@ func (j *Job) snapshotWithLogs() Job {
 	prog := j.Progress
 	prog.Containers = copyContainers(j.Progress.Containers)
 	return Job{
-		ID:          j.ID,
-		Type:        j.Type,
-		Status:      j.Status,
-		Source:      j.Source,
-		Scale:       j.Scale,
-		Resolution:  j.Resolution,
-		Multiplier:  j.Multiplier,
-		RifeModel:   j.RifeModel,
-		SceneThresh: j.SceneThresh,
-		Threads:     j.Threads,
-		Files:       j.Files,
-		Progress:    prog,
-		Logs:        logs,
-		CreatedAt:   j.CreatedAt,
-		FinishedAt:  j.FinishedAt,
+		ID:            j.ID,
+		Type:          j.Type,
+		Status:        j.Status,
+		Source:        j.Source,
+		Scale:         j.Scale,
+		Resolution:    j.Resolution,
+		Multiplier:    j.Multiplier,
+		RifeModel:     j.RifeModel,
+		SceneThresh:   j.SceneThresh,
+		Threads:       j.Threads,
+		PipelineName:  j.PipelineName,
+		PipelineSteps: j.PipelineSteps,
+		Files:         j.Files,
+		Progress:      prog,
+		Logs:          logs,
+		CreatedAt:     j.CreatedAt,
+		FinishedAt:    j.FinishedAt,
 	}
 }
 
@@ -261,7 +268,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 					defer wg.Done()
 					defer m.gpuQ.Release(gpuID)
 					job.setRunningOnce()
-					process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, onEvent, onProgress)
+					process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, cfg.InputDir, cfg.OutputDir, onEvent, onProgress)
 				}()
 			}
 
@@ -276,7 +283,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 				if err := m.ffmpegQ.Submit(ctx, func() {
 					defer wg.Done()
 					job.setRunningOnce()
-					process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, jobResolution, jobThreads, onEvent, onProgress)
+					process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, jobResolution, 19, jobThreads, onEvent, onProgress)
 				}); err != nil {
 					wg.Done()
 					break // ctx cancelled
@@ -313,7 +320,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 				go func() {
 					defer m.gpuQ.Release(gpuID)
 					job.setRunningOnce()
-					ok := process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, onEvent, onProgress)
+					ok := process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, cfg.InputDir, cfg.OutputDir, onEvent, onProgress)
 					if !ok || ctx.Err() != nil {
 						wg.Done()
 						return
@@ -346,7 +353,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 					defer wg.Done()
 					defer m.gpuQ.Release(gpuID)
 					job.setRunningOnce()
-					process.InterpolateFile(ctx, cfg, r, gpuID, filename, idx, job.Multiplier, rifeOpts, onEvent, onProgress)
+					process.InterpolateFile(ctx, cfg, r, gpuID, filename, idx, job.Multiplier, rifeOpts, cfg.InputDir, cfg.InterpolatedDir, onEvent, onProgress)
 				}()
 			}
 		}
@@ -362,6 +369,71 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 			job.Status = "completed"
 		}
 		// Close all listener channels to signal end
+		for _, ch := range job.listeners {
+			close(ch)
+		}
+		job.listeners = nil
+		job.mu.Unlock()
+	}()
+
+	return job
+}
+
+func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.PipelineStep, files []string) *Job {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	job := &Job{
+		ID:            m.generateID(),
+		Type:          "custom_pipeline",
+		Status:        "queued",
+		Source:        "input",
+		PipelineName:  pipelineName,
+		PipelineSteps: steps,
+		Files:         files,
+		Progress:      JobProgress{Total: len(files)},
+		CreatedAt:     time.Now().UTC(),
+		cancel:        cancel,
+	}
+
+	m.mu.Lock()
+	m.jobs[job.ID] = job
+	m.mu.Unlock()
+
+	r := m.runner
+	cfg := m.cfg
+	gpuQ := m.gpuQ
+	ffmpegQ := m.ffmpegQ
+	onEvent := func(e logEntry) {
+		job.addLog(e)
+	}
+	onProgress := func(p runner.Progress) {
+		job.updateContainerProgress(p)
+	}
+
+	go func() {
+		var wg sync.WaitGroup
+
+		for i, f := range files {
+			wg.Add(1)
+			idx := i + 1
+			filename := f
+			go func() {
+				defer wg.Done()
+				job.setRunningOnce()
+				process.RunCustomPipelineForFile(ctx, cfg, r, gpuQ, ffmpegQ, steps, filename, idx, onEvent, onProgress)
+			}()
+		}
+
+		wg.Wait()
+
+		job.mu.Lock()
+		now := time.Now().UTC()
+		job.FinishedAt = &now
+		if ctx.Err() != nil {
+			job.Status = "cancelled"
+		} else {
+			job.Status = "completed"
+		}
 		for _, ch := range job.listeners {
 			close(ch)
 		}
@@ -400,11 +472,11 @@ func (m *JobManager) CancelJob(id string) *Job {
 	if job.Status == "running" || job.Status == "queued" {
 		job.cancel()
 		// Stop video2x processes for upscale/pipeline/interpolate jobs
-		if job.Type == "upscale" || job.Type == "pipeline" || job.Type == "interpolate" {
+		if job.Type == "upscale" || job.Type == "pipeline" || job.Type == "interpolate" || job.Type == "custom_pipeline" {
 			go func() { runner.StopByPrefix(runner.ProcessPrefix + "video2x-") }()
 		}
-		// Stop ffmpeg processes for optimize/pipeline/check jobs
-		if job.Type == "optimize" || job.Type == "pipeline" || job.Type == "check" {
+		// Stop ffmpeg processes for optimize/pipeline/check/custom_pipeline jobs
+		if job.Type == "optimize" || job.Type == "pipeline" || job.Type == "check" || job.Type == "custom_pipeline" {
 			go func() { runner.StopByPrefix(runner.ProcessPrefix + "ffmpeg-") }()
 		}
 	}

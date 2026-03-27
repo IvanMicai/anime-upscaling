@@ -1,4 +1,4 @@
-export type JobType = "upscale" | "optimize" | "pipeline" | "check" | "interpolate";
+export type JobType = "upscale" | "optimize" | "pipeline" | "check" | "interpolate" | "custom_pipeline";
 
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -33,6 +33,8 @@ export interface Job {
   rife_model?: string;
   scene_thresh?: number;
   threads?: number;
+  pipeline_name?: string;
+  pipeline_steps?: PipelineStep[];
   files: string[];
   progress: JobProgress;
   created_at: string;
@@ -128,5 +130,51 @@ export interface DeleteFilesResponse {
 
 export interface ApiError {
   error: string;
+}
+
+// Pipeline types
+
+export type PipelineOperationType = "upscale" | "interpolate" | "optimize";
+
+export type QualityPreset = "ultra" | "alta" | "media" | "baixa";
+
+export interface PipelineStep {
+  operation: PipelineOperationType;
+  scale?: 2 | 4;
+  multiplier?: 2 | 3 | 4;
+  rife_model?: string;
+  scene_thresh?: number;
+  quality?: QualityPreset;
+  resolution?: 1 | 2 | 4;
+  threads?: number;
+}
+
+export const QUALITY_PRESETS: Record<QualityPreset, { crf: number; label: string }> = {
+  ultra: { crf: 16, label: "Ultra" },
+  alta:  { crf: 19, label: "Alta" },
+  media: { crf: 22, label: "Média" },
+  baixa: { crf: 26, label: "Baixa" },
+};
+
+export interface Pipeline {
+  id: string;
+  name: string;
+  steps: PipelineStep[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatePipelineRequest {
+  name: string;
+  steps: PipelineStep[];
+}
+
+export interface UpdatePipelineRequest {
+  name?: string;
+  steps?: PipelineStep[];
+}
+
+export interface RunPipelineRequest {
+  files?: string[];
 }
 
