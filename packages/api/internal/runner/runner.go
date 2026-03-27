@@ -245,6 +245,49 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	return cmd.Run()
 }
 
+// FFmpegRemuxAudio combines video from videoPath with audio+subtitles from
+// audioSourcePath using stream copy (no re-encoding). Used after video2x
+// processing to restore audio/subtitle streams from the original file.
+// The output replaces videoPath via a temp file rename.
+func (r *Runner) FFmpegRemuxAudio(ctx context.Context, videoPath, audioSourcePath string) error {
+	tmpPath := videoPath + ".remux.tmp"
+	defer os.Remove(tmpPath)
+
+	args := []string{
+		"-i", videoPath,
+		"-i", audioSourcePath,
+		"-map", "0:v",
+		"-map", "1:a?",
+		"-map", "1:s?",
+		"-c", "copy",
+		"-y",
+		tmpPath,
+	}
+
+	cmd := exec.CommandContext(ctx, r.cfg.FFmpegBin, args...)
+
+	f, err := os.OpenFile(r.cfg.BaseDir+"/ffmpeg-remux.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("open remux log: %w", err)
+	}
+	defer f.Close()
+	cmd.Stdout = f
+	cmd.Stderr = f
+
+	label := ProcessPrefix + "ffmpeg-remux-" + ephemeralSuffix()
+	tracker.register(label, cmd)
+	defer tracker.unregister(label)
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("remux audio: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, videoPath); err != nil {
+		return fmt.Errorf("remux rename: %w", err)
+	}
+	return nil
+}
+
 // FFprobe runs ffprobe on a file, returns stdout+stderr combined.
 func (r *Runner) FFprobe(ctx context.Context, relPath string) (string, error) {
 	absPath := r.cfg.BaseDir + "/" + relPath
