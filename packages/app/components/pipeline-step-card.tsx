@@ -8,7 +8,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { PipelineStep, PipelineOperationType } from "@/lib/types";
-import { computeStateAt, formatResolution, formatSizeEstimate } from "./pipeline-preview";
+import {
+  CODEC_OPTIONS,
+  PRESET_OPTIONS,
+  TUNE_OPTIONS,
+  PIX_FMT_OPTIONS,
+  AUDIO_CODEC_OPTIONS,
+} from "@/lib/types";
+import { computeStateAt, formatResolution, formatSizeEstimate, codecLabel } from "./pipeline-preview";
 
 interface PipelineStepCardProps {
   step: PipelineStep;
@@ -53,6 +60,11 @@ export function PipelineStepCard({
         base.quality = "alta";
         base.resolution = 1;
         base.threads = 0;
+        base.codec = "libx265";
+        base.preset = "fast";
+        base.tune = "animation";
+        base.pix_fmt = "yuv420p10le";
+        base.audio_codec = "copy";
         break;
     }
     onChange(base);
@@ -183,66 +195,174 @@ export function PipelineStepCard({
           </>
         )}
 
-        {step.operation === "optimize" && (
-          <>
-            <Field label="Qualidade">
-              <Select
-                value={step.quality ?? "alta"}
-                onValueChange={(v) => updateField({ quality: v as PipelineStep["quality"] })}
-              >
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ultra">Ultra (CRF 16)</SelectItem>
-                  <SelectItem value="alta">Alta (CRF 19)</SelectItem>
-                  <SelectItem value="media">Média (CRF 22)</SelectItem>
-                  <SelectItem value="baixa">Baixa (CRF 26)</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Resolution">
-              <Select
-                value={String(step.resolution ?? 1)}
-                onValueChange={(v) => updateField({ resolution: Number(v) as 1 | 2 | 4 })}
-              >
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Original</SelectItem>
-                  <SelectItem value="2">1/2</SelectItem>
-                  <SelectItem value="4">1/4</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Threads">
-              <Select
-                value={String(step.threads ?? 0)}
-                onValueChange={(v) => updateField({ threads: Number(v) })}
-              >
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">Auto</SelectItem>
-                  <SelectItem value="1">1</SelectItem>
-                  <SelectItem value="2">2</SelectItem>
-                  <SelectItem value="4">4</SelectItem>
-                  <SelectItem value="8">8</SelectItem>
-                  <SelectItem value="16">16</SelectItem>
-                  <SelectItem value="32">32</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-          </>
-        )}
+        {step.operation === "optimize" && (() => {
+          const isStreamCopy = step.codec === "copy";
+          const isVP9 = step.codec === "libvpx-vp9";
+          return (
+            <>
+              <Field label="Codec de Vídeo">
+                <Select
+                  value={step.codec ?? "libx265"}
+                  onValueChange={(v) => {
+                    const updates: Partial<PipelineStep> = { codec: v as PipelineStep["codec"] };
+                    if (v === "copy") {
+                      updates.quality = undefined;
+                      updates.preset = undefined;
+                      updates.tune = undefined;
+                      updates.pix_fmt = undefined;
+                    }
+                    updateField(updates);
+                  }}
+                >
+                  <SelectTrigger className="h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CODEC_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label} — {opt.desc}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              {!isStreamCopy && (
+                <>
+                  <Field label="Qualidade">
+                    <Select
+                      value={step.quality ?? "alta"}
+                      onValueChange={(v) => updateField({ quality: v as PipelineStep["quality"] })}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ultra">Ultra (CRF 16)</SelectItem>
+                        <SelectItem value="alta">Alta (CRF 19)</SelectItem>
+                        <SelectItem value="media">Média (CRF 22)</SelectItem>
+                        <SelectItem value="baixa">Baixa (CRF 26)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  {!isVP9 && (
+                    <Field label="Preset">
+                      <Select
+                        value={step.preset ?? "fast"}
+                        onValueChange={(v) => updateField({ preset: v as PipelineStep["preset"] })}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PRESET_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label} — {opt.desc}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
+                  {!isVP9 && (
+                    <Field label="Tune">
+                      <Select
+                        value={step.tune ?? "animation"}
+                        onValueChange={(v) => updateField({ tune: v as PipelineStep["tune"] })}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TUNE_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label} — {opt.desc}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
+                  <Field label="Formato de Pixel">
+                    <Select
+                      value={step.pix_fmt ?? "yuv420p10le"}
+                      onValueChange={(v) => updateField({ pix_fmt: v as PipelineStep["pix_fmt"] })}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PIX_FMT_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label} — {opt.desc}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </>
+              )}
+              <Field label="Codec de Áudio">
+                <Select
+                  value={step.audio_codec ?? "copy"}
+                  onValueChange={(v) => updateField({ audio_codec: v as PipelineStep["audio_codec"] })}
+                >
+                  <SelectTrigger className="h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AUDIO_CODEC_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label} — {opt.desc}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              {!isStreamCopy && (
+                <Field label="Resolução">
+                  <Select
+                    value={String(step.resolution ?? 1)}
+                    onValueChange={(v) => updateField({ resolution: Number(v) as 1 | 2 | 4 })}
+                  >
+                    <SelectTrigger className="h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">Original</SelectItem>
+                      <SelectItem value="2">1/2</SelectItem>
+                      <SelectItem value="4">1/4</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+              <Field label="Threads">
+                <Select
+                  value={String(step.threads ?? 0)}
+                  onValueChange={(v) => updateField({ threads: Number(v) })}
+                >
+                  <SelectTrigger className="h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Auto</SelectItem>
+                    <SelectItem value="1">1</SelectItem>
+                    <SelectItem value="2">2</SelectItem>
+                    <SelectItem value="4">4</SelectItem>
+                    <SelectItem value="8">8</SelectItem>
+                    <SelectItem value="16">16</SelectItem>
+                    <SelectItem value="32">32</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </>
+          );
+        })()}
       </div>
 
       <div className="mt-3 pt-3 border-t border-border">
         <div className="text-sm text-muted-foreground">
           → {formatResolution(state)} · {state.fps}fps
-          {state.optimized && " (H.265)"}
+          {state.optimized && ` (${codecLabel(state.codec)})`}
         </div>
         {sizeEst && (
           <div className="text-xs text-muted-foreground/70 mt-0.5">{sizeEst}</div>

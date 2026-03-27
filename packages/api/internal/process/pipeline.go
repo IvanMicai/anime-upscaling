@@ -92,6 +92,7 @@ func EncodeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filena
 		"optimized/"+filename,
 		22,
 		t,
+		runner.EncodeOptions{},
 		"",
 		false,
 		1,

@@ -116,6 +116,13 @@ func RunCustomPipelineForFile(
 				resolution = 1
 			}
 			threads := step.Threads
+			encOpts := runner.EncodeOptions{
+				Codec:      step.Codec,
+				Preset:     step.Preset,
+				Tune:       step.Tune,
+				PixFmt:     step.PixFmt,
+				AudioCodec: step.AudioCodec,
+			}
 
 			// Convert currentInputDir to relative source name for optimize
 			source := dirToSource(cfg, currentInputDir)
@@ -128,7 +135,7 @@ func RunCustomPipelineForFile(
 					Message: stepLabel + "Optimize (" + quality + "): " + filename,
 					Time:    time.Now(),
 				})
-				OptimizeFile(ctx, cfg, r, filename, index, source, resolution, crf, threads, onEvent, onProgress)
+				OptimizeFile(ctx, cfg, r, filename, index, source, resolution, crf, threads, encOpts, onEvent, onProgress)
 			}); err != nil {
 				return false
 			}

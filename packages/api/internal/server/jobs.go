@@ -283,7 +283,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 				if err := m.ffmpegQ.Submit(ctx, func() {
 					defer wg.Done()
 					job.setRunningOnce()
-					process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, jobResolution, 19, jobThreads, onEvent, onProgress)
+					process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, jobResolution, 19, jobThreads, runner.EncodeOptions{}, onEvent, onProgress)
 				}); err != nil {
 					wg.Done()
 					break // ctx cancelled

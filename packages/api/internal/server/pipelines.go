@@ -223,6 +223,21 @@ func validateSteps(steps []pipeline.PipelineStep) error {
 			if s.Threads < 0 {
 				return fmt.Errorf("step %d: threads must be >= 0", i+1)
 			}
+			if !pipeline.ValidCodecs[s.Codec] {
+				return fmt.Errorf("step %d: invalid codec %q", i+1, s.Codec)
+			}
+			if !pipeline.ValidPresets[s.Preset] {
+				return fmt.Errorf("step %d: invalid preset %q", i+1, s.Preset)
+			}
+			if !pipeline.ValidTunes[s.Tune] {
+				return fmt.Errorf("step %d: invalid tune %q", i+1, s.Tune)
+			}
+			if !pipeline.ValidPixFmts[s.PixFmt] {
+				return fmt.Errorf("step %d: invalid pix_fmt %q", i+1, s.PixFmt)
+			}
+			if !pipeline.ValidAudioCodecs[s.AudioCodec] {
+				return fmt.Errorf("step %d: invalid audio_codec %q", i+1, s.AudioCodec)
+			}
 		}
 	}
 	return nil

@@ -35,6 +35,11 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
         step.quality = "alta";
         step.resolution = 1;
         step.threads = 0;
+        step.codec = "libx265";
+        step.preset = "fast";
+        step.tune = "animation";
+        step.pix_fmt = "yuv420p10le";
+        step.audio_codec = "copy";
         break;
     }
     setSteps([...steps, step]);
