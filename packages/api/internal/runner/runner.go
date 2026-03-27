@@ -32,15 +32,15 @@ func NewRunner(cfg config.Config) *Runner {
 
 // Video2x runs video2x upscale on a specific GPU, writing stdout/stderr to logPath.
 // If onProgress is non-nil, the log output is also parsed for progress data.
-func (r *Runner) Video2x(ctx context.Context, gpuID int, filename, logPath string, scale int, onProgress func(Progress)) error {
+func (r *Runner) Video2x(ctx context.Context, gpuID int, filename, logPath string, scale int, inputDir, outputDir string, onProgress func(Progress)) error {
 	f, err := os.Create(logPath)
 	if err != nil {
 		return fmt.Errorf("create log: %w", err)
 	}
 	defer f.Close()
 
-	inputPath := r.cfg.InputDir + "/" + filename
-	outputPath := r.cfg.OutputDir + "/" + filename
+	inputPath := inputDir + "/" + filename
+	outputPath := outputDir + "/" + filename
 
 	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin,
 		"-i", inputPath,
@@ -73,15 +73,15 @@ type RifeOptions struct {
 }
 
 // Video2xRife runs RIFE frame interpolation on a specific GPU.
-func (r *Runner) Video2xRife(ctx context.Context, gpuID int, filename, logPath string, multiplier int, opts RifeOptions, onProgress func(Progress)) error {
+func (r *Runner) Video2xRife(ctx context.Context, gpuID int, filename, logPath string, multiplier int, opts RifeOptions, inputDir, outputDir string, onProgress func(Progress)) error {
 	f, err := os.Create(logPath)
 	if err != nil {
 		return fmt.Errorf("create log: %w", err)
 	}
 	defer f.Close()
 
-	inputPath := r.cfg.InputDir + "/" + filename
-	outputPath := r.cfg.InterpolatedDir + "/" + filename
+	inputPath := inputDir + "/" + filename
+	outputPath := outputDir + "/" + filename
 
 	args := []string{
 		"-i", inputPath,

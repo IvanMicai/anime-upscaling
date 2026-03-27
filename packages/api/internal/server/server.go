@@ -13,6 +13,7 @@ import (
 	"anime-upscaling/internal/cache"
 	"anime-upscaling/internal/config"
 	"anime-upscaling/internal/files"
+	"anime-upscaling/internal/pipeline"
 )
 
 func CmdServe(cfg config.Config) error {
@@ -21,12 +22,15 @@ func CmdServe(cfg config.Config) error {
 	}
 
 	jm := NewJobManager(cfg)
+	ps := pipeline.NewStore(filepath.Join(cfg.BaseDir, "pipelines.json"))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/files/download", corsMiddleware(handleFileDownload(cfg)))
 	mux.HandleFunc("/api/files", corsMiddleware(handleFiles(cfg)))
 	mux.HandleFunc("/api/jobs", corsMiddleware(handleJobs(jm, cfg)))
 	mux.HandleFunc("/api/jobs/", corsMiddleware(handleJobRoutes(jm)))
+	mux.HandleFunc("/api/pipelines", corsMiddleware(handlePipelines(ps)))
+	mux.HandleFunc("/api/pipelines/", corsMiddleware(handlePipelineRoutes(ps, jm, cfg)))
 
 	addr := ":" + cfg.Port
 	fmt.Printf("Server listening on %s\n", addr)
@@ -467,36 +471,40 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 	snap := job.snapshotWithLogs()
 	// Include logs in the JSON output for detail endpoint
 	type jobDetail struct {
-		ID          string      `json:"id"`
-		Type        string      `json:"type"`
-		Status      string      `json:"status"`
-		Source      string      `json:"source"`
-		Scale       int         `json:"scale"`
-		Resolution  int         `json:"resolution"`
-		Multiplier  int         `json:"multiplier,omitempty"`
-		RifeModel   string      `json:"rife_model,omitempty"`
-		SceneThresh float64     `json:"scene_thresh,omitempty"`
-		Threads     int         `json:"threads,omitempty"`
-		Files       []string    `json:"files"`
-		Progress    JobProgress `json:"progress"`
-		CreatedAt   time.Time   `json:"created_at"`
-		FinishedAt  *time.Time  `json:"finished_at,omitempty"`
+		ID            string                  `json:"id"`
+		Type          string                  `json:"type"`
+		Status        string                  `json:"status"`
+		Source        string                  `json:"source"`
+		Scale         int                     `json:"scale"`
+		Resolution    int                     `json:"resolution"`
+		Multiplier    int                     `json:"multiplier,omitempty"`
+		RifeModel     string                  `json:"rife_model,omitempty"`
+		SceneThresh   float64                 `json:"scene_thresh,omitempty"`
+		Threads       int                     `json:"threads,omitempty"`
+		PipelineName  string                  `json:"pipeline_name,omitempty"`
+		PipelineSteps []pipeline.PipelineStep `json:"pipeline_steps,omitempty"`
+		Files         []string                `json:"files"`
+		Progress      JobProgress             `json:"progress"`
+		CreatedAt     time.Time               `json:"created_at"`
+		FinishedAt    *time.Time              `json:"finished_at,omitempty"`
 	}
 	writeJSON(w, http.StatusOK, jobDetail{
-		ID:          snap.ID,
-		Type:        snap.Type,
-		Status:      snap.Status,
-		Source:      snap.Source,
-		Scale:       snap.Scale,
-		Resolution:  snap.Resolution,
-		Multiplier:  snap.Multiplier,
-		RifeModel:   snap.RifeModel,
-		SceneThresh: snap.SceneThresh,
-		Threads:     snap.Threads,
-		Files:       snap.Files,
-		Progress:    snap.Progress,
-		CreatedAt:   snap.CreatedAt,
-		FinishedAt:  snap.FinishedAt,
+		ID:            snap.ID,
+		Type:          snap.Type,
+		Status:        snap.Status,
+		Source:        snap.Source,
+		Scale:         snap.Scale,
+		Resolution:    snap.Resolution,
+		Multiplier:    snap.Multiplier,
+		RifeModel:     snap.RifeModel,
+		SceneThresh:   snap.SceneThresh,
+		Threads:       snap.Threads,
+		PipelineName:  snap.PipelineName,
+		PipelineSteps: snap.PipelineSteps,
+		Files:         snap.Files,
+		Progress:      snap.Progress,
+		CreatedAt:     snap.CreatedAt,
+		FinishedAt:    snap.FinishedAt,
 	})
 }
 

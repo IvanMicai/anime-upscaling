@@ -1,0 +1,262 @@
+import { ArrowUp, ArrowDown, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { PipelineStep, PipelineOperationType } from "@/lib/types";
+import { computeStateAt, formatResolution, formatSizeEstimate } from "./pipeline-preview";
+
+interface PipelineStepCardProps {
+  step: PipelineStep;
+  index: number;
+  totalSteps: number;
+  allSteps: PipelineStep[];
+  onChange: (step: PipelineStep) => void;
+  onRemove: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+}
+
+export function PipelineStepCard({
+  step,
+  index,
+  totalSteps,
+  allSteps,
+  onChange,
+  onRemove,
+  onMoveUp,
+  onMoveDown,
+}: PipelineStepCardProps) {
+  const state = computeStateAt(allSteps, index);
+  const sizeEst = formatSizeEstimate(state);
+
+  function updateField(updates: Partial<PipelineStep>) {
+    onChange({ ...step, ...updates });
+  }
+
+  function handleOperationChange(op: string) {
+    const base: PipelineStep = { operation: op as PipelineOperationType };
+    switch (op) {
+      case "upscale":
+        base.scale = 2;
+        break;
+      case "interpolate":
+        base.multiplier = 2;
+        base.rife_model = "rife-v4.6";
+        base.scene_thresh = 10;
+        break;
+      case "optimize":
+        base.quality = "alta";
+        base.resolution = 1;
+        base.threads = 0;
+        break;
+    }
+    onChange(base);
+  }
+
+  const opLabel =
+    step.operation === "upscale"
+      ? "UPSCALE"
+      : step.operation === "interpolate"
+        ? "INTERPOLATE"
+        : "OPTIMIZE";
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
+            {index + 1}
+          </span>
+          <Select value={step.operation} onValueChange={handleOperationChange}>
+            <SelectTrigger className="w-[160px] h-8 text-sm font-semibold">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="upscale">Upscale</SelectItem>
+              <SelectItem value="interpolate">Interpolate</SelectItem>
+              <SelectItem value="optimize">Optimize</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onMoveUp}
+            disabled={index === 0}
+          >
+            <ArrowUp className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onMoveDown}
+            disabled={index === totalSteps - 1}
+          >
+            <ArrowDown className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive hover:text-destructive"
+            onClick={onRemove}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {step.operation === "upscale" && (
+          <Field label="Scale">
+            <Select
+              value={String(step.scale ?? 2)}
+              onValueChange={(v) => updateField({ scale: Number(v) as 2 | 4 })}
+            >
+              <SelectTrigger className="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="2">2x</SelectItem>
+                <SelectItem value="4">4x</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+        )}
+
+        {step.operation === "interpolate" && (
+          <>
+            <Field label="Multiplier">
+              <Select
+                value={String(step.multiplier ?? 2)}
+                onValueChange={(v) => updateField({ multiplier: Number(v) as 2 | 3 | 4 })}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="2">2x</SelectItem>
+                  <SelectItem value="3">3x</SelectItem>
+                  <SelectItem value="4">4x</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="RIFE Model">
+              <Select
+                value={step.rife_model ?? "rife-v4.6"}
+                onValueChange={(v) => updateField({ rife_model: v })}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rife-v4.6">rife-v4.6</SelectItem>
+                  <SelectItem value="rife-v4.25">rife-v4.25</SelectItem>
+                  <SelectItem value="rife-v4.25-lite">rife-v4.25-lite</SelectItem>
+                  <SelectItem value="rife-v4.26">rife-v4.26</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Scene Detection">
+              <Select
+                value={String(step.scene_thresh ?? 10)}
+                onValueChange={(v) => updateField({ scene_thresh: Number(v) })}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">High (5)</SelectItem>
+                  <SelectItem value="10">Medium (10)</SelectItem>
+                  <SelectItem value="20">Low (20)</SelectItem>
+                  <SelectItem value="100">Off (100)</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          </>
+        )}
+
+        {step.operation === "optimize" && (
+          <>
+            <Field label="Qualidade">
+              <Select
+                value={step.quality ?? "alta"}
+                onValueChange={(v) => updateField({ quality: v as PipelineStep["quality"] })}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ultra">Ultra (CRF 16)</SelectItem>
+                  <SelectItem value="alta">Alta (CRF 19)</SelectItem>
+                  <SelectItem value="media">Média (CRF 22)</SelectItem>
+                  <SelectItem value="baixa">Baixa (CRF 26)</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Resolution">
+              <Select
+                value={String(step.resolution ?? 1)}
+                onValueChange={(v) => updateField({ resolution: Number(v) as 1 | 2 | 4 })}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Original</SelectItem>
+                  <SelectItem value="2">1/2</SelectItem>
+                  <SelectItem value="4">1/4</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Threads">
+              <Select
+                value={String(step.threads ?? 0)}
+                onValueChange={(v) => updateField({ threads: Number(v) })}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Auto</SelectItem>
+                  <SelectItem value="1">1</SelectItem>
+                  <SelectItem value="2">2</SelectItem>
+                  <SelectItem value="4">4</SelectItem>
+                  <SelectItem value="8">8</SelectItem>
+                  <SelectItem value="16">16</SelectItem>
+                  <SelectItem value="32">32</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          </>
+        )}
+      </div>
+
+      <div className="mt-3 pt-3 border-t border-border">
+        <div className="text-sm text-muted-foreground">
+          → {formatResolution(state)} · {state.fps}fps
+          {state.optimized && " (H.265)"}
+        </div>
+        {sizeEst && (
+          <div className="text-xs text-muted-foreground/70 mt-0.5">{sizeEst}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3">
+      <label className="text-sm text-muted-foreground w-28 shrink-0">{label}</label>
+      <div className="flex-1">{children}</div>
+    </div>
+  );
+}

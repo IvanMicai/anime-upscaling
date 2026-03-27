@@ -19,13 +19,13 @@ func RunOptimize(ctx context.Context, cfg config.Config, r *runner.Runner, fileL
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		OptimizeFile(ctx, cfg, r, f, i+1, "input", 1, 0, onEvent, safeProgress(onProgress))
+		OptimizeFile(ctx, cfg, r, f, i+1, "input", 1, 19, 0, onEvent, safeProgress(onProgress))
 	}
 	return nil
 }
 
 // OptimizeFile compresses a single file from input/ to optimized/ using FFmpeg.
-func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, index int, source string, resolution int, threads int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) {
+func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, index int, source string, resolution int, crf int, threads int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) {
 	if err := os.MkdirAll(cfg.OptimizedDir, 0755); err != nil {
 		onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir optimized: %v", err), Time: time.Now()})
 		return
@@ -52,7 +52,7 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 	err := r.FFmpegEncode(ctx,
 		source+"/"+filename,
 		"optimized/"+filename,
-		19,
+		crf,
 		t,
 		"",
 		true,

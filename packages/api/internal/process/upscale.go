@@ -36,7 +36,7 @@ func RunUpscale(ctx context.Context, cfg config.Config, r *runner.Runner, fileLi
 				if ctx.Err() != nil {
 					return
 				}
-				UpscaleFile(ctx, cfg, r, gpuID, w.filename, w.index, scale, onEvent, safeProgress(onProgress))
+				UpscaleFile(ctx, cfg, r, gpuID, w.filename, w.index, scale, cfg.InputDir, cfg.OutputDir, onEvent, safeProgress(onProgress))
 			}
 		}(gpuID)
 	}
@@ -53,8 +53,8 @@ func safeProgress(fn func(runner.Progress)) func(runner.Progress) {
 
 // UpscaleFile processes a single file on the given GPU.
 // Returns true if the file was successfully upscaled (or skipped).
-func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, scale int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
-	if err := os.MkdirAll(cfg.OutputDir, 0755); err != nil {
+func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, scale int, inputDir, outputDir string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		source := fmt.Sprintf("GPU %d", gpuID)
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir output: %v", err), Time: time.Now()})
 		return false
@@ -66,7 +66,7 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 		onProgress(p)
 	}
 
-	outPath := filepath.Join(cfg.OutputDir, filename)
+	outPath := filepath.Join(outputDir, filename)
 	if files.FileExists(outPath) {
 		onEvent(logger.JobLog{Source: source, Level: "SKIP", Index: index, Message: "Pulando " + filename + " (já existe)", Time: time.Now()})
 		return true
@@ -75,7 +75,7 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
 
 	logFile := fmt.Sprintf("%s/gpu%d.log", cfg.BaseDir, gpuID)
-	err := r.Video2x(ctx, gpuID, filename, logFile, scale, gpuProgress)
+	err := r.Video2x(ctx, gpuID, filename, logFile, scale, inputDir, outputDir, gpuProgress)
 
 	if err != nil {
 		// Clean up partial output on failure
@@ -89,7 +89,7 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 		return false
 	}
 
-	r.Chown(ctx, cfg.OutputDir, filename)
+	r.Chown(ctx, outputDir, filename)
 	onEvent(logger.JobLog{Source: source, Level: "OK", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
 	return true
 }
