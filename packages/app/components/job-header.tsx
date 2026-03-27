@@ -40,7 +40,7 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
           <CardTitle className="font-mono text-sm">{job.id}</CardTitle>
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="capitalize">
-              {job.type}
+              {job.type === "custom_pipeline" && job.pipeline_name ? job.pipeline_name : job.type}
             </Badge>
             <StatusBadge status={job.status} />
           </div>

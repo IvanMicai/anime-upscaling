@@ -50,7 +50,7 @@ export function JobList({ jobs }: { jobs: Job[] }) {
               <TableRow key={job.id}>
                 <TableCell>
                   <Badge variant="secondary" className="font-mono capitalize">
-                    {job.type}
+                    {job.type === "custom_pipeline" && job.pipeline_name ? job.pipeline_name : job.type}
                   </Badge>
                 </TableCell>
                 <TableCell>
