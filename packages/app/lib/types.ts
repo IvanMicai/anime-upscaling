@@ -138,9 +138,14 @@ export type PipelineOperationType = "upscale" | "interpolate" | "optimize";
 
 export type QualityPreset = "ultra" | "alta" | "media" | "baixa";
 
+export type UpscaleProcessor = "realesrgan" | "libplacebo" | "realcugan";
+
 export interface PipelineStep {
   operation: PipelineOperationType;
   scale?: 2 | 4;
+  processor?: UpscaleProcessor;
+  model?: string;
+  noise_level?: number;
   multiplier?: 2 | 3 | 4;
   rife_model?: string;
   scene_thresh?: number;
@@ -160,6 +165,64 @@ export const QUALITY_PRESETS: Record<QualityPreset, { crf: number; label: string
   media: { crf: 22, label: "Média" },
   baixa: { crf: 26, label: "Baixa" },
 };
+
+// Upscale options
+
+export const PROCESSOR_OPTIONS = [
+  { value: "realesrgan", label: "RealESRGAN", desc: "IA para super-resolução, melhor para anime" },
+  { value: "libplacebo", label: "libplacebo", desc: "Shaders GPU (Anime4K), rápido e customizável" },
+  { value: "realcugan", label: "RealCUGAN", desc: "IA otimizada para ilustrações com redução de ruído" },
+] as const;
+
+export const REALESRGAN_MODELS = [
+  { value: "realesr-animevideov3", label: "Anime Video v3", desc: "Otimizado para vídeos de anime (recomendado)" },
+  { value: "realesrgan-plus-anime", label: "Plus Anime", desc: "Otimizado para imagens de anime" },
+  { value: "realesrgan-plus", label: "Plus", desc: "Modelo genérico para qualquer conteúdo" },
+] as const;
+
+export const LIBPLACEBO_SHADERS = [
+  { value: "anime4k-v4-a", label: "Anime4K A", desc: "Rápido, boa qualidade geral" },
+  { value: "anime4k-v4-a+a", label: "Anime4K A+A", desc: "Mais detalhes, um pouco mais lento" },
+  { value: "anime4k-v4-b", label: "Anime4K B", desc: "Balanço entre velocidade e qualidade" },
+  { value: "anime4k-v4-b+b", label: "Anime4K B+B", desc: "Mais detalhes no modo B" },
+  { value: "anime4k-v4-c", label: "Anime4K C", desc: "Máxima qualidade, mais lento" },
+  { value: "anime4k-v4-c+a", label: "Anime4K C+A", desc: "Qualidade máxima com restauração" },
+  { value: "anime4k-v4.1-gan", label: "Anime4K v4.1 GAN", desc: "Rede adversarial generativa, resultado mais nítido" },
+] as const;
+
+export const REALCUGAN_MODELS = [
+  { value: "models-se", label: "Standard Edition", desc: "Bom equilíbrio entre qualidade e velocidade (padrão)" },
+  { value: "models-pro", label: "Pro", desc: "Maior qualidade, mais lento" },
+  { value: "models-nose", label: "No Sharpening", desc: "Sem sharpening, resultado mais suave" },
+] as const;
+
+export const NOISE_LEVEL_OPTIONS = [
+  { value: 0, label: "Desativado", desc: "Sem redução de ruído" },
+  { value: 1, label: "Baixo", desc: "Leve redução, preserva detalhes" },
+  { value: 2, label: "Médio", desc: "Redução moderada de ruído" },
+  { value: 3, label: "Alto", desc: "Máxima redução, pode perder detalhes finos" },
+] as const;
+
+// Interpolate options
+
+export const RIFE_MODEL_OPTIONS = [
+  { value: "rife-v4.6", label: "v4.6", desc: "Mais recente, melhor qualidade geral (recomendado)" },
+  { value: "rife-v4.26", label: "v4.26", desc: "Experimental, alta qualidade" },
+  { value: "rife-v4.25", label: "v4.25", desc: "Muito boa qualidade" },
+  { value: "rife-v4.25-lite", label: "v4.25 Lite", desc: "Mais rápido, boa qualidade" },
+  { value: "rife-v4", label: "v4", desc: "Estável, boa qualidade" },
+  { value: "rife-v3.1", label: "v3.1", desc: "Legado, rápido" },
+  { value: "rife-v3.0", label: "v3.0", desc: "Legado" },
+  { value: "rife-v2.4", label: "v2.4", desc: "Legado" },
+  { value: "rife-v2.3", label: "v2.3", desc: "Legado" },
+  { value: "rife-v2", label: "v2", desc: "Legado" },
+  { value: "rife-anime", label: "Anime", desc: "Otimizado para anime" },
+  { value: "rife-UHD", label: "UHD", desc: "Para vídeos ultra HD" },
+  { value: "rife-HD", label: "HD", desc: "Para vídeos HD" },
+  { value: "rife", label: "Original", desc: "Modelo base" },
+] as const;
+
+// Optimize options
 
 export const CODEC_OPTIONS = [
   { value: "libx265", label: "H.265 / HEVC", desc: "Melhor compressão, arquivos menores" },

@@ -25,6 +25,9 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
     switch (operation) {
       case "upscale":
         step.scale = 2;
+        step.processor = "realesrgan";
+        step.model = "realesr-animevideov3";
+        step.noise_level = 0;
         break;
       case "interpolate":
         step.multiplier = 2;

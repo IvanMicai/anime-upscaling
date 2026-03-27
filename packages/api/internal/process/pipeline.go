@@ -38,7 +38,7 @@ func RunPipeline(ctx context.Context, cfg config.Config, r *runner.Runner, fileL
 				if ctx.Err() != nil {
 					return
 				}
-				ok := UpscaleFile(ctx, cfg, r, gpuID, w.filename, w.index, scale, cfg.InputDir, cfg.OutputDir, onEvent, safeProgress(onProgress))
+				ok := UpscaleFile(ctx, cfg, r, gpuID, w.filename, w.index, scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, onEvent, safeProgress(onProgress))
 				if ok {
 					readyCh <- w.filename
 				}

@@ -30,26 +30,64 @@ func NewRunner(cfg config.Config) *Runner {
 	return &Runner{cfg: cfg}
 }
 
+// UpscaleOptions holds processor and model parameters for video2x upscaling.
+type UpscaleOptions struct {
+	Processor  string // "realesrgan" (default), "libplacebo", "realcugan"
+	Model      string // model/shader name (depends on processor)
+	NoiseLevel int    // 0=off, 1-3=noise reduction level
+}
+
+// WithDefaults returns a copy with zero-value fields replaced by defaults.
+func (o UpscaleOptions) WithDefaults() UpscaleOptions {
+	if o.Processor == "" {
+		o.Processor = "realesrgan"
+	}
+	if o.Model == "" {
+		switch o.Processor {
+		case "realesrgan":
+			o.Model = "realesr-animevideov3"
+		case "libplacebo":
+			o.Model = "anime4k-v4-a"
+		case "realcugan":
+			o.Model = "models-se"
+		}
+	}
+	return o
+}
+
 // Video2x runs video2x upscale on a specific GPU, writing stdout/stderr to logPath.
 // If onProgress is non-nil, the log output is also parsed for progress data.
-func (r *Runner) Video2x(ctx context.Context, gpuID int, filename, logPath string, scale int, inputDir, outputDir string, onProgress func(Progress)) error {
+func (r *Runner) Video2x(ctx context.Context, gpuID int, filename, logPath string, scale int, opts UpscaleOptions, inputDir, outputDir string, onProgress func(Progress)) error {
 	f, err := os.Create(logPath)
 	if err != nil {
 		return fmt.Errorf("create log: %w", err)
 	}
 	defer f.Close()
 
+	opts = opts.WithDefaults()
 	inputPath := inputDir + "/" + filename
 	outputPath := outputDir + "/" + filename
 
-	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin,
+	args := []string{
 		"-i", inputPath,
 		"-o", outputPath,
-		"-p", "realesrgan",
+		"-p", opts.Processor,
 		"-s", strconv.Itoa(scale),
 		"-d", strconv.Itoa(gpuID),
-		"--realesrgan-model", "realesr-animevideov3",
-	)
+	}
+	switch opts.Processor {
+	case "realesrgan":
+		args = append(args, "--realesrgan-model", opts.Model)
+	case "libplacebo":
+		args = append(args, "--libplacebo-shader", opts.Model)
+	case "realcugan":
+		args = append(args, "--realcugan-model", opts.Model)
+	}
+	if opts.NoiseLevel > 0 {
+		args = append(args, "-n", strconv.Itoa(opts.NoiseLevel))
+	}
+
+	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin, args...)
 
 	var out io.Writer = f
 	if onProgress != nil {

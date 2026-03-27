@@ -9,6 +9,12 @@ import {
 } from "@/components/ui/select";
 import type { PipelineStep, PipelineOperationType } from "@/lib/types";
 import {
+  PROCESSOR_OPTIONS,
+  REALESRGAN_MODELS,
+  LIBPLACEBO_SHADERS,
+  REALCUGAN_MODELS,
+  NOISE_LEVEL_OPTIONS,
+  RIFE_MODEL_OPTIONS,
   CODEC_OPTIONS,
   PRESET_OPTIONS,
   TUNE_OPTIONS,
@@ -50,6 +56,9 @@ export function PipelineStepCard({
     switch (op) {
       case "upscale":
         base.scale = 2;
+        base.processor = "realesrgan";
+        base.model = "realesr-animevideov3";
+        base.noise_level = 0;
         break;
       case "interpolate":
         base.multiplier = 2;
@@ -126,26 +135,94 @@ export function PipelineStepCard({
       </div>
 
       <div className="space-y-3">
-        {step.operation === "upscale" && (
-          <Field label="Scale">
-            <Select
-              value={String(step.scale ?? 2)}
-              onValueChange={(v) => updateField({ scale: Number(v) as 2 | 4 })}
-            >
-              <SelectTrigger className="h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="2">2x</SelectItem>
-                <SelectItem value="4">4x</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-        )}
+        {step.operation === "upscale" && (() => {
+          const proc = step.processor ?? "realesrgan";
+          const modelOptions =
+            proc === "libplacebo" ? LIBPLACEBO_SHADERS :
+            proc === "realcugan" ? REALCUGAN_MODELS :
+            REALESRGAN_MODELS;
+          const defaultModel = modelOptions[0].value;
+          return (
+            <>
+              <Field label="Processador">
+                <Select
+                  value={proc}
+                  onValueChange={(v) => {
+                    const p = v as PipelineStep["processor"];
+                    const defModel =
+                      v === "libplacebo" ? "anime4k-v4-a" :
+                      v === "realcugan" ? "models-se" :
+                      "realesr-animevideov3";
+                    updateField({ processor: p, model: defModel });
+                  }}
+                >
+                  <SelectTrigger className="h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROCESSOR_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label} — {opt.desc}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Modelo">
+                <Select
+                  value={step.model ?? defaultModel}
+                  onValueChange={(v) => updateField({ model: v })}
+                >
+                  <SelectTrigger className="h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modelOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label} — {opt.desc}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Scale">
+                <Select
+                  value={String(step.scale ?? 2)}
+                  onValueChange={(v) => updateField({ scale: Number(v) as 2 | 4 })}
+                >
+                  <SelectTrigger className="h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2">2x — Dobra a resolução</SelectItem>
+                    <SelectItem value="4">4x — Quadruplica a resolução</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Redução de Ruído">
+                <Select
+                  value={String(step.noise_level ?? 0)}
+                  onValueChange={(v) => updateField({ noise_level: Number(v) })}
+                >
+                  <SelectTrigger className="h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NOISE_LEVEL_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={String(opt.value)}>
+                        {opt.label} — {opt.desc}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </>
+          );
+        })()}
 
         {step.operation === "interpolate" && (
           <>
-            <Field label="Multiplier">
+            <Field label="Multiplicador">
               <Select
                 value={String(step.multiplier ?? 2)}
                 onValueChange={(v) => updateField({ multiplier: Number(v) as 2 | 3 | 4 })}
@@ -154,13 +231,13 @@ export function PipelineStepCard({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="2">2x</SelectItem>
-                  <SelectItem value="3">3x</SelectItem>
-                  <SelectItem value="4">4x</SelectItem>
+                  <SelectItem value="2">2x — Dobra o framerate</SelectItem>
+                  <SelectItem value="3">3x — Triplica o framerate</SelectItem>
+                  <SelectItem value="4">4x — Quadruplica o framerate</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="RIFE Model">
+            <Field label="Modelo RIFE">
               <Select
                 value={step.rife_model ?? "rife-v4.6"}
                 onValueChange={(v) => updateField({ rife_model: v })}
@@ -169,14 +246,15 @@ export function PipelineStepCard({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="rife-v4.6">rife-v4.6</SelectItem>
-                  <SelectItem value="rife-v4.25">rife-v4.25</SelectItem>
-                  <SelectItem value="rife-v4.25-lite">rife-v4.25-lite</SelectItem>
-                  <SelectItem value="rife-v4.26">rife-v4.26</SelectItem>
+                  {RIFE_MODEL_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label} — {opt.desc}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Scene Detection">
+            <Field label="Detecção de Cena">
               <Select
                 value={String(step.scene_thresh ?? 10)}
                 onValueChange={(v) => updateField({ scene_thresh: Number(v) })}
@@ -185,10 +263,10 @@ export function PipelineStepCard({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="5">High (5)</SelectItem>
-                  <SelectItem value="10">Medium (10)</SelectItem>
-                  <SelectItem value="20">Low (20)</SelectItem>
-                  <SelectItem value="100">Off (100)</SelectItem>
+                  <SelectItem value="5">Alta (5) — Detecta mudanças sutis entre cenas</SelectItem>
+                  <SelectItem value="10">Média (10) — Balanço entre precisão e performance</SelectItem>
+                  <SelectItem value="20">Baixa (20) — Só detecta transições óbvias</SelectItem>
+                  <SelectItem value="100">Desativada (100) — Interpola tudo sem distinção</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
