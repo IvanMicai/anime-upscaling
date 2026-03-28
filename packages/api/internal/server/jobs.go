@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sort"
 	"sync"
 	"time"
 
@@ -267,6 +268,7 @@ func (m *JobManager) generateID() string {
 }
 
 func (m *JobManager) StartJob(p StartJobParams) *Job {
+	sort.Strings(p.Files)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	job := &Job{
@@ -425,6 +427,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 }
 
 func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.PipelineStep, files []string) *Job {
+	sort.Strings(files)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	job := &Job{
