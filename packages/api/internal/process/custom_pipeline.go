@@ -50,7 +50,7 @@ func RunCustomPipelineForFile(
 				NoiseLevel: step.NoiseLevel,
 			}
 
-			gpuID, err := gpuQ.Acquire(ctx)
+			gpuID, err := gpuQ.Acquire(ctx, stepIdx)
 			if err != nil {
 				return false
 			}
@@ -88,7 +88,7 @@ func RunCustomPipelineForFile(
 				SceneThresh: sceneThresh,
 			}
 
-			gpuID, err := gpuQ.Acquire(ctx)
+			gpuID, err := gpuQ.Acquire(ctx, stepIdx)
 			if err != nil {
 				return false
 			}

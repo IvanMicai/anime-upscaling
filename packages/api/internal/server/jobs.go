@@ -322,7 +322,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
-				gpuID, err := m.gpuQ.Acquire(ctx)
+				gpuID, err := m.gpuQ.Acquire(ctx, 0)
 				if err != nil {
 					wg.Done()
 					break // ctx cancelled
@@ -389,7 +389,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
-				gpuID, err := m.gpuQ.Acquire(ctx)
+				gpuID, err := m.gpuQ.Acquire(ctx, 0)
 				if err != nil {
 					wg.Done()
 					break // ctx cancelled
