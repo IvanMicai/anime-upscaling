@@ -1,4 +1,4 @@
-export type JobType = "upscale" | "optimize" | "pipeline" | "check" | "interpolate" | "custom_pipeline";
+export type JobType = "upscale" | "optimize" | "check" | "interpolate" | "custom_pipeline";
 
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -107,12 +107,24 @@ export interface CreateJobRequest {
   type: JobType;
   files?: string[];
   source?: "input" | "output" | "optimized";
+  // Upscale
   scale?: 2 | 4;
-  resolution?: 1 | 2 | 4;
+  processor?: UpscaleProcessor;
+  model?: string;
+  noise_level?: number;
+  // Interpolate
   multiplier?: 2 | 3 | 4;
   rife_model?: string;
   scene_thresh?: number;
+  // Optimize
+  quality?: QualityPreset;
+  resolution?: 1 | 2 | 4;
   threads?: number;
+  codec?: "libx265" | "libx264" | "libvpx-vp9" | "copy";
+  preset?: "ultrafast" | "superfast" | "veryfast" | "fast" | "medium" | "slow" | "slower" | "veryslow";
+  tune?: "animation" | "film" | "grain" | "zerolatency" | "none";
+  pix_fmt?: "yuv420p10le" | "yuv420p" | "yuv444p";
+  audio_codec?: "copy" | "aac" | "libopus" | "libmp3lame";
 }
 
 export interface CreateJobResponse extends Job {}

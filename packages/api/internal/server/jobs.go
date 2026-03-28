@@ -38,6 +38,15 @@ type Job struct {
 	RifeModel     string                  `json:"rife_model,omitempty"`
 	SceneThresh   float64                 `json:"scene_thresh,omitempty"`
 	Threads       int                     `json:"threads,omitempty"`
+	Processor     string                  `json:"processor,omitempty"`
+	Model         string                  `json:"model,omitempty"`
+	NoiseLevel    int                     `json:"noise_level,omitempty"`
+	Quality       string                  `json:"quality,omitempty"`
+	Codec         string                  `json:"codec,omitempty"`
+	Preset        string                  `json:"preset,omitempty"`
+	Tune          string                  `json:"tune,omitempty"`
+	PixFmt        string                  `json:"pix_fmt,omitempty"`
+	AudioCodec    string                  `json:"audio_codec,omitempty"`
 	PipelineName  string                  `json:"pipeline_name,omitempty"`
 	PipelineSteps []pipeline.PipelineStep `json:"pipeline_steps,omitempty"`
 	Files         []string                `json:"files"`
@@ -48,6 +57,28 @@ type Job struct {
 	cancel        context.CancelFunc
 	mu            sync.Mutex
 	listeners     []chan logEntry
+}
+
+// StartJobParams holds all parameters for creating and starting a job.
+type StartJobParams struct {
+	Type        string
+	Files       []string
+	Source      string
+	Scale       int
+	Resolution  int
+	Multiplier  int
+	Threads     int
+	RifeModel   string
+	SceneThresh float64
+	Processor   string
+	Model       string
+	NoiseLevel  int
+	Quality     string
+	Codec       string
+	Preset      string
+	Tune        string
+	PixFmt      string
+	AudioCodec  string
 }
 
 func (j *Job) updateContainerProgress(p runner.Progress) {
@@ -157,6 +188,15 @@ func (j *Job) snapshot() Job {
 		RifeModel:     j.RifeModel,
 		SceneThresh:   j.SceneThresh,
 		Threads:       j.Threads,
+		Processor:     j.Processor,
+		Model:         j.Model,
+		NoiseLevel:    j.NoiseLevel,
+		Quality:       j.Quality,
+		Codec:         j.Codec,
+		Preset:        j.Preset,
+		Tune:          j.Tune,
+		PixFmt:        j.PixFmt,
+		AudioCodec:    j.AudioCodec,
 		PipelineName:  j.PipelineName,
 		PipelineSteps: j.PipelineSteps,
 		Files:         j.Files,
@@ -184,6 +224,15 @@ func (j *Job) snapshotWithLogs() Job {
 		RifeModel:     j.RifeModel,
 		SceneThresh:   j.SceneThresh,
 		Threads:       j.Threads,
+		Processor:     j.Processor,
+		Model:         j.Model,
+		NoiseLevel:    j.NoiseLevel,
+		Quality:       j.Quality,
+		Codec:         j.Codec,
+		Preset:        j.Preset,
+		Tune:          j.Tune,
+		PixFmt:        j.PixFmt,
+		AudioCodec:    j.AudioCodec,
 		PipelineName:  j.PipelineName,
 		PipelineSteps: j.PipelineSteps,
 		Files:         j.Files,
@@ -217,22 +266,31 @@ func (m *JobManager) generateID() string {
 	return fmt.Sprintf("j_%d_%04x", time.Now().Unix(), rand.Intn(0xFFFF))
 }
 
-func (m *JobManager) StartJob(jobType string, files []string, source string, scale int, resolution int, multiplier int, threads int, rifeModel string, sceneThresh float64) *Job {
+func (m *JobManager) StartJob(p StartJobParams) *Job {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	job := &Job{
 		ID:          m.generateID(),
-		Type:        jobType,
+		Type:        p.Type,
 		Status:      "queued",
-		Source:      source,
-		Scale:       scale,
-		Resolution:  resolution,
-		Multiplier:  multiplier,
-		RifeModel:   rifeModel,
-		SceneThresh: sceneThresh,
-		Threads:     threads,
-		Files:       files,
-		Progress:    JobProgress{Total: len(files)},
+		Source:      p.Source,
+		Scale:       p.Scale,
+		Resolution:  p.Resolution,
+		Multiplier:  p.Multiplier,
+		RifeModel:   p.RifeModel,
+		SceneThresh: p.SceneThresh,
+		Threads:     p.Threads,
+		Processor:   p.Processor,
+		Model:       p.Model,
+		NoiseLevel:  p.NoiseLevel,
+		Quality:     p.Quality,
+		Codec:       p.Codec,
+		Preset:      p.Preset,
+		Tune:        p.Tune,
+		PixFmt:      p.PixFmt,
+		AudioCodec:  p.AudioCodec,
+		Files:       p.Files,
+		Progress:    JobProgress{Total: len(p.Files)},
 		CreatedAt:   time.Now().UTC(),
 		cancel:      cancel,
 	}
@@ -253,9 +311,14 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 	go func() {
 		var wg sync.WaitGroup
 
-		switch jobType {
+		switch p.Type {
 		case "upscale":
-			for i, f := range files {
+			upOpts := runner.UpscaleOptions{
+				Processor:  job.Processor,
+				Model:      job.Model,
+				NoiseLevel: job.NoiseLevel,
+			}
+			for i, f := range p.Files {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
@@ -268,22 +331,33 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 					defer wg.Done()
 					defer m.gpuQ.Release(gpuID)
 					job.setRunningOnce()
-					process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, onEvent, onProgress)
+					process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, upOpts, cfg.InputDir, cfg.OutputDir, onEvent, onProgress)
 				}()
 			}
 
 		case "optimize":
-			jobSource := source
+			crf := pipeline.QualityToCRF[job.Quality]
+			if crf == 0 {
+				crf = 19
+			}
+			encOpts := runner.EncodeOptions{
+				Codec:      job.Codec,
+				Preset:     job.Preset,
+				Tune:       job.Tune,
+				PixFmt:     job.PixFmt,
+				AudioCodec: job.AudioCodec,
+			}
+			jobSource := p.Source
 			jobResolution := job.Resolution
 			jobThreads := job.Threads
-			for i, f := range files {
+			for i, f := range p.Files {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
 				if err := m.ffmpegQ.Submit(ctx, func() {
 					defer wg.Done()
 					job.setRunningOnce()
-					process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, jobResolution, 19, jobThreads, runner.EncodeOptions{}, onEvent, onProgress)
+					process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, jobResolution, crf, jobThreads, encOpts, onEvent, onProgress)
 				}); err != nil {
 					wg.Done()
 					break // ctx cancelled
@@ -291,8 +365,8 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 			}
 
 		case "check":
-			jobSource := source
-			for i, f := range files {
+			jobSource := p.Source
+			for i, f := range p.Files {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
@@ -306,41 +380,12 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 				}
 			}
 
-		case "pipeline":
-			pipelineThreads := job.Threads
-			for i, f := range files {
-				wg.Add(1)
-				idx := i + 1
-				filename := f
-				gpuID, err := m.gpuQ.Acquire(ctx)
-				if err != nil {
-					wg.Done()
-					break // ctx cancelled
-				}
-				go func() {
-					defer m.gpuQ.Release(gpuID)
-					job.setRunningOnce()
-					ok := process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, onEvent, onProgress)
-					if !ok || ctx.Err() != nil {
-						wg.Done()
-						return
-					}
-					// Phase 2: enqueue into FFmpeg queue
-					if err := m.ffmpegQ.Submit(ctx, func() {
-						defer wg.Done()
-						process.EncodeFile(ctx, cfg, r, filename, pipelineThreads, onEvent, onProgress)
-					}); err != nil {
-						wg.Done() // ctx cancelled
-					}
-				}()
-			}
-
 		case "interpolate":
 			rifeOpts := runner.RifeOptions{
 				Model:       job.RifeModel,
 				SceneThresh: job.SceneThresh,
 			}
-			for i, f := range files {
+			for i, f := range p.Files {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
