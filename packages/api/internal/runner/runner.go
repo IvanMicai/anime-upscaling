@@ -256,6 +256,7 @@ func (r *Runner) FFmpegRemuxAudio(ctx context.Context, videoPath, audioSourcePat
 	defer os.Remove(tmpPath)
 
 	args := []string{
+		"-fflags", "+genpts",
 		"-i", videoPath,
 		"-i", audioSourcePath,
 		"-map", "0:v",
