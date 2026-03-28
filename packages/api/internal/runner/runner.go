@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -250,7 +251,8 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 // processing to restore audio/subtitle streams from the original file.
 // The output replaces videoPath via a temp file rename.
 func (r *Runner) FFmpegRemuxAudio(ctx context.Context, videoPath, audioSourcePath string) error {
-	tmpPath := videoPath + ".remux.tmp"
+	ext := filepath.Ext(videoPath)
+	tmpPath := strings.TrimSuffix(videoPath, ext) + ".remux.tmp" + ext
 	defer os.Remove(tmpPath)
 
 	args := []string{
