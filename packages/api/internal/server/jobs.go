@@ -268,7 +268,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 					defer wg.Done()
 					defer m.gpuQ.Release(gpuID)
 					job.setRunningOnce()
-					process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, cfg.InputDir, onEvent, onProgress)
+					process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, onEvent, onProgress)
 				}()
 			}
 
@@ -320,7 +320,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 				go func() {
 					defer m.gpuQ.Release(gpuID)
 					job.setRunningOnce()
-					ok := process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, cfg.InputDir, onEvent, onProgress)
+					ok := process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, onEvent, onProgress)
 					if !ok || ctx.Err() != nil {
 						wg.Done()
 						return
@@ -353,7 +353,7 @@ func (m *JobManager) StartJob(jobType string, files []string, source string, sca
 					defer wg.Done()
 					defer m.gpuQ.Release(gpuID)
 					job.setRunningOnce()
-					process.InterpolateFile(ctx, cfg, r, gpuID, filename, idx, job.Multiplier, rifeOpts, cfg.InputDir, cfg.InterpolatedDir, cfg.InputDir, onEvent, onProgress)
+					process.InterpolateFile(ctx, cfg, r, gpuID, filename, idx, job.Multiplier, rifeOpts, cfg.InputDir, cfg.InterpolatedDir, onEvent, onProgress)
 				}()
 			}
 		}
