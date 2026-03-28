@@ -298,26 +298,51 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		Threads     int      `json:"threads"`
 		RifeModel   string   `json:"rife_model"`
 		SceneThresh float64  `json:"scene_thresh"`
+		Processor   string   `json:"processor"`
+		Model       string   `json:"model"`
+		NoiseLevel  int      `json:"noise_level"`
+		Quality     string   `json:"quality"`
+		Codec       string   `json:"codec"`
+		Preset      string   `json:"preset"`
+		Tune        string   `json:"tune"`
+		PixFmt      string   `json:"pix_fmt"`
+		AudioCodec  string   `json:"audio_codec"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
 
-	validTypes := map[string]bool{"upscale": true, "optimize": true, "pipeline": true, "check": true, "interpolate": true}
+	validTypes := map[string]bool{"upscale": true, "optimize": true, "check": true, "interpolate": true}
 	if !validTypes[req.Type] {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be upscale, optimize, pipeline, check, or interpolate"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be upscale, optimize, check, or interpolate"})
 		return
 	}
 
+	// Upscale validation
 	if req.Scale == 0 {
 		req.Scale = 2
 	}
-	if (req.Type == "upscale" || req.Type == "pipeline") && req.Scale != 2 && req.Scale != 4 {
+	if req.Type == "upscale" && req.Scale != 2 && req.Scale != 4 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "scale must be 2 or 4"})
 		return
 	}
+	if req.Type == "upscale" {
+		if req.Processor != "" && !pipeline.ValidProcessors[req.Processor] {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid processor"})
+			return
+		}
+		if req.Model != "" && !pipeline.ValidUpscaleModels[req.Model] {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid model"})
+			return
+		}
+		if req.NoiseLevel < 0 || req.NoiseLevel > 3 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "noise_level must be between 0 and 3"})
+			return
+		}
+	}
 
+	// Interpolate validation
 	if req.Multiplier == 0 {
 		req.Multiplier = 2
 	}
@@ -325,26 +350,49 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "multiplier must be 2, 3, or 4"})
 		return
 	}
-
-	// RIFE model validation
 	if req.RifeModel == "" {
 		req.RifeModel = "rife-v4.6"
 	}
-	validRifeModels := map[string]bool{
-		"rife-v4.6": true, "rife-v4.25": true, "rife-v4.25-lite": true, "rife-v4.26": true,
-	}
-	if req.Type == "interpolate" && !validRifeModels[req.RifeModel] {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "rife_model must be one of: rife-v4.6, rife-v4.25, rife-v4.25-lite, rife-v4.26"})
+	if req.Type == "interpolate" && !pipeline.ValidRifeModels[req.RifeModel] {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid rife_model"})
 		return
 	}
-
-	// Scene detection threshold default and validation
 	if req.SceneThresh == 0 {
 		req.SceneThresh = 10.0
 	}
 	if req.Type == "interpolate" && (req.SceneThresh < 0 || req.SceneThresh > 100) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "scene_thresh must be between 0 and 100"})
 		return
+	}
+
+	// Optimize validation
+	if req.Type == "optimize" {
+		if req.Quality != "" {
+			if _, ok := pipeline.QualityToCRF[req.Quality]; !ok {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quality must be ultra, alta, media, or baixa"})
+				return
+			}
+		}
+		if req.Codec != "" && !pipeline.ValidCodecs[req.Codec] {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid codec"})
+			return
+		}
+		if req.Preset != "" && !pipeline.ValidPresets[req.Preset] {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid preset"})
+			return
+		}
+		if req.Tune != "" && !pipeline.ValidTunes[req.Tune] {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid tune"})
+			return
+		}
+		if req.PixFmt != "" && !pipeline.ValidPixFmts[req.PixFmt] {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid pix_fmt"})
+			return
+		}
+		if req.AudioCodec != "" && !pipeline.ValidAudioCodecs[req.AudioCodec] {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid audio_codec"})
+			return
+		}
 	}
 
 	// threads: 0 means auto (will use HalfCPUs at process level)
@@ -408,7 +456,26 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		}
 	}
 
-	job := jm.StartJob(req.Type, req.Files, req.Source, req.Scale, req.Resolution, req.Multiplier, req.Threads, req.RifeModel, req.SceneThresh)
+	job := jm.StartJob(StartJobParams{
+		Type:        req.Type,
+		Files:       req.Files,
+		Source:      req.Source,
+		Scale:       req.Scale,
+		Resolution:  req.Resolution,
+		Multiplier:  req.Multiplier,
+		Threads:     req.Threads,
+		RifeModel:   req.RifeModel,
+		SceneThresh: req.SceneThresh,
+		Processor:   req.Processor,
+		Model:       req.Model,
+		NoiseLevel:  req.NoiseLevel,
+		Quality:     req.Quality,
+		Codec:       req.Codec,
+		Preset:      req.Preset,
+		Tune:        req.Tune,
+		PixFmt:      req.PixFmt,
+		AudioCodec:  req.AudioCodec,
+	})
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":     job.ID,
