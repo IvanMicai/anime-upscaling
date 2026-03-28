@@ -261,7 +261,9 @@ func (r *Runner) FFmpegRemuxAudio(ctx context.Context, videoPath, audioSourcePat
 		"-map", "0:v",
 		"-map", "1:a?",
 		"-map", "1:s?",
-		"-c", "copy",
+		"-c:v", "copy",
+		"-c:a", "aac", "-q:a", "2",
+		"-c:s", "copy",
 		"-y",
 		tmpPath,
 	}
