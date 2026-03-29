@@ -108,6 +108,9 @@ func (j *Job) addLog(e logEntry) {
 		j.Progress.Skipped++
 		j.Progress.Current = ""
 		delete(j.Progress.Containers, e.Source)
+	case "STEP":
+		j.Progress.Current = ""
+		delete(j.Progress.Containers, e.Source)
 	case "INFO":
 		j.Progress.Current = e.Message
 	}

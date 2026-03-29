@@ -12,6 +12,7 @@ import (
 // Progress holds parsed process progress data.
 type Progress struct {
 	Source      string  `json:"source,omitempty"`
+	Filename    string  `json:"filename,omitempty"`
 	Frame       int     `json:"frame"`
 	FPS         float64 `json:"fps"`
 	TotalFrames int     `json:"total_frames,omitempty"`

@@ -31,11 +31,6 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 		return
 	}
 
-	ffmpegProgress := func(p runner.Progress) {
-		p.Source = "FFMPEG"
-		onProgress(p)
-	}
-
 	outPath := filepath.Join(cfg.OptimizedDir, filename)
 	if files.FileExists(outPath) {
 		onEvent(logger.JobLog{Source: "FFMPEG", Level: "SKIP", Index: index, Message: "Pulando " + filename + " (já existe)", Time: time.Now()})
@@ -43,6 +38,25 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 	}
 
 	onEvent(logger.JobLog{Source: "FFMPEG", Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
+
+	// Probe total frame count for ETA calculation
+	totalFrames := 0
+	inputPath := cfg.BaseDir + "/" + source + "/" + filename
+	if count, err := r.ProbeFrameCount(ctx, inputPath); err == nil {
+		totalFrames = count
+	}
+
+	ffmpegProgress := func(p runner.Progress) {
+		p.Source = "FFMPEG"
+		p.Filename = filename
+		if totalFrames > 0 && p.TotalFrames == 0 {
+			p.TotalFrames = totalFrames
+			if p.Frame > 0 {
+				p.Percent = float64(p.Frame) / float64(totalFrames) * 100
+			}
+		}
+		onProgress(p)
+	}
 
 	t := threads
 	if t == 0 {

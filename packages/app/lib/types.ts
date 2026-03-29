@@ -2,9 +2,9 @@ export type JobType = "upscale" | "optimize" | "check" | "interpolate" | "custom
 
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
-export type LogLevel = "INFO" | "OK" | "ERRO" | "SKIP" | "WARN";
+export type LogLevel = "INFO" | "OK" | "ERRO" | "SKIP" | "WARN" | "STEP";
 
-export type LogSource = "GPU 0" | "GPU 1" | "FFMPEG";
+export type LogSource = "GPU 0" | "GPU 1" | "FFMPEG" | "PIPELINE";
 
 export interface ContainerProgress {
   frame: number;
@@ -13,6 +13,7 @@ export interface ContainerProgress {
   elapsed?: string;
   speed?: string;
   percent?: number;
+  filename?: string;
 }
 
 export interface JobProgress {

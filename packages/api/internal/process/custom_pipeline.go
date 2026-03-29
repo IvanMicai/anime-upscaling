@@ -30,6 +30,16 @@ func RunCustomPipelineForFile(
 ) bool {
 	currentInputDir := cfg.InputDir
 
+	// Wrap onEvent so that step-level OK/SKIP/ERRO don't increment job counters.
+	// They become "STEP" level which cleans up containers but doesn't affect progress.
+	stepOnEvent := func(e logger.JobLog) {
+		switch e.Level {
+		case "OK", "SKIP", "ERRO":
+			e.Level = "STEP"
+		}
+		onEvent(e)
+	}
+
 	for stepIdx, step := range steps {
 		if ctx.Err() != nil {
 			return false
@@ -61,10 +71,11 @@ func RunCustomPipelineForFile(
 				Time:    time.Now(),
 			})
 
-			ok := UpscaleFile(ctx, cfg, r, gpuID, filename, index, scale, upOpts, currentInputDir, cfg.OutputDir, onEvent, onProgress)
+			ok := UpscaleFile(ctx, cfg, r, gpuID, filename, index, scale, upOpts, currentInputDir, cfg.OutputDir, stepOnEvent, onProgress)
 			gpuQ.Release(gpuID)
 
 			if !ok {
+				onEvent(logger.JobLog{Source: "PIPELINE", Level: "ERRO", Index: index, Message: "Falha: " + filename, Time: time.Now()})
 				return false
 			}
 			currentInputDir = cfg.OutputDir
@@ -99,10 +110,11 @@ func RunCustomPipelineForFile(
 				Time:    time.Now(),
 			})
 
-			ok := InterpolateFile(ctx, cfg, r, gpuID, filename, index, multiplier, rifeOpts, currentInputDir, cfg.InterpolatedDir, onEvent, onProgress)
+			ok := InterpolateFile(ctx, cfg, r, gpuID, filename, index, multiplier, rifeOpts, currentInputDir, cfg.InterpolatedDir, stepOnEvent, onProgress)
 			gpuQ.Release(gpuID)
 
 			if !ok {
+				onEvent(logger.JobLog{Source: "PIPELINE", Level: "ERRO", Index: index, Message: "Falha: " + filename, Time: time.Now()})
 				return false
 			}
 			currentInputDir = cfg.InterpolatedDir
@@ -140,7 +152,7 @@ func RunCustomPipelineForFile(
 					Message: stepLabel + "Optimize (" + quality + "): " + filename,
 					Time:    time.Now(),
 				})
-				OptimizeFile(ctx, cfg, r, filename, index, source, resolution, crf, threads, encOpts, onEvent, onProgress)
+				OptimizeFile(ctx, cfg, r, filename, index, source, resolution, crf, threads, encOpts, stepOnEvent, onProgress)
 			}); err != nil {
 				return false
 			}
@@ -150,6 +162,7 @@ func RunCustomPipelineForFile(
 		}
 	}
 
+	onEvent(logger.JobLog{Source: "PIPELINE", Level: "OK", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
 	return true
 }
 

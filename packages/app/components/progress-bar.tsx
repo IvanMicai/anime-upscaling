@@ -4,6 +4,7 @@ const sourceColors: Record<string, string> = {
   "GPU 0": "text-blue-400",
   "GPU 1": "text-purple-400",
   FFMPEG: "text-cyan-400",
+  PIPELINE: "text-green-400",
 };
 
 function formatEta(totalFrames: number, currentFrame: number, fps: number): string | null {
@@ -19,7 +20,7 @@ function formatEta(totalFrames: number, currentFrame: number, fps: number): stri
 }
 
 export function ProgressBar({ progress }: { progress: JobProgress }) {
-  const { total, completed, failed, skipped, current, containers } = progress;
+  const { total, completed, failed, skipped, containers } = progress;
   if (total === 0) return null;
 
   const pct = (n: number) => `${((n / total) * 100).toFixed(1)}%`;
@@ -63,12 +64,6 @@ export function ProgressBar({ progress }: { progress: JobProgress }) {
           )}
         </span>
       </div>
-      {current && (
-        <div className="flex items-center gap-2 font-mono text-sm">
-          <span className="text-muted-foreground">Processing:</span>
-          <span className="truncate">{current}</span>
-        </div>
-      )}
       {entries.map(([source, c]) => {
         const eta = c.total_frames ? formatEta(c.total_frames, c.frame, c.fps) : null;
         return (
@@ -79,6 +74,9 @@ export function ProgressBar({ progress }: { progress: JobProgress }) {
             <span className={sourceColors[source] ?? "text-muted-foreground"}>
               {source}
             </span>
+            {c.filename && (
+              <span className="truncate text-muted-foreground">{c.filename}</span>
+            )}
             <span>
               Frame: {c.frame}
               {c.total_frames

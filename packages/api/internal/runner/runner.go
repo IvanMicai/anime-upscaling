@@ -245,6 +245,24 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	return cmd.Run()
 }
 
+// ProbeFrameCount returns the total number of video frames in a file using container metadata.
+func (r *Runner) ProbeFrameCount(ctx context.Context, absPath string) (int, error) {
+	var buf bytes.Buffer
+	cmd := exec.CommandContext(ctx, r.cfg.FFprobeBin,
+		"-v", "error",
+		"-select_streams", "v:0",
+		"-show_entries", "stream=nb_frames",
+		"-of", "csv=p=0",
+		absPath,
+	)
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(strings.TrimSpace(buf.String()))
+}
+
 // FFprobe runs ffprobe on a file, returns stdout+stderr combined.
 func (r *Runner) FFprobe(ctx context.Context, relPath string) (string, error) {
 	absPath := r.cfg.BaseDir + "/" + relPath

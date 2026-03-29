@@ -55,6 +55,7 @@ func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, g
 	source := fmt.Sprintf("GPU %d", gpuID)
 	gpuProgress := func(p runner.Progress) {
 		p.Source = source
+		p.Filename = filename
 		onProgress(p)
 	}
 
