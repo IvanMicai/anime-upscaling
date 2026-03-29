@@ -94,7 +94,7 @@ export function PipelineStepCard({
             {index + 1}
           </span>
           <Select value={step.operation} onValueChange={handleOperationChange}>
-            <SelectTrigger className="w-[160px] h-8 text-sm font-semibold">
+            <SelectTrigger className="w-[120px] sm:w-[160px] h-8 text-sm font-semibold">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -452,8 +452,8 @@ export function PipelineStepCard({
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3">
-      <label className="text-sm text-muted-foreground w-28 shrink-0">{label}</label>
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+      <label className="text-sm text-muted-foreground sm:w-28 sm:shrink-0">{label}</label>
       <div className="flex-1">{children}</div>
     </div>
   );

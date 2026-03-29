@@ -226,7 +226,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
 
   return (
     <div className="flex flex-col h-full gap-2">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
         <span className="text-xs text-muted-foreground">Legend:</span>
         {(Object.keys(FOLDER_COLORS) as FolderKey[]).map((key) => {
           const filterKey = FOLDER_FILTER_KEY[key];
@@ -259,7 +259,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
           </Button>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Checkbox
           id="select-all"
           checked={allSelected}
@@ -285,7 +285,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
 
       {/* Delete summary bar */}
       {deleteMode && (
-        <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm">
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm">
           <span className="text-red-400">
             {deleteTotal > 0
               ? [
@@ -317,7 +317,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
                 <TableHead className="w-8" />
                 <TableHead>Filename</TableHead>
                 {COLUMN_ORDER.map((d) => (
-                  <TableHead key={d} className={cn("text-right", FOLDER_COLORS[d].text)}>
+                  <TableHead key={d} className={cn("text-right hidden md:table-cell", FOLDER_COLORS[d].text)}>
                     {FOLDER_COLORS[d].label}
                   </TableHead>
                 ))}
@@ -342,7 +342,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
                         className="pointer-events-none"
                       />
                     </TableCell>
-                    <TableCell className="font-mono text-sm truncate max-w-[300px]">
+                    <TableCell className="font-mono text-sm truncate max-w-[180px] sm:max-w-[300px]">
                       {file.name}
                     </TableCell>
                     {folders.map((entry) => {
@@ -352,7 +352,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
                         <TableCell
                           key={entry.key}
                           className={cn(
-                            "text-right text-sm",
+                            "text-right text-sm hidden md:table-cell",
                             entry.exists ? FOLDER_COLORS[entry.key].text : "text-muted-foreground",
                             canClick && "cursor-pointer hover:bg-muted/50",
                             isMarked && "ring-2 ring-inset ring-red-500 bg-red-500/10"

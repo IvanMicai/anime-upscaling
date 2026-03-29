@@ -208,7 +208,7 @@ export function FileBrowser() {
       </Tabs>
 
       {/* Legend + delete mode toggle */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
         <span className="text-xs text-muted-foreground">Filter:</span>
         {(Object.keys(FOLDER_COLORS) as FolderKey[]).map((key) => {
           const filterKey = FOLDER_FILTER_KEY[key];
@@ -228,7 +228,7 @@ export function FileBrowser() {
             </button>
           );
         })}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {cachedAt && (
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
               Cached {formatCacheAge(cachedAt)}
@@ -257,7 +257,7 @@ export function FileBrowser() {
 
       {/* Delete summary bar */}
       {deleteMode && (
-        <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm">
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm">
           <span className="text-red-400">
             {deleteTotal > 0
               ? [
@@ -294,7 +294,7 @@ export function FileBrowser() {
                 <TableRow>
                   <TableHead>Filename</TableHead>
                   {COLUMN_ORDER.map((d) => (
-                    <TableHead key={d} className={cn("text-right", FOLDER_COLORS[d].text)}>
+                    <TableHead key={d} className={cn("text-right hidden md:table-cell", FOLDER_COLORS[d].text)}>
                       {FOLDER_COLORS[d].label}
                     </TableHead>
                   ))}
@@ -306,7 +306,7 @@ export function FileBrowser() {
                   const fileDeleteFolders = deleteSelections.get(file.name);
                   return (
                     <TableRow key={file.name}>
-                      <TableCell className="font-mono text-sm truncate max-w-[300px]">
+                      <TableCell className="font-mono text-sm truncate max-w-[180px] sm:max-w-[300px]">
                         {file.name}
                       </TableCell>
                       {folders.map((entry) => {
@@ -316,7 +316,7 @@ export function FileBrowser() {
                           <TableCell
                             key={entry.key}
                             className={cn(
-                              "text-right text-sm",
+                              "text-right text-sm hidden md:table-cell",
                               entry.exists ? FOLDER_COLORS[entry.key].text : "text-muted-foreground",
                               canClickDelete && "cursor-pointer hover:bg-muted/50",
                               isMarked && "ring-2 ring-inset ring-red-500 bg-red-500/10"

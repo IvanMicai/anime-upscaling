@@ -65,7 +65,7 @@ export function JobList({ jobs }: { jobs: Job[] }) {
                 <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                   {formatTime(job.created_at)}
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-right pl-2">
                   <Link
                     href={`/jobs/${job.id}`}
                     className="text-sm text-blue-400 hover:underline"

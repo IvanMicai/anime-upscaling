@@ -29,8 +29,8 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <div className="mx-auto max-w-5xl px-4 py-8">
-          <header className="mb-8 flex items-center justify-between">
+        <div className="mx-auto max-w-5xl px-4 py-4 sm:py-8">
+          <header className="mb-6 sm:mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <Link href="/">
                 <h1 className="text-2xl font-bold">AnimeUp</h1>
@@ -39,7 +39,7 @@ export default function RootLayout({
                 Video Processing Dashboard
               </p>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
               <Link href="/pipelines" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Pipelines
               </Link>

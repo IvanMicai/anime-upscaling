@@ -35,7 +35,7 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4">
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="space-y-1">
           <CardTitle className="font-mono text-sm">{job.id}</CardTitle>
           <div className="flex items-center gap-2">
@@ -59,7 +59,7 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
-        <div className="flex gap-8">
+        <div className="flex flex-col gap-1 sm:flex-row sm:gap-8">
           <div>
             <span className="text-muted-foreground">Created: </span>
             {formatTime(job.created_at)}
