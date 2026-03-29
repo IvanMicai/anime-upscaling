@@ -102,7 +102,7 @@ export default function PipelinesPage() {
                       <p className="text-xs text-muted-foreground/70 mt-0.5">{sizeEst}</p>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 ml-3 shrink-0">
+                  <div className="flex items-center gap-1 ml-2 sm:ml-3 shrink-0">
                     <Button
                       variant="outline"
                       size="xs"
@@ -138,7 +138,7 @@ export default function PipelinesPage() {
 
       {/* Run dialog */}
       <Dialog open={!!runTarget} onOpenChange={(open) => !open && setRunTarget(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] sm:max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Executar: {runTarget?.name}</DialogTitle>
           </DialogHeader>

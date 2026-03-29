@@ -69,13 +69,13 @@ export function ProgressBar({ progress }: { progress: JobProgress }) {
         return (
           <div
             key={source}
-            className="flex items-center gap-3 font-mono text-xs text-muted-foreground"
+            className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-xs text-muted-foreground"
           >
             <span className={sourceColors[source] ?? "text-muted-foreground"}>
               {source}
             </span>
             {c.filename && (
-              <span className="truncate text-muted-foreground">{c.filename}</span>
+              <span className="truncate max-w-[150px] sm:max-w-none text-muted-foreground">{c.filename}</span>
             )}
             <span>
               Frame: {c.frame}

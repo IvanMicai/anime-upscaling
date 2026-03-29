@@ -162,7 +162,7 @@ export default function NewJobPage() {
   const isVP9 = codec === "libvpx-vp9";
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-12rem)]">
+    <div className="flex flex-col min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-12rem)]">
       <Link href="/" className="text-sm text-blue-400 hover:underline">
         &larr; Back to Jobs
       </Link>
@@ -556,8 +556,8 @@ export default function NewJobPage() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3">
-      <label className="text-sm text-muted-foreground w-28 shrink-0">{label}</label>
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+      <label className="text-sm text-muted-foreground sm:w-28 sm:shrink-0">{label}</label>
       <div className="flex-1">{children}</div>
     </div>
   );

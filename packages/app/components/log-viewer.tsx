@@ -52,7 +52,7 @@ export function LogViewer({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <Tabs
           value={filter}
           onValueChange={(v) => setFilter(v as Filter)}
@@ -72,11 +72,11 @@ export function LogViewer({
         </span>
       </div>
 
-      <ScrollArea className="h-[500px] rounded-md border bg-black/40 p-3" ref={scrollRef}>
+      <ScrollArea className="h-[300px] sm:h-[500px] rounded-md border bg-black/40 p-2 sm:p-3" ref={scrollRef}>
         <div className="space-y-0.5 font-mono text-xs">
           {filtered.map((entry, i) => (
-            <div key={i} className="flex items-start gap-2">
-              <span className="shrink-0 text-muted-foreground/60">
+            <div key={i} className="flex flex-wrap items-start gap-x-2 gap-y-0.5">
+              <span className="shrink-0 text-muted-foreground/60 hidden sm:inline">
                 {formatTimestamp(entry.time)}
               </span>
               <Badge
