@@ -63,6 +63,7 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 	source := fmt.Sprintf("GPU %d", gpuID)
 	gpuProgress := func(p runner.Progress) {
 		p.Source = source
+		p.Filename = filename
 		onProgress(p)
 	}
 

@@ -10,6 +10,7 @@ const sourceColor: Record<LogSource, string> = {
   "GPU 0": "bg-blue-500/20 text-blue-400 border-blue-500/30",
   "GPU 1": "bg-purple-500/20 text-purple-400 border-purple-500/30",
   FFMPEG: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  PIPELINE: "bg-green-500/20 text-green-400 border-green-500/30",
 };
 
 const levelColor: Record<LogLevel, string> = {
@@ -18,6 +19,7 @@ const levelColor: Record<LogLevel, string> = {
   ERRO: "text-red-400",
   SKIP: "text-yellow-400",
   WARN: "text-yellow-400",
+  STEP: "text-green-400",
 };
 
 function formatTimestamp(iso: string) {
