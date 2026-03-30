@@ -51,16 +51,45 @@ var ValidProcessors = map[string]bool{
 	"": true, "realesrgan": true, "libplacebo": true, "realcugan": true,
 }
 
-// ValidUpscaleModels lists all valid model/shader names across processors.
-var ValidUpscaleModels = map[string]bool{
-	"": true,
+// ModelScaleCompat maps model/shader name to the set of valid scale factors.
+var ModelScaleCompat = map[string]map[int]bool{
 	// realesrgan
-	"realesr-animevideov3": true, "realesrgan-plus-anime": true, "realesrgan-plus": true,
-	// libplacebo
-	"anime4k-v4-a": true, "anime4k-v4-a+a": true, "anime4k-v4-b": true,
-	"anime4k-v4-b+b": true, "anime4k-v4-c": true, "anime4k-v4-c+a": true, "anime4k-v4.1-gan": true,
+	"realesr-animevideov3":  {2: true, 3: true, 4: true},
+	"realesrgan-plus-anime": {4: true},
+	"realesrgan-plus":       {4: true},
+	// libplacebo (shaders work with any scale)
+	"anime4k-v4-a":     {2: true, 3: true, 4: true},
+	"anime4k-v4-a+a":   {2: true, 3: true, 4: true},
+	"anime4k-v4-b":     {2: true, 3: true, 4: true},
+	"anime4k-v4-b+b":   {2: true, 3: true, 4: true},
+	"anime4k-v4-c":     {2: true, 3: true, 4: true},
+	"anime4k-v4-c+a":   {2: true, 3: true, 4: true},
+	"anime4k-v4.1-gan": {2: true, 3: true, 4: true},
 	// realcugan
-	"models-se": true, "models-pro": true, "models-nose": true,
+	"models-se":   {2: true, 3: true, 4: true},
+	"models-pro":  {2: true, 3: true},
+	"models-nose": {2: true},
+}
+
+// ValidUpscaleModels lists all valid model/shader names across processors.
+var ValidUpscaleModels = func() map[string]bool {
+	m := map[string]bool{"": true}
+	for k := range ModelScaleCompat {
+		m[k] = true
+	}
+	return m
+}()
+
+// ValidModelScale checks whether a model+scale combination is supported.
+func ValidModelScale(model string, scale int) bool {
+	if model == "" {
+		return true
+	}
+	scales, ok := ModelScaleCompat[model]
+	if !ok {
+		return false
+	}
+	return scales[scale]
 }
 
 // ValidRifeModels lists all valid RIFE model names.

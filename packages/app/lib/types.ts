@@ -109,7 +109,7 @@ export interface CreateJobRequest {
   files?: string[];
   source?: "input" | "output" | "optimized";
   // Upscale
-  scale?: 2 | 4;
+  scale?: 2 | 3 | 4;
   processor?: UpscaleProcessor;
   model?: string;
   noise_level?: number;
@@ -155,7 +155,7 @@ export type UpscaleProcessor = "realesrgan" | "libplacebo" | "realcugan";
 
 export interface PipelineStep {
   operation: PipelineOperationType;
-  scale?: 2 | 4;
+  scale?: 2 | 3 | 4;
   processor?: UpscaleProcessor;
   model?: string;
   noise_level?: number;
@@ -188,26 +188,44 @@ export const PROCESSOR_OPTIONS = [
 ] as const;
 
 export const REALESRGAN_MODELS = [
-  { value: "realesr-animevideov3", label: "Anime Video v3", desc: "Otimizado para vídeos de anime (recomendado)" },
-  { value: "realesrgan-plus-anime", label: "Plus Anime", desc: "Otimizado para imagens de anime" },
-  { value: "realesrgan-plus", label: "Plus", desc: "Modelo genérico para qualquer conteúdo" },
+  { value: "realesr-animevideov3", label: "Anime Video v3", desc: "Otimizado para vídeos de anime (recomendado)", scales: [2, 3, 4] as const },
+  { value: "realesrgan-plus-anime", label: "Plus Anime", desc: "Otimizado para imagens de anime (4x apenas)", scales: [4] as const },
+  { value: "realesrgan-plus", label: "Plus", desc: "Modelo genérico para qualquer conteúdo (4x apenas)", scales: [4] as const },
 ] as const;
 
 export const LIBPLACEBO_SHADERS = [
-  { value: "anime4k-v4-a", label: "Anime4K A", desc: "Rápido, boa qualidade geral" },
-  { value: "anime4k-v4-a+a", label: "Anime4K A+A", desc: "Mais detalhes, um pouco mais lento" },
-  { value: "anime4k-v4-b", label: "Anime4K B", desc: "Balanço entre velocidade e qualidade" },
-  { value: "anime4k-v4-b+b", label: "Anime4K B+B", desc: "Mais detalhes no modo B" },
-  { value: "anime4k-v4-c", label: "Anime4K C", desc: "Máxima qualidade, mais lento" },
-  { value: "anime4k-v4-c+a", label: "Anime4K C+A", desc: "Qualidade máxima com restauração" },
-  { value: "anime4k-v4.1-gan", label: "Anime4K v4.1 GAN", desc: "Rede adversarial generativa, resultado mais nítido" },
+  { value: "anime4k-v4-a", label: "Anime4K A", desc: "Rápido, boa qualidade geral", scales: [2, 3, 4] as const },
+  { value: "anime4k-v4-a+a", label: "Anime4K A+A", desc: "Mais detalhes, um pouco mais lento", scales: [2, 3, 4] as const },
+  { value: "anime4k-v4-b", label: "Anime4K B", desc: "Balanço entre velocidade e qualidade", scales: [2, 3, 4] as const },
+  { value: "anime4k-v4-b+b", label: "Anime4K B+B", desc: "Mais detalhes no modo B", scales: [2, 3, 4] as const },
+  { value: "anime4k-v4-c", label: "Anime4K C", desc: "Máxima qualidade, mais lento", scales: [2, 3, 4] as const },
+  { value: "anime4k-v4-c+a", label: "Anime4K C+A", desc: "Qualidade máxima com restauração", scales: [2, 3, 4] as const },
+  { value: "anime4k-v4.1-gan", label: "Anime4K v4.1 GAN", desc: "Rede adversarial generativa, resultado mais nítido", scales: [2, 3, 4] as const },
 ] as const;
 
 export const REALCUGAN_MODELS = [
-  { value: "models-se", label: "Standard Edition", desc: "Bom equilíbrio entre qualidade e velocidade (padrão)" },
-  { value: "models-pro", label: "Pro", desc: "Maior qualidade, mais lento" },
-  { value: "models-nose", label: "No Sharpening", desc: "Sem sharpening, resultado mais suave" },
+  { value: "models-se", label: "Standard Edition", desc: "Bom equilíbrio entre qualidade e velocidade (padrão)", scales: [2, 3, 4] as const },
+  { value: "models-pro", label: "Pro", desc: "Maior qualidade, mais lento (2x/3x)", scales: [2, 3] as const },
+  { value: "models-nose", label: "No Sharpening", desc: "Sem sharpening, resultado mais suave (2x apenas)", scales: [2] as const },
 ] as const;
+
+export const SCALE_LABELS: Record<number, string> = {
+  2: "2x — Dobra a resolução",
+  3: "3x — Triplica a resolução",
+  4: "4x — Quadruplica a resolução",
+};
+
+export function getModelOptions(processor: UpscaleProcessor) {
+  return processor === "libplacebo" ? LIBPLACEBO_SHADERS
+    : processor === "realcugan" ? REALCUGAN_MODELS
+    : REALESRGAN_MODELS;
+}
+
+export function getValidScales(processor: UpscaleProcessor, model: string): readonly number[] {
+  const models = getModelOptions(processor);
+  const found = models.find(m => m.value === model);
+  return found?.scales ?? [2, 4];
+}
 
 export const NOISE_LEVEL_OPTIONS = [
   { value: 0, label: "Desativado", desc: "Sem redução de ruído" },

@@ -7,12 +7,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { PipelineStep, PipelineOperationType } from "@/lib/types";
+import type { PipelineStep, PipelineOperationType, UpscaleProcessor } from "@/lib/types";
 import {
   PROCESSOR_OPTIONS,
-  REALESRGAN_MODELS,
-  LIBPLACEBO_SHADERS,
-  REALCUGAN_MODELS,
   NOISE_LEVEL_OPTIONS,
   RIFE_MODEL_OPTIONS,
   CODEC_OPTIONS,
@@ -20,6 +17,9 @@ import {
   TUNE_OPTIONS,
   PIX_FMT_OPTIONS,
   AUDIO_CODEC_OPTIONS,
+  SCALE_LABELS,
+  getModelOptions,
+  getValidScales,
 } from "@/lib/types";
 import { computeStateAt, formatResolution, formatSizeEstimate, codecLabel } from "./pipeline-preview";
 
@@ -137,11 +137,10 @@ export function PipelineStepCard({
       <div className="space-y-3">
         {step.operation === "upscale" && (() => {
           const proc = step.processor ?? "realesrgan";
-          const modelOptions =
-            proc === "libplacebo" ? LIBPLACEBO_SHADERS :
-            proc === "realcugan" ? REALCUGAN_MODELS :
-            REALESRGAN_MODELS;
+          const modelOptions = getModelOptions(proc);
           const defaultModel = modelOptions[0].value;
+          const currentModel = step.model ?? defaultModel;
+          const validScales = getValidScales(proc, currentModel);
           return (
             <>
               <Field label="Processador">
@@ -153,7 +152,10 @@ export function PipelineStepCard({
                       v === "libplacebo" ? "anime4k-v4-a" :
                       v === "realcugan" ? "models-se" :
                       "realesr-animevideov3";
-                    updateField({ processor: p, model: defModel });
+                    const newScales = getValidScales(p as UpscaleProcessor, defModel);
+                    const currentScale = step.scale ?? 2;
+                    const newScale = newScales.includes(currentScale) ? currentScale : newScales[0];
+                    updateField({ processor: p, model: defModel, scale: newScale as 2 | 3 | 4 });
                   }}
                 >
                   <SelectTrigger className="h-8">
@@ -171,7 +173,13 @@ export function PipelineStepCard({
               <Field label="Modelo">
                 <Select
                   value={step.model ?? defaultModel}
-                  onValueChange={(v) => updateField({ model: v })}
+                  onValueChange={(v) => {
+                    const newScales = getValidScales(proc as UpscaleProcessor, v);
+                    const currentScale = step.scale ?? 2;
+                    const updates: Partial<PipelineStep> = { model: v };
+                    if (!newScales.includes(currentScale)) updates.scale = newScales[0] as 2 | 3 | 4;
+                    updateField(updates);
+                  }}
                 >
                   <SelectTrigger className="h-8">
                     <SelectValue />
@@ -188,14 +196,17 @@ export function PipelineStepCard({
               <Field label="Scale">
                 <Select
                   value={String(step.scale ?? 2)}
-                  onValueChange={(v) => updateField({ scale: Number(v) as 2 | 4 })}
+                  onValueChange={(v) => updateField({ scale: Number(v) as 2 | 3 | 4 })}
                 >
                   <SelectTrigger className="h-8">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="2">2x — Dobra a resolução</SelectItem>
-                    <SelectItem value="4">4x — Quadruplica a resolução</SelectItem>
+                    {validScales.map((s) => (
+                      <SelectItem key={s} value={String(s)}>
+                        {SCALE_LABELS[s] ?? `${s}x`}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </Field>
