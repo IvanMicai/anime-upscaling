@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +16,68 @@ import (
 
 	"anime-upscaling/internal/config"
 )
+
+// needsSanitize returns true if the filename contains characters that
+// video2x cannot handle (e.g. spaces).
+func needsSanitize(filename string) bool {
+	return strings.ContainsAny(filename, " ")
+}
+
+// sanitizeFilename replaces problematic characters with underscores and
+// appends an ephemeral suffix before the extension to avoid collisions.
+func sanitizeFilename(filename string) string {
+	ext := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, ext)
+	safe := strings.ReplaceAll(base, " ", "_")
+	return safe + "_" + ephemeralSuffix() + ext
+}
+
+// setupSanitizedPaths creates a symlink with a sanitized name for the input
+// file if the filename needs sanitization. Returns the paths to use for
+// the command and a cleanup function that must be deferred.
+func setupSanitizedPaths(filename, inputDir, outputDir string) (cmdInputPath, cmdOutputPath, originalOutputPath string, sanitized bool, cleanup func()) {
+	originalInputPath := inputDir + "/" + filename
+	originalOutputPath = outputDir + "/" + filename
+
+	if !needsSanitize(filename) {
+		return originalInputPath, originalOutputPath, originalOutputPath, false, func() {}
+	}
+
+	safeName := sanitizeFilename(filename)
+	symlinkPath := inputDir + "/" + safeName
+	cmdInputPath = symlinkPath
+	cmdOutputPath = outputDir + "/" + safeName
+
+	// Create symlink: safeName -> original file
+	os.Symlink(originalInputPath, symlinkPath)
+
+	sanitized = true
+	cleanup = func() {
+		os.Remove(symlinkPath)
+	}
+	return
+}
+
+// finalizeSanitizedOutput renames the output from the sanitized name to the
+// original name after successful processing. On failure, cleans up partial output.
+func finalizeSanitizedOutput(cmdOutputPath, originalOutputPath string, err error) {
+	if err != nil {
+		os.Remove(cmdOutputPath)
+		return
+	}
+	os.Rename(cmdOutputPath, originalOutputPath)
+}
+
+// runError wraps an exec error with the last lines of process output for context.
+func runError(err error, tail *tailWriter) error {
+	if err == nil {
+		return nil
+	}
+	if detail := tail.LastLines(); detail != "" {
+		return fmt.Errorf("%w: %s", err, detail)
+	}
+	return err
+}
 
 const ProcessPrefix = "anime-upscaling-"
 
@@ -65,12 +128,13 @@ func (r *Runner) Video2x(ctx context.Context, gpuID int, filename, logPath strin
 	defer f.Close()
 
 	opts = opts.WithDefaults()
-	inputPath := inputDir + "/" + filename
-	outputPath := outputDir + "/" + filename
+
+	cmdInputPath, cmdOutputPath, originalOutputPath, sanitized, cleanupSymlink := setupSanitizedPaths(filename, inputDir, outputDir)
+	defer cleanupSymlink()
 
 	args := []string{
-		"-i", inputPath,
-		"-o", outputPath,
+		"-i", cmdInputPath,
+		"-o", cmdOutputPath,
 		"-p", opts.Processor,
 		"-s", strconv.Itoa(scale),
 		"-d", strconv.Itoa(gpuID),
@@ -89,9 +153,10 @@ func (r *Runner) Video2x(ctx context.Context, gpuID int, filename, logPath strin
 
 	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin, args...)
 
-	var out io.Writer = f
+	tail := newTailWriter(20)
+	var out io.Writer = io.MultiWriter(f, tail)
 	if onProgress != nil {
-		out = newProgressWriter(f, onProgress)
+		out = io.MultiWriter(newProgressWriter(f, onProgress), tail)
 	}
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -100,7 +165,11 @@ func (r *Runner) Video2x(ctx context.Context, gpuID int, filename, logPath strin
 	tracker.register(label, cmd)
 	defer tracker.unregister(label)
 
-	return cmd.Run()
+	err = cmd.Run()
+	if sanitized {
+		finalizeSanitizedOutput(cmdOutputPath, originalOutputPath, err)
+	}
+	return runError(err, tail)
 }
 
 // RifeOptions holds quality-related options for RIFE frame interpolation.
@@ -118,12 +187,12 @@ func (r *Runner) Video2xRife(ctx context.Context, gpuID int, filename, logPath s
 	}
 	defer f.Close()
 
-	inputPath := inputDir + "/" + filename
-	outputPath := outputDir + "/" + filename
+	cmdInputPath, cmdOutputPath, originalOutputPath, sanitized, cleanupSymlink := setupSanitizedPaths(filename, inputDir, outputDir)
+	defer cleanupSymlink()
 
 	args := []string{
-		"-i", inputPath,
-		"-o", outputPath,
+		"-i", cmdInputPath,
+		"-o", cmdOutputPath,
 		"-p", "rife",
 		"-m", strconv.Itoa(multiplier),
 		"-d", strconv.Itoa(gpuID),
@@ -138,9 +207,10 @@ func (r *Runner) Video2xRife(ctx context.Context, gpuID int, filename, logPath s
 
 	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin, args...)
 
-	var out io.Writer = f
+	tail := newTailWriter(20)
+	var out io.Writer = io.MultiWriter(f, tail)
 	if onProgress != nil {
-		out = newProgressWriter(f, onProgress)
+		out = io.MultiWriter(newProgressWriter(f, onProgress), tail)
 	}
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -149,7 +219,11 @@ func (r *Runner) Video2xRife(ctx context.Context, gpuID int, filename, logPath s
 	tracker.register(label, cmd)
 	defer tracker.unregister(label)
 
-	return cmd.Run()
+	err = cmd.Run()
+	if sanitized {
+		finalizeSanitizedOutput(cmdOutputPath, originalOutputPath, err)
+	}
+	return runError(err, tail)
 }
 
 // EncodeOptions holds codec and encoding parameters for FFmpeg.
@@ -228,9 +302,10 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 
 	cmd := exec.CommandContext(ctx, r.cfg.FFmpegBin, args...)
 
-	var out io.Writer = f
+	tail := newTailWriter(20)
+	var out io.Writer = io.MultiWriter(f, tail)
 	if onProgress != nil {
-		out = newProgressWriter(f, onProgress)
+		out = io.MultiWriter(newProgressWriter(f, onProgress), tail)
 	}
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -242,7 +317,7 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	tracker.register(label, cmd)
 	defer tracker.unregister(label)
 
-	return cmd.Run()
+	return runError(cmd.Run(), tail)
 }
 
 // ProbeFrameCount returns the total number of video frames in a file using container metadata.
