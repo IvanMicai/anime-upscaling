@@ -44,16 +44,18 @@ func setupSanitizedPaths(filename, inputDir, outputDir string) (cmdInputPath, cm
 	}
 
 	safeName := sanitizeFilename(filename)
-	symlinkPath := inputDir + "/" + safeName
-	cmdInputPath = symlinkPath
+	linkPath := inputDir + "/" + safeName
+	cmdInputPath = linkPath
 	cmdOutputPath = outputDir + "/" + safeName
 
-	// Create symlink: safeName -> original file
-	os.Symlink(originalInputPath, symlinkPath)
+	// Create hard link so video2x sees a clean name with no reference to the original path.
+	// Hard links are preferred over symlinks because some tools resolve symlinks
+	// and may still fail on the original path containing spaces.
+	os.Link(originalInputPath, linkPath)
 
 	sanitized = true
 	cleanup = func() {
-		os.Remove(symlinkPath)
+		os.Remove(linkPath)
 	}
 	return
 }
