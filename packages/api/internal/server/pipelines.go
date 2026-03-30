@@ -195,14 +195,23 @@ func validateSteps(steps []pipeline.PipelineStep) error {
 
 		switch s.Operation {
 		case "upscale":
-			if s.Scale != 0 && s.Scale != 2 && s.Scale != 4 {
-				return fmt.Errorf("step %d: scale must be 2 or 4", i+1)
+			if s.Scale != 0 && s.Scale != 2 && s.Scale != 3 && s.Scale != 4 {
+				return fmt.Errorf("step %d: scale must be 2, 3, or 4", i+1)
 			}
 			if !pipeline.ValidProcessors[s.Processor] {
 				return fmt.Errorf("step %d: invalid processor %q", i+1, s.Processor)
 			}
 			if !pipeline.ValidUpscaleModels[s.Model] {
 				return fmt.Errorf("step %d: invalid model %q", i+1, s.Model)
+			}
+			if s.Model != "" {
+				effectiveScale := s.Scale
+				if effectiveScale == 0 {
+					effectiveScale = 2
+				}
+				if !pipeline.ValidModelScale(s.Model, effectiveScale) {
+					return fmt.Errorf("step %d: model %q does not support scale %d", i+1, s.Model, effectiveScale)
+				}
 			}
 			if s.NoiseLevel < 0 || s.NoiseLevel > 3 {
 				return fmt.Errorf("step %d: noise_level must be between 0 and 3", i+1)

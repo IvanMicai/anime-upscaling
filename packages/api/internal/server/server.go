@@ -323,8 +323,8 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 	if req.Scale == 0 {
 		req.Scale = 2
 	}
-	if req.Type == "upscale" && req.Scale != 2 && req.Scale != 4 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "scale must be 2 or 4"})
+	if req.Type == "upscale" && req.Scale != 2 && req.Scale != 3 && req.Scale != 4 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "scale must be 2, 3, or 4"})
 		return
 	}
 	if req.Type == "upscale" {
@@ -334,6 +334,10 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		}
 		if req.Model != "" && !pipeline.ValidUpscaleModels[req.Model] {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid model"})
+			return
+		}
+		if req.Model != "" && !pipeline.ValidModelScale(req.Model, req.Scale) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("model %q does not support scale %d", req.Model, req.Scale)})
 			return
 		}
 		if req.NoiseLevel < 0 || req.NoiseLevel > 3 {

@@ -19,9 +19,6 @@ import { createJob, getPipelines, runPipeline } from "@/lib/api";
 import type { JobType, Pipeline, UpscaleProcessor, QualityPreset, PipelineStep } from "@/lib/types";
 import {
   PROCESSOR_OPTIONS,
-  REALESRGAN_MODELS,
-  LIBPLACEBO_SHADERS,
-  REALCUGAN_MODELS,
   NOISE_LEVEL_OPTIONS,
   RIFE_MODEL_OPTIONS,
   CODEC_OPTIONS,
@@ -29,6 +26,9 @@ import {
   TUNE_OPTIONS,
   PIX_FMT_OPTIONS,
   AUDIO_CODEC_OPTIONS,
+  SCALE_LABELS,
+  getModelOptions,
+  getValidScales,
 } from "@/lib/types";
 
 export default function NewJobPage() {
@@ -36,7 +36,7 @@ export default function NewJobPage() {
   const [type, setType] = useState<JobType>("upscale");
   const [source, setSource] = useState<"input" | "output" | "optimized">("input");
   // Upscale
-  const [scale, setScale] = useState<2 | 4>(2);
+  const [scale, setScale] = useState<2 | 3 | 4>(2);
   const [processor, setProcessor] = useState<UpscaleProcessor>("realesrgan");
   const [model, setModel] = useState("realesr-animevideov3");
   const [noiseLevel, setNoiseLevel] = useState(0);
@@ -153,10 +153,8 @@ export default function NewJobPage() {
   const fileSource =
     !isPipelineSelected && (type === "optimize" || type === "check") ? source : "input";
 
-  const modelOptions =
-    processor === "libplacebo" ? LIBPLACEBO_SHADERS :
-    processor === "realcugan" ? REALCUGAN_MODELS :
-    REALESRGAN_MODELS;
+  const modelOptions = getModelOptions(processor);
+  const validScales = getValidScales(processor, model);
 
   const isStreamCopy = codec === "copy";
   const isVP9 = codec === "libvpx-vp9";
@@ -215,6 +213,8 @@ export default function NewJobPage() {
                         v === "realcugan" ? "models-se" :
                         "realesr-animevideov3";
                       setModel(defModel);
+                      const validScales = getValidScales(p, defModel);
+                      if (!validScales.includes(scale)) setScale(validScales[0] as 2 | 3 | 4);
                     }}
                   >
                     <SelectTrigger className="h-8">
@@ -232,7 +232,11 @@ export default function NewJobPage() {
                 <Field label="Modelo">
                   <Select
                     value={model}
-                    onValueChange={setModel}
+                    onValueChange={(v) => {
+                      setModel(v);
+                      const validScales = getValidScales(processor, v);
+                      if (!validScales.includes(scale)) setScale(validScales[0] as 2 | 3 | 4);
+                    }}
                   >
                     <SelectTrigger className="h-8">
                       <SelectValue />
@@ -249,14 +253,17 @@ export default function NewJobPage() {
                 <Field label="Scale">
                   <Select
                     value={String(scale)}
-                    onValueChange={(v) => setScale(Number(v) as 2 | 4)}
+                    onValueChange={(v) => setScale(Number(v) as 2 | 3 | 4)}
                   >
                     <SelectTrigger className="h-8">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="2">2x — Dobra a resolução</SelectItem>
-                      <SelectItem value="4">4x — Quadruplica a resolução</SelectItem>
+                      {validScales.map((s) => (
+                        <SelectItem key={s} value={String(s)}>
+                          {SCALE_LABELS[s] ?? `${s}x`}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </Field>
