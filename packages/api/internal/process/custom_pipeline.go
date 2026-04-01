@@ -144,6 +144,7 @@ func RunCustomPipelineForFile(
 			// Convert currentInputDir to relative source name for optimize
 			source := dirToSource(cfg, currentInputDir)
 
+			var optimizeOk bool
 			done := make(chan struct{})
 			if err := ffmpegQ.Submit(ctx, func() {
 				defer close(done)
@@ -152,12 +153,16 @@ func RunCustomPipelineForFile(
 					Message: stepLabel + "Optimize (" + quality + "): " + filename,
 					Time:    time.Now(),
 				})
-				OptimizeFile(ctx, cfg, r, filename, index, source, resolution, crf, threads, encOpts, stepOnEvent, onProgress)
+				optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, resolution, crf, threads, encOpts, stepOnEvent, onProgress)
 			}); err != nil {
 				return false
 			}
 			<-done
 
+			if !optimizeOk {
+				onEvent(logger.JobLog{Source: "PIPELINE", Level: "ERRO", Index: index, Message: "Falha: " + filename, Time: time.Now()})
+				return false
+			}
 			currentInputDir = cfg.OptimizedDir
 		}
 	}

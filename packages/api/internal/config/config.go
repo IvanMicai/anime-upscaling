@@ -12,6 +12,7 @@ type Config struct {
 	OutputDir       string
 	OptimizedDir    string
 	InterpolatedDir string
+	TempDir         string
 	LogFile         string
 	UserID       int
 	GroupID      int
@@ -44,6 +45,7 @@ func NewConfig() Config {
 		OutputDir:    baseDir + "/output",
 		OptimizedDir:    baseDir + "/optimized",
 		InterpolatedDir: baseDir + "/interpolated",
+		TempDir:         baseDir + "/temp",
 		LogFile:      baseDir + "/process.log",
 		UserID:       os.Getuid(),
 		GroupID:      os.Getgid(),

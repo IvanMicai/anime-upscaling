@@ -25,16 +25,19 @@ func RunOptimize(ctx context.Context, cfg config.Config, r *runner.Runner, fileL
 }
 
 // OptimizeFile compresses a single file from input/ to optimized/ using FFmpeg.
-func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, index int, source string, resolution int, crf int, threads int, opts runner.EncodeOptions, onEvent func(logger.JobLog), onProgress func(runner.Progress)) {
-	if err := os.MkdirAll(cfg.OptimizedDir, 0755); err != nil {
-		onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir optimized: %v", err), Time: time.Now()})
-		return
+func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, index int, source string, resolution int, crf int, threads int, opts runner.EncodeOptions, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
+	tempOptDir := cfg.TempDir + "/optimized"
+	for _, dir := range []string{cfg.OptimizedDir, tempOptDir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir optimized: %v", err), Time: time.Now()})
+			return false
+		}
 	}
 
 	outPath := filepath.Join(cfg.OptimizedDir, filename)
 	if files.FileExists(outPath) {
 		onEvent(logger.JobLog{Source: "FFMPEG", Level: "SKIP", Index: index, Message: "Pulando " + filename + " (já existe)", Time: time.Now()})
-		return
+		return true
 	}
 
 	onEvent(logger.JobLog{Source: "FFMPEG", Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
@@ -65,7 +68,7 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 
 	err := r.FFmpegEncode(ctx,
 		source+"/"+filename,
-		"optimized/"+filename,
+		"temp/optimized/"+filename,
 		crf,
 		t,
 		opts,
@@ -74,16 +77,26 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 		resolution,
 		ffmpegProgress,
 	)
+
+	tempOutPath := filepath.Join(tempOptDir, filename)
 	if err != nil {
+		os.Remove(tempOutPath)
 		onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao processar: %s (%v)", filename, err), Time: time.Now()})
-		return
+		return false
 	}
 
-	if !files.FileExists(outPath) {
+	if !files.FileExists(tempOutPath) {
 		onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: index, Message: "ffmpeg retornou 0 mas output não existe: " + filename, Time: time.Now()})
-		return
+		return false
+	}
+
+	if err := os.Rename(tempOutPath, outPath); err != nil {
+		os.Remove(tempOutPath)
+		onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao mover output: %s (%v)", filename, err), Time: time.Now()})
+		return false
 	}
 
 	r.Chown(ctx, cfg.OptimizedDir, filename)
 	onEvent(logger.JobLog{Source: "FFMPEG", Level: "OK", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
+	return true
 }
