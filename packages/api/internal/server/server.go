@@ -17,6 +17,10 @@ import (
 )
 
 func CmdServe(cfg config.Config) error {
+	// Clean temp dir from any stale files left by previous crashes
+	os.RemoveAll(cfg.TempDir)
+	os.MkdirAll(cfg.TempDir, 0755)
+
 	if err := cache.BuildFileStatusCache(cfg); err != nil {
 		fmt.Printf("Warning: cache build failed: %v\n", err)
 	}

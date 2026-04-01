@@ -54,10 +54,13 @@ func safeProgress(fn func(runner.Progress)) func(runner.Progress) {
 // UpscaleFile processes a single file on the given GPU.
 // Returns true if the file was successfully upscaled (or skipped).
 func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, scale int, opts runner.UpscaleOptions, inputDir, outputDir string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		source := fmt.Sprintf("GPU %d", gpuID)
-		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir output: %v", err), Time: time.Now()})
-		return false
+	tempOutputDir := cfg.TempDir + "/output"
+	for _, dir := range []string{outputDir, tempOutputDir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			source := fmt.Sprintf("GPU %d", gpuID)
+			onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir output: %v", err), Time: time.Now()})
+			return false
+		}
 	}
 
 	source := fmt.Sprintf("GPU %d", gpuID)
@@ -76,17 +79,23 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
 
 	logFile := fmt.Sprintf("%s/gpu%d.log", cfg.BaseDir, gpuID)
-	err := r.Video2x(ctx, gpuID, filename, logFile, scale, opts, inputDir, outputDir, gpuProgress)
+	err := r.Video2x(ctx, gpuID, filename, logFile, scale, opts, inputDir, tempOutputDir, gpuProgress)
 
+	tempOutPath := filepath.Join(tempOutputDir, filename)
 	if err != nil {
-		// Clean up partial output on failure
-		os.Remove(outPath)
+		os.Remove(tempOutPath)
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao processar: %s (%v)", filename, err), Time: time.Now()})
 		return false
 	}
 
-	if !files.FileExists(outPath) {
+	if !files.FileExists(tempOutPath) {
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: "video2x retornou 0 mas output não existe: " + filename, Time: time.Now()})
+		return false
+	}
+
+	if err := os.Rename(tempOutPath, outPath); err != nil {
+		os.Remove(tempOutPath)
+		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao mover output: %s (%v)", filename, err), Time: time.Now()})
 		return false
 	}
 
