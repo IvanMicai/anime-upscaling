@@ -2,8 +2,10 @@ package process
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -40,11 +42,28 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 		return true
 	}
 
+	inputPath := cfg.BaseDir + "/" + source + "/" + filename
+
+	// Pre-check: verify the input decodes end-to-end before we commit to a long encode.
+	// Catches corrupted outputs from upstream steps (e.g. truncated interpolation writes)
+	// that would otherwise surface as a mid-encode SIGSEGV in the ffmpeg encoder.
+	if _, err := r.FFmpegDecode(ctx, source+"/"+filename, "precheck-optimize", nil); err != nil {
+		if ctx.Err() != nil {
+			return false
+		}
+		onEvent(logger.JobLog{
+			Source: "FFMPEG", Level: "ERRO", Index: index,
+			Message: fmt.Sprintf("PRE-CHECK FALHOU: %s (%v) — input %s %s (ver ffmpeg.log)",
+				filename, err, inputPath, inputFileMeta(inputPath)),
+			Time: time.Now(),
+		})
+		return false
+	}
+
 	onEvent(logger.JobLog{Source: "FFMPEG", Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
 
 	// Probe total frame count for ETA calculation
 	totalFrames := 0
-	inputPath := cfg.BaseDir + "/" + source + "/" + filename
 	if count, err := r.ProbeFrameCount(ctx, inputPath); err == nil {
 		totalFrames = count
 	}
@@ -66,22 +85,45 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 		t = cfg.HalfCPUs
 	}
 
-	err := r.FFmpegEncode(ctx,
-		source+"/"+filename,
-		"temp/optimized/"+filename,
-		crf,
-		t,
-		opts,
-		"",
-		true,
-		resolution,
-		ffmpegProgress,
-	)
-
 	tempOutPath := filepath.Join(tempOptDir, filename)
+
+	attempt := func(attemptOpts runner.EncodeOptions) error {
+		os.Remove(tempOutPath)
+		return r.FFmpegEncode(ctx,
+			source+"/"+filename,
+			"temp/optimized/"+filename,
+			crf,
+			t,
+			attemptOpts,
+			"",
+			true,
+			resolution,
+			ffmpegProgress,
+		)
+	}
+
+	err := attempt(opts)
+	if err != nil && ctx.Err() == nil {
+		if sig, signaled := runner.SignalFromError(err); signaled {
+			fallback := fallbackEncodeOptions(opts)
+			onEvent(logger.JobLog{
+				Source: "FFMPEG", Level: "INFO", Index: index,
+				Message: fmt.Sprintf("Tentativa 1 morreu com signal %s; repetindo %s com codec=%s preset=%s pixfmt=%s",
+					sig, filename, fallback.Codec, fallback.Preset, fallback.PixFmt),
+				Time: time.Now(),
+			})
+			err = attempt(fallback)
+		}
+	}
+
 	if err != nil {
 		os.Remove(tempOutPath)
-		onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao processar: %s (%v)", filename, err), Time: time.Now()})
+		onEvent(logger.JobLog{
+			Source: "FFMPEG", Level: "ERRO", Index: index,
+			Message: fmt.Sprintf("Falha ao processar: %s (%s) — input %s %s (ver ffmpeg.log)",
+				filename, describeRunError(err), inputPath, inputFileMeta(inputPath)),
+			Time: time.Now(),
+		})
 		return false
 	}
 
@@ -99,4 +141,42 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 	r.Chown(ctx, cfg.OptimizedDir, filename)
 	onEvent(logger.JobLog{Source: "FFMPEG", Level: "OK", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
 	return true
+}
+
+// fallbackEncodeOptions returns a conservative set of encode options for the
+// retry attempt when the primary encoder died by signal. Switches to libx264,
+// 8-bit pixel format and a medium preset to sidestep libx265/10-bit crashes.
+// Preserves the original AudioCodec and any caller-provided ExtraArgs.
+func fallbackEncodeOptions(orig runner.EncodeOptions) runner.EncodeOptions {
+	fb := runner.EncodeOptions{
+		Codec:      "libx264",
+		Preset:     "medium",
+		Tune:       "animation",
+		PixFmt:     "yuv420p",
+		AudioCodec: orig.AudioCodec,
+		ExtraArgs:  orig.ExtraArgs,
+	}
+	return fb.WithDefaults()
+}
+
+// inputFileMeta returns a "size=N mtime=..." string for error logs, or an
+// empty string if the file cannot be stat'd.
+func inputFileMeta(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "(stat falhou: " + err.Error() + ")"
+	}
+	return fmt.Sprintf("size=%d mtime=%s", info.Size(), info.ModTime().Format(time.RFC3339))
+}
+
+// describeRunError renders err including signal info when present.
+func describeRunError(err error) string {
+	if sig, signaled := runner.SignalFromError(err); signaled {
+		return fmt.Sprintf("signal=%s: %v", sig, err)
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return fmt.Sprintf("exit=%d: %v", exitErr.ExitCode(), err)
+	}
+	return err.Error()
 }
