@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"anime-upscaling/internal/config"
@@ -79,6 +81,27 @@ func runError(err error, tail *tailWriter) error {
 		return fmt.Errorf("%w: %s", err, detail)
 	}
 	return err
+}
+
+// SignalFromError extracts the termination signal from an exec error, if any.
+// Returns (signal, true) when the process was killed by a signal (e.g. SIGSEGV);
+// returns (0, false) for normal non-zero exits or non-exec errors.
+func SignalFromError(err error) (syscall.Signal, bool) {
+	if err == nil {
+		return 0, false
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return 0, false
+	}
+	ws, ok := exitErr.Sys().(syscall.WaitStatus)
+	if !ok {
+		return 0, false
+	}
+	if !ws.Signaled() {
+		return 0, false
+	}
+	return ws.Signal(), true
 }
 
 const ProcessPrefix = "anime-upscaling-"
@@ -230,11 +253,12 @@ func (r *Runner) Video2xRife(ctx context.Context, gpuID int, filename, logPath s
 
 // EncodeOptions holds codec and encoding parameters for FFmpeg.
 type EncodeOptions struct {
-	Codec      string // "libx265" (default), "libx264", "libvpx-vp9", "copy"
-	Preset     string // "fast" (default), "ultrafast"..."veryslow"
-	Tune       string // "animation" (default), "film", "grain", "zerolatency", "none" (no tune)
-	PixFmt     string // "yuv420p10le" (default), "yuv420p", "yuv444p"
-	AudioCodec string // "copy" (default), "aac", "libopus", "libmp3lame"
+	Codec      string   // "libx265" (default), "libx264", "libvpx-vp9", "copy"
+	Preset     string   // "fast" (default), "ultrafast"..."veryslow"
+	Tune       string   // "animation" (default), "film", "grain", "zerolatency", "none" (no tune)
+	PixFmt     string   // "yuv420p10le" (default), "yuv420p", "yuv444p"
+	AudioCodec string   // "copy" (default), "aac", "libopus", "libmp3lame"
+	ExtraArgs  []string // extra ffmpeg args appended before the output path (e.g. -x265-params pools=none)
 }
 
 // WithDefaults returns a copy with zero-value fields replaced by defaults.
@@ -299,6 +323,9 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 
 	if copySubtitles {
 		args = append(args, "-c:s", "copy")
+	}
+	if len(opts.ExtraArgs) > 0 {
+		args = append(args, opts.ExtraArgs...)
 	}
 	args = append(args, outputPath)
 
