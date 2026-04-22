@@ -29,21 +29,24 @@ func RunPipeline(ctx context.Context, cfg config.Config, r *runner.Runner, fileL
 	readyCh := make(chan string, len(fileList))
 
 	var gpuWg sync.WaitGroup
-	gpuCount := 2
+	gpuCount := cfg.GPUCount
+	streams := cfg.StreamsPerGPU
 	for gpuID := 0; gpuID < gpuCount; gpuID++ {
-		gpuWg.Add(1)
-		go func(gpuID int) {
-			defer gpuWg.Done()
-			for w := range fileCh {
-				if ctx.Err() != nil {
-					return
+		for streamIdx := 0; streamIdx < streams; streamIdx++ {
+			gpuWg.Add(1)
+			go func(gpuID, streamIdx int) {
+				defer gpuWg.Done()
+				for w := range fileCh {
+					if ctx.Err() != nil {
+						return
+					}
+					ok := UpscaleFile(ctx, cfg, r, gpuID, streamIdx, w.filename, w.index, scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, onEvent, safeProgress(onProgress))
+					if ok {
+						readyCh <- w.filename
+					}
 				}
-				ok := UpscaleFile(ctx, cfg, r, gpuID, w.filename, w.index, scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, onEvent, safeProgress(onProgress))
-				if ok {
-					readyCh <- w.filename
-				}
-			}
-		}(gpuID)
+			}(gpuID, streamIdx)
+		}
 	}
 
 	go func() {

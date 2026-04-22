@@ -1,11 +1,5 @@
 import type { JobProgress } from "@/lib/types";
-
-const sourceColors: Record<string, string> = {
-  "GPU 0": "text-blue-400",
-  "GPU 1": "text-purple-400",
-  FFMPEG: "text-cyan-400",
-  PIPELINE: "text-green-400",
-};
+import { sourceColorSet } from "@/lib/source-color";
 
 function formatEta(totalFrames: number, currentFrame: number, fps: number): string | null {
   if (!totalFrames || !fps || fps <= 0 || currentFrame >= totalFrames) return null;
@@ -71,7 +65,7 @@ export function ProgressBar({ progress }: { progress: JobProgress }) {
             key={source}
             className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-xs text-muted-foreground"
           >
-            <span className={sourceColors[source] ?? "text-muted-foreground"}>
+            <span className={sourceColorSet(source).text}>
               {source}
             </span>
             {c.filename && (

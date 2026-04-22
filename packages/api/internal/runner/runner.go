@@ -145,7 +145,9 @@ func (o UpscaleOptions) WithDefaults() UpscaleOptions {
 
 // Video2x runs video2x upscale on a specific GPU, writing stdout/stderr to logPath.
 // If onProgress is non-nil, the log output is also parsed for progress data.
-func (r *Runner) Video2x(ctx context.Context, gpuID int, filename, logPath string, scale int, opts UpscaleOptions, inputDir, outputDir string, onProgress func(Progress)) error {
+// streamIdx disambiguates concurrent streams running on the same GPU for tracker
+// labeling; callers should pass a unique streamIdx per in-flight invocation on gpuID.
+func (r *Runner) Video2x(ctx context.Context, gpuID, streamIdx int, filename, logPath string, scale int, opts UpscaleOptions, inputDir, outputDir string, onProgress func(Progress)) error {
 	f, err := os.Create(logPath)
 	if err != nil {
 		return fmt.Errorf("create log: %w", err)
@@ -186,7 +188,7 @@ func (r *Runner) Video2x(ctx context.Context, gpuID int, filename, logPath strin
 	cmd.Stdout = out
 	cmd.Stderr = out
 
-	label := fmt.Sprintf("%svideo2x-gpu%d", ProcessPrefix, gpuID)
+	label := fmt.Sprintf("%svideo2x-gpu%d-s%d", ProcessPrefix, gpuID, streamIdx)
 	tracker.register(label, cmd)
 	defer tracker.unregister(label)
 
@@ -205,7 +207,8 @@ type RifeOptions struct {
 }
 
 // Video2xRife runs RIFE frame interpolation on a specific GPU.
-func (r *Runner) Video2xRife(ctx context.Context, gpuID int, filename, logPath string, multiplier int, opts RifeOptions, inputDir, outputDir string, onProgress func(Progress)) error {
+// streamIdx disambiguates concurrent streams running on the same GPU.
+func (r *Runner) Video2xRife(ctx context.Context, gpuID, streamIdx int, filename, logPath string, multiplier int, opts RifeOptions, inputDir, outputDir string, onProgress func(Progress)) error {
 	f, err := os.Create(logPath)
 	if err != nil {
 		return fmt.Errorf("create log: %w", err)
@@ -240,7 +243,7 @@ func (r *Runner) Video2xRife(ctx context.Context, gpuID int, filename, logPath s
 	cmd.Stdout = out
 	cmd.Stderr = out
 
-	label := fmt.Sprintf("%svideo2x-rife-gpu%d", ProcessPrefix, gpuID)
+	label := fmt.Sprintf("%svideo2x-rife-gpu%d-s%d", ProcessPrefix, gpuID, streamIdx)
 	tracker.register(label, cmd)
 	defer tracker.unregister(label)
 
