@@ -4,7 +4,15 @@ export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancell
 
 export type LogLevel = "INFO" | "OK" | "ERRO" | "SKIP" | "WARN" | "STEP";
 
-export type LogSource = "GPU 0" | "GPU 1" | "FFMPEG" | "PIPELINE";
+// Source is free-form to accommodate multi-stream labels like "GPU 0·2" or "FFMPEG 3".
+// Known patterns: "GPU N", "GPU N·S", "FFMPEG", "FFMPEG N", "PIPELINE".
+export type LogSource = string;
+
+export interface Settings {
+  streams_per_gpu: number;
+  ffmpeg_streams: number;
+  gpu_count: number;
+}
 
 export interface ContainerProgress {
   frame: number;

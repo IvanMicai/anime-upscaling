@@ -14,7 +14,7 @@ import (
 	"anime-upscaling/internal/runner"
 )
 
-// RunInterpolate processes all files using 2 GPU workers for frame interpolation.
+// RunInterpolate processes all files using cfg.GPUCount*cfg.StreamsPerGPU workers.
 func RunInterpolate(ctx context.Context, cfg config.Config, r *runner.Runner, fileList []string, multiplier int, rifeOpts runner.RifeOptions, onEvent func(logger.JobLog), onProgress func(runner.Progress)) error {
 	type work struct {
 		filename string
@@ -27,35 +27,37 @@ func RunInterpolate(ctx context.Context, cfg config.Config, r *runner.Runner, fi
 	close(fileCh)
 
 	var wg sync.WaitGroup
-	gpuCount := 2
+	gpuCount := cfg.GPUCount
+	streams := cfg.StreamsPerGPU
 	for gpuID := 0; gpuID < gpuCount; gpuID++ {
-		wg.Add(1)
-		go func(gpuID int) {
-			defer wg.Done()
-			for w := range fileCh {
-				if ctx.Err() != nil {
-					return
+		for streamIdx := 0; streamIdx < streams; streamIdx++ {
+			wg.Add(1)
+			go func(gpuID, streamIdx int) {
+				defer wg.Done()
+				for w := range fileCh {
+					if ctx.Err() != nil {
+						return
+					}
+					InterpolateFile(ctx, cfg, r, gpuID, streamIdx, w.filename, w.index, multiplier, rifeOpts, cfg.InputDir, cfg.InterpolatedDir, onEvent, safeProgress(onProgress))
 				}
-				InterpolateFile(ctx, cfg, r, gpuID, w.filename, w.index, multiplier, rifeOpts, cfg.InputDir, cfg.InterpolatedDir, onEvent, safeProgress(onProgress))
-			}
-		}(gpuID)
+			}(gpuID, streamIdx)
+		}
 	}
 	wg.Wait()
 	return nil
 }
 
-// InterpolateFile processes a single file on the given GPU using RIFE frame interpolation.
-func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, multiplier int, rifeOpts runner.RifeOptions, inputDir, outputDir string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
+// InterpolateFile processes a single file on the given GPU stream using RIFE frame interpolation.
+func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID, streamIdx int, filename string, index int, multiplier int, rifeOpts runner.RifeOptions, inputDir, outputDir string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
 	tempOutputDir := cfg.TempDir + "/interpolated"
+	source := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
 	for _, dir := range []string{outputDir, tempOutputDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			source := fmt.Sprintf("GPU %d", gpuID)
 			onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir interpolated: %v", err), Time: time.Now()})
 			return false
 		}
 	}
 
-	source := fmt.Sprintf("GPU %d", gpuID)
 	gpuProgress := func(p runner.Progress) {
 		p.Source = source
 		p.Filename = filename
@@ -76,8 +78,8 @@ func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, g
 
 	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Interpolando: " + filename, Time: time.Now()})
 
-	logFile := fmt.Sprintf("%s/gpu%d.log", cfg.BaseDir, gpuID)
-	err := r.Video2xRife(ctx, gpuID, filename, logFile, multiplier, rifeOpts, inputDir, tempOutputDir, gpuProgress)
+	logFile := gpuLogPath(cfg, gpuID, streamIdx)
+	err := r.Video2xRife(ctx, gpuID, streamIdx, filename, logFile, multiplier, rifeOpts, inputDir, tempOutputDir, gpuProgress)
 
 	tempOutPath := filepath.Join(tempOutputDir, filename)
 	if err != nil {
