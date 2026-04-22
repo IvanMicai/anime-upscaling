@@ -14,7 +14,7 @@ import (
 	"anime-upscaling/internal/runner"
 )
 
-// RunUpscale processes all files using 2 GPU workers (CLI convenience wrapper).
+// RunUpscale processes all files using cfg.GPUCount*cfg.StreamsPerGPU workers (CLI convenience wrapper).
 func RunUpscale(ctx context.Context, cfg config.Config, r *runner.Runner, fileList []string, scale int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) error {
 	type work struct {
 		filename string
@@ -27,18 +27,21 @@ func RunUpscale(ctx context.Context, cfg config.Config, r *runner.Runner, fileLi
 	close(fileCh)
 
 	var wg sync.WaitGroup
-	gpuCount := 2
+	gpuCount := cfg.GPUCount
+	streams := cfg.StreamsPerGPU
 	for gpuID := 0; gpuID < gpuCount; gpuID++ {
-		wg.Add(1)
-		go func(gpuID int) {
-			defer wg.Done()
-			for w := range fileCh {
-				if ctx.Err() != nil {
-					return
+		for streamIdx := 0; streamIdx < streams; streamIdx++ {
+			wg.Add(1)
+			go func(gpuID, streamIdx int) {
+				defer wg.Done()
+				for w := range fileCh {
+					if ctx.Err() != nil {
+						return
+					}
+					UpscaleFile(ctx, cfg, r, gpuID, streamIdx, w.filename, w.index, scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, onEvent, safeProgress(onProgress))
 				}
-				UpscaleFile(ctx, cfg, r, gpuID, w.filename, w.index, scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, onEvent, safeProgress(onProgress))
-			}
-		}(gpuID)
+			}(gpuID, streamIdx)
+		}
 	}
 	wg.Wait()
 	return nil
@@ -51,19 +54,19 @@ func safeProgress(fn func(runner.Progress)) func(runner.Progress) {
 	return fn
 }
 
-// UpscaleFile processes a single file on the given GPU.
+// UpscaleFile processes a single file on the given GPU stream.
 // Returns true if the file was successfully upscaled (or skipped).
-func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID int, filename string, index int, scale int, opts runner.UpscaleOptions, inputDir, outputDir string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
+func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID, streamIdx int, filename string, index int, scale int, opts runner.UpscaleOptions, inputDir, outputDir string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
 	tempOutputDir := cfg.TempDir + "/output"
 	for _, dir := range []string{outputDir, tempOutputDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			source := fmt.Sprintf("GPU %d", gpuID)
+			source := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
 			onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir output: %v", err), Time: time.Now()})
 			return false
 		}
 	}
 
-	source := fmt.Sprintf("GPU %d", gpuID)
+	source := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
 	gpuProgress := func(p runner.Progress) {
 		p.Source = source
 		p.Filename = filename
@@ -78,8 +81,8 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 
 	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
 
-	logFile := fmt.Sprintf("%s/gpu%d.log", cfg.BaseDir, gpuID)
-	err := r.Video2x(ctx, gpuID, filename, logFile, scale, opts, inputDir, tempOutputDir, gpuProgress)
+	logFile := gpuLogPath(cfg, gpuID, streamIdx)
+	err := r.Video2x(ctx, gpuID, streamIdx, filename, logFile, scale, opts, inputDir, tempOutputDir, gpuProgress)
 
 	tempOutPath := filepath.Join(tempOutputDir, filename)
 	if err != nil {
@@ -102,4 +105,14 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 	r.Chown(ctx, outputDir, filename)
 	onEvent(logger.JobLog{Source: source, Level: "OK", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
 	return true
+}
+
+// gpuLogPath returns the per-GPU log file path. Keeps the legacy "gpu%d.log"
+// filename when streamsPerGPU<=1 so external log tailers keep working; adds a
+// stream suffix only when multiple concurrent streams share a GPU.
+func gpuLogPath(cfg config.Config, gpuID, streamIdx int) string {
+	if cfg.StreamsPerGPU <= 1 {
+		return fmt.Sprintf("%s/gpu%d.log", cfg.BaseDir, gpuID)
+	}
+	return fmt.Sprintf("%s/gpu%d-s%d.log", cfg.BaseDir, gpuID, streamIdx)
 }

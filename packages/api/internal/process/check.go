@@ -12,13 +12,18 @@ import (
 )
 
 // CheckFile runs a full decode pass on a single file to verify integrity.
-func CheckFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, index int, source string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) {
+// logSource is the source label emitted on logs/progress (e.g. "FFMPEG" or "FFMPEG 2");
+// empty defaults to "FFMPEG".
+func CheckFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, index int, source, logSource string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) {
+	if logSource == "" {
+		logSource = "FFMPEG"
+	}
 	ffmpegProgress := func(p runner.Progress) {
-		p.Source = "FFMPEG"
+		p.Source = logSource
 		onProgress(p)
 	}
 
-	onEvent(logger.JobLog{Source: "FFMPEG", Level: "INFO", Index: index, Message: "Verificando: " + filename, Time: time.Now()})
+	onEvent(logger.JobLog{Source: logSource, Level: "INFO", Index: index, Message: "Verificando: " + filename, Time: time.Now()})
 
 	output, err := r.FFmpegDecode(ctx, source+"/"+filename, "check", ffmpegProgress)
 	if err != nil {
@@ -39,9 +44,9 @@ func CheckFile(ctx context.Context, cfg config.Config, r *runner.Runner, filenam
 		if detail == "" {
 			detail = err.Error()
 		}
-		onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: index, Message: fmt.Sprintf("Erro: %s (%s)", filename, detail), Time: time.Now()})
+		onEvent(logger.JobLog{Source: logSource, Level: "ERRO", Index: index, Message: fmt.Sprintf("Erro: %s (%s)", filename, detail), Time: time.Now()})
 		return
 	}
 
-	onEvent(logger.JobLog{Source: "FFMPEG", Level: "OK", Index: index, Message: "Íntegro: " + filename, Time: time.Now()})
+	onEvent(logger.JobLog{Source: logSource, Level: "OK", Index: index, Message: "Íntegro: " + filename, Time: time.Now()})
 }

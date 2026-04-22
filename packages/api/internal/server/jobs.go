@@ -261,9 +261,43 @@ func NewJobManager(cfg config.Config) *JobManager {
 		jobs:    make(map[string]*Job),
 		cfg:     cfg,
 		runner:  runner.NewRunner(cfg),
-		gpuQ:    queue.NewGPUQueue(2),
-		ffmpegQ: queue.New(1),
+		gpuQ:    queue.NewGPUQueue(cfg.GPUCount, cfg.StreamsPerGPU),
+		ffmpegQ: queue.New(cfg.FFmpegStreams),
 	}
+}
+
+// HasActiveJobs returns true if any job is currently queued or running.
+func (m *JobManager) HasActiveJobs() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, j := range m.jobs {
+		j.mu.Lock()
+		active := j.Status == "queued" || j.Status == "running"
+		j.mu.Unlock()
+		if active {
+			return true
+		}
+	}
+	return false
+}
+
+// ApplySettings reconstructs the GPU and FFmpeg queues with new concurrency settings.
+// Only safe when there are no active jobs — callers must check HasActiveJobs first
+// to avoid discarding queues that still hold acquired slots.
+func (m *JobManager) ApplySettings(streamsPerGPU, ffmpegStreams int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cfg.StreamsPerGPU = streamsPerGPU
+	m.cfg.FFmpegStreams = ffmpegStreams
+	m.gpuQ = queue.NewGPUQueue(m.cfg.GPUCount, streamsPerGPU)
+	m.ffmpegQ = queue.New(ffmpegStreams)
+}
+
+// Config returns a copy of the current configuration (including runtime-mutable fields).
+func (m *JobManager) Config() config.Config {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.cfg
 }
 
 func (m *JobManager) generateID() string {
@@ -327,16 +361,16 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
-				gpuID, err := m.gpuQ.Acquire(ctx, 0)
+				gpuID, streamIdx, err := m.gpuQ.Acquire(ctx, 0)
 				if err != nil {
 					wg.Done()
 					break // ctx cancelled
 				}
 				go func() {
 					defer wg.Done()
-					defer m.gpuQ.Release(gpuID)
+					defer m.gpuQ.Release(gpuID, streamIdx)
 					job.setRunningOnce()
-					process.UpscaleFile(ctx, cfg, r, gpuID, filename, idx, job.Scale, upOpts, cfg.InputDir, cfg.OutputDir, onEvent, onProgress)
+					process.UpscaleFile(ctx, cfg, r, gpuID, streamIdx, filename, idx, job.Scale, upOpts, cfg.InputDir, cfg.OutputDir, onEvent, onProgress)
 				}()
 			}
 
@@ -359,10 +393,11 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
-				if err := m.ffmpegQ.Submit(ctx, func() {
+				if err := m.ffmpegQ.Submit(ctx, func(slot int) {
 					defer wg.Done()
 					job.setRunningOnce()
-					process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, jobResolution, crf, jobThreads, encOpts, onEvent, onProgress)
+					ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
+					process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, ffSrc, jobResolution, crf, jobThreads, encOpts, onEvent, onProgress)
 				}); err != nil {
 					wg.Done()
 					break // ctx cancelled
@@ -375,10 +410,11 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
-				if err := m.ffmpegQ.Submit(ctx, func() {
+				if err := m.ffmpegQ.Submit(ctx, func(slot int) {
 					defer wg.Done()
 					job.setRunningOnce()
-					process.CheckFile(ctx, cfg, r, filename, idx, jobSource, onEvent, onProgress)
+					ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
+					process.CheckFile(ctx, cfg, r, filename, idx, jobSource, ffSrc, onEvent, onProgress)
 				}); err != nil {
 					wg.Done()
 					break // ctx cancelled
@@ -394,16 +430,16 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
-				gpuID, err := m.gpuQ.Acquire(ctx, 0)
+				gpuID, streamIdx, err := m.gpuQ.Acquire(ctx, 0)
 				if err != nil {
 					wg.Done()
 					break // ctx cancelled
 				}
 				go func() {
 					defer wg.Done()
-					defer m.gpuQ.Release(gpuID)
+					defer m.gpuQ.Release(gpuID, streamIdx)
 					job.setRunningOnce()
-					process.InterpolateFile(ctx, cfg, r, gpuID, filename, idx, job.Multiplier, rifeOpts, cfg.InputDir, cfg.InterpolatedDir, onEvent, onProgress)
+					process.InterpolateFile(ctx, cfg, r, gpuID, streamIdx, filename, idx, job.Multiplier, rifeOpts, cfg.InputDir, cfg.InterpolatedDir, onEvent, onProgress)
 				}()
 			}
 		}
