@@ -60,19 +60,20 @@ func RunCustomPipelineForFile(
 				NoiseLevel: step.NoiseLevel,
 			}
 
-			gpuID, err := gpuQ.Acquire(ctx, stepIdx)
+			gpuID, streamIdx, err := gpuQ.Acquire(ctx, stepIdx)
 			if err != nil {
 				return false
 			}
 
+			gpuSrc := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
 			onEvent(logger.JobLog{
-				Source: fmt.Sprintf("GPU %d", gpuID), Level: "INFO", Index: index,
+				Source: gpuSrc, Level: "INFO", Index: index,
 				Message: stepLabel + "Upscale " + fmt.Sprintf("%dx", scale) + ": " + filename,
 				Time:    time.Now(),
 			})
 
-			ok := UpscaleFile(ctx, cfg, r, gpuID, filename, index, scale, upOpts, currentInputDir, cfg.OutputDir, stepOnEvent, onProgress)
-			gpuQ.Release(gpuID)
+			ok := UpscaleFile(ctx, cfg, r, gpuID, streamIdx, filename, index, scale, upOpts, currentInputDir, cfg.OutputDir, stepOnEvent, onProgress)
+			gpuQ.Release(gpuID, streamIdx)
 
 			if !ok {
 				onEvent(logger.JobLog{Source: "PIPELINE", Level: "ERRO", Index: index, Message: "Falha: " + filename, Time: time.Now()})
@@ -99,19 +100,20 @@ func RunCustomPipelineForFile(
 				SceneThresh: sceneThresh,
 			}
 
-			gpuID, err := gpuQ.Acquire(ctx, stepIdx)
+			gpuID, streamIdx, err := gpuQ.Acquire(ctx, stepIdx)
 			if err != nil {
 				return false
 			}
 
+			gpuSrc := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
 			onEvent(logger.JobLog{
-				Source: fmt.Sprintf("GPU %d", gpuID), Level: "INFO", Index: index,
+				Source: gpuSrc, Level: "INFO", Index: index,
 				Message: stepLabel + "Interpolate " + fmt.Sprintf("%dx", multiplier) + ": " + filename,
 				Time:    time.Now(),
 			})
 
-			ok := InterpolateFile(ctx, cfg, r, gpuID, filename, index, multiplier, rifeOpts, currentInputDir, cfg.InterpolatedDir, stepOnEvent, onProgress)
-			gpuQ.Release(gpuID)
+			ok := InterpolateFile(ctx, cfg, r, gpuID, streamIdx, filename, index, multiplier, rifeOpts, currentInputDir, cfg.InterpolatedDir, stepOnEvent, onProgress)
+			gpuQ.Release(gpuID, streamIdx)
 
 			if !ok {
 				onEvent(logger.JobLog{Source: "PIPELINE", Level: "ERRO", Index: index, Message: "Falha: " + filename, Time: time.Now()})
@@ -146,14 +148,15 @@ func RunCustomPipelineForFile(
 
 			var optimizeOk bool
 			done := make(chan struct{})
-			if err := ffmpegQ.Submit(ctx, func() {
+			if err := ffmpegQ.Submit(ctx, func(slot int) {
 				defer close(done)
+				ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
 				onEvent(logger.JobLog{
-					Source: "FFMPEG", Level: "INFO", Index: index,
+					Source: ffSrc, Level: "INFO", Index: index,
 					Message: stepLabel + "Optimize (" + quality + "): " + filename,
 					Time:    time.Now(),
 				})
-				optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, resolution, crf, threads, encOpts, stepOnEvent, onProgress)
+				optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, ffSrc, resolution, crf, threads, encOpts, stepOnEvent, onProgress)
 			}); err != nil {
 				return false
 			}

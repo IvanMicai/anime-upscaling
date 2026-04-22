@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"runtime"
+	"strconv"
 )
 
 type Config struct {
@@ -14,13 +15,17 @@ type Config struct {
 	InterpolatedDir string
 	TempDir         string
 	LogFile         string
-	UserID       int
-	GroupID      int
-	HalfCPUs     int
-	VideoExts    []string
-	Video2xBin   string
-	FFmpegBin    string
-	FFprobeBin   string
+	UserID          int
+	GroupID         int
+	HalfCPUs        int
+	VideoExts       []string
+	Video2xBin      string
+	FFmpegBin       string
+	FFprobeBin      string
+
+	GPUCount      int
+	StreamsPerGPU int
+	FFmpegStreams int
 }
 
 func NewConfig() Config {
@@ -38,21 +43,48 @@ func NewConfig() Config {
 		port = "4751"
 	}
 
-	return Config{
-		Port:         port,
-		BaseDir:      baseDir,
-		InputDir:     baseDir + "/input",
-		OutputDir:    baseDir + "/output",
+	cfg := Config{
+		Port:            port,
+		BaseDir:         baseDir,
+		InputDir:        baseDir + "/input",
+		OutputDir:       baseDir + "/output",
 		OptimizedDir:    baseDir + "/optimized",
 		InterpolatedDir: baseDir + "/interpolated",
 		TempDir:         baseDir + "/temp",
-		LogFile:      baseDir + "/process.log",
-		UserID:       os.Getuid(),
-		GroupID:      os.Getgid(),
-		HalfCPUs:     halfCPUs,
-		VideoExts:    []string{".mkv", ".mp4", ".avi"},
-		Video2xBin:   "video2x",
-		FFmpegBin:    "ffmpeg",
-		FFprobeBin:   "ffprobe",
+		LogFile:         baseDir + "/process.log",
+		UserID:          os.Getuid(),
+		GroupID:         os.Getgid(),
+		HalfCPUs:        halfCPUs,
+		VideoExts:       []string{".mkv", ".mp4", ".avi"},
+		Video2xBin:      "video2x",
+		FFmpegBin:       "ffmpeg",
+		FFprobeBin:      "ffprobe",
+		GPUCount:        envInt("GPU_COUNT", 2),
+		StreamsPerGPU:   envInt("STREAMS_PER_GPU", 1),
+		FFmpegStreams:   envInt("FFMPEG_STREAMS", 1),
 	}
+
+	// Overlay persisted runtime settings over env/defaults.
+	if s, err := LoadSettings(baseDir); err == nil {
+		if s.StreamsPerGPU >= 1 {
+			cfg.StreamsPerGPU = s.StreamsPerGPU
+		}
+		if s.FFmpegStreams >= 1 {
+			cfg.FFmpegStreams = s.FFmpegStreams
+		}
+	}
+
+	return cfg
+}
+
+func envInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 {
+		return def
+	}
+	return n
 }

@@ -46,6 +46,9 @@ export default function RootLayout({
               <Link href="/files" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Files
               </Link>
+              <Link href="/settings" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Settings
+              </Link>
               <LogoutButton />
             </div>
           </header>

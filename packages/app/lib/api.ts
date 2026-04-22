@@ -10,6 +10,7 @@ import type {
   CreatePipelineRequest,
   UpdatePipelineRequest,
   RunPipelineRequest,
+  Settings,
 } from "./types";
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -90,6 +91,18 @@ export function deletePipeline(id: string): Promise<void> {
 export function runPipeline(id: string, req: RunPipelineRequest): Promise<CreateJobResponse> {
   return fetchJSON<CreateJobResponse>(`/api/pipelines/${id}/run`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export function getSettings(): Promise<Settings> {
+  return fetchJSON<Settings>("/api/settings");
+}
+
+export function updateSettings(req: { streams_per_gpu: number; ffmpeg_streams: number }): Promise<Settings> {
+  return fetchJSON<Settings>("/api/settings", {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });

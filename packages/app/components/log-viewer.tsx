@@ -5,13 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { LogEntry, LogSource, LogLevel } from "@/lib/types";
-
-const sourceColor: Record<LogSource, string> = {
-  "GPU 0": "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  "GPU 1": "bg-purple-500/20 text-purple-400 border-purple-500/30",
-  FFMPEG: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-  PIPELINE: "bg-green-500/20 text-green-400 border-green-500/30",
-};
+import { sourceColorSet } from "@/lib/source-color";
 
 const levelColor: Record<LogLevel, string> = {
   INFO: "text-muted-foreground",
@@ -81,7 +75,7 @@ export function LogViewer({
               </span>
               <Badge
                 variant="outline"
-                className={`shrink-0 px-1.5 py-0 text-[10px] ${sourceColor[entry.source] ?? ""}`}
+                className={`shrink-0 px-1.5 py-0 text-[10px] ${sourceColorSet(entry.source).badge}`}
               >
                 {entry.source}
               </Badge>
