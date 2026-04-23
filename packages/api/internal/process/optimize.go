@@ -52,14 +52,15 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 	// Pre-check: verify the input decodes end-to-end before we commit to a long encode.
 	// Catches corrupted outputs from upstream steps (e.g. truncated interpolation writes)
 	// that would otherwise surface as a mid-encode SIGSEGV in the ffmpeg encoder.
-	if _, err := r.FFmpegDecode(ctx, source+"/"+filename, "precheck-optimize", nil); err != nil {
+	decodeOut, decodeErr := r.FFmpegDecode(ctx, source+"/"+filename, "precheck-optimize", nil)
+	if decodeErr != nil {
 		if ctx.Err() != nil {
 			return false
 		}
 		onEvent(logger.JobLog{
 			Source: logSource, Level: "ERRO", Index: index,
 			Message: fmt.Sprintf("PRE-CHECK FALHOU: %s (%v) — input %s %s (ver ffmpeg.log)",
-				filename, err, inputPath, inputFileMeta(inputPath)),
+				filename, decodeErr, inputPath, inputFileMeta(inputPath)),
 			Time: time.Now(),
 		})
 		return false
@@ -67,10 +68,16 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 
 	onEvent(logger.JobLog{Source: logSource, Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
 
-	// Probe total frame count for ETA calculation
+	// Probe total frame count for ETA calculation. ProbeFrameCount tries cheap
+	// metadata-based strategies; when they all fail (some MKVs lack usable
+	// duration/frame tags) fall back to the exact count from the precheck
+	// decode we already ran above.
 	totalFrames := 0
 	if count, err := r.ProbeFrameCount(ctx, inputPath); err == nil {
 		totalFrames = count
+	}
+	if totalFrames == 0 {
+		totalFrames = runner.ExtractFinalFrameCount(decodeOut)
 	}
 
 	ffmpegProgress := func(p runner.Progress) {

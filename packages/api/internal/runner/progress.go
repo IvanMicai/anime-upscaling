@@ -10,17 +10,28 @@ import (
 	"time"
 )
 
-// formatMicroseconds renders a microsecond count as "H:MM:SS" (or "MM:SS" when
-// under an hour) to match the shape of video2x's elapsed field.
+// formatMicroseconds renders a microsecond count as "HH:MM:SS" to match
+// video2x's elapsed field (always zero-padded, always includes hours).
 func formatMicroseconds(us int64) string {
 	total := us / 1_000_000
 	h := total / 3600
 	m := (total % 3600) / 60
 	s := total % 60
-	if h > 0 {
-		return fmt.Sprintf("%d:%02d:%02d", h, m, s)
+	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+}
+
+// ExtractFinalFrameCount returns the last `frame=N` value found in an ffmpeg
+// stderr/stdout transcript. Used as a fallback when ffprobe can't determine
+// total frame count for a container (e.g. some MKVs): the integrity-check
+// decode pass already walks every frame, so its final frame= stat is exact.
+// Returns 0 when no match is found.
+func ExtractFinalFrameCount(s string) int {
+	matches := reFrame.FindAllStringSubmatch(s, -1)
+	if len(matches) == 0 {
+		return 0
 	}
-	return fmt.Sprintf("%d:%02d", m, s)
+	n, _ := strconv.Atoi(matches[len(matches)-1][1])
+	return n
 }
 
 // Progress holds parsed process progress data.
