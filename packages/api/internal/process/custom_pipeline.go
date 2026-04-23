@@ -141,26 +141,47 @@ func RunCustomPipelineForFile(
 				Tune:       step.Tune,
 				PixFmt:     step.PixFmt,
 				AudioCodec: step.AudioCodec,
+				GPUVendor:  cfg.GPUVendor,
 			}
 
 			// Convert currentInputDir to relative source name for optimize
 			source := dirToSource(cfg, currentInputDir)
 
+			useGPU := step.UseGPU && cfg.GPUVendor != "" && step.Codec != "copy" && step.Codec != "libvpx-vp9"
 			var optimizeOk bool
-			done := make(chan struct{})
-			if err := ffmpegQ.Submit(ctx, func(slot int) {
-				defer close(done)
-				ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
+
+			if useGPU {
+				gpuID, streamIdx, err := gpuQ.Acquire(ctx, stepIdx)
+				if err != nil {
+					return false
+				}
+				stepOpts := encOpts
+				stepOpts.UseGPU = true
+				stepOpts.GPUDevice = gpuID
+				src := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
 				onEvent(logger.JobLog{
-					Source: ffSrc, Level: "INFO", Index: index,
-					Message: stepLabel + "Optimize (" + quality + "): " + filename,
+					Source: src, Level: "INFO", Index: index,
+					Message: stepLabel + "Optimize GPU (" + quality + "): " + filename,
 					Time:    time.Now(),
 				})
-				optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, ffSrc, resolution, crf, threads, encOpts, stepOnEvent, onProgress)
-			}); err != nil {
-				return false
+				optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, src, resolution, crf, threads, stepOpts, stepOnEvent, onProgress)
+				gpuQ.Release(gpuID, streamIdx)
+			} else {
+				done := make(chan struct{})
+				if err := ffmpegQ.Submit(ctx, func(slot int) {
+					defer close(done)
+					ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
+					onEvent(logger.JobLog{
+						Source: ffSrc, Level: "INFO", Index: index,
+						Message: stepLabel + "Optimize (" + quality + "): " + filename,
+						Time:    time.Now(),
+					})
+					optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, ffSrc, resolution, crf, threads, encOpts, stepOnEvent, onProgress)
+				}); err != nil {
+					return false
+				}
+				<-done
 			}
-			<-done
 
 			if !optimizeOk {
 				onEvent(logger.JobLog{Source: "PIPELINE", Level: "ERRO", Index: index, Message: "Falha: " + filename, Time: time.Now()})
