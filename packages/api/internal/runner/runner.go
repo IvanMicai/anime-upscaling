@@ -467,59 +467,92 @@ func buildGPUEncodeArgs(opts EncodeOptions, crf int) []string {
 }
 
 // ProbeFrameCount returns the total number of video frames in a file. Tries
-// three strategies cheapest first: (1) stream.nb_frames (MP4/MOV carry this,
-// MKV usually doesn't), (2) the MKV stream tag NUMBER_OF_FRAMES, (3) compute
-// from duration * r_frame_rate. Returns 0 with no error when all strategies
-// yield nothing usable, so callers can treat it as "unknown" without logging.
+// five strategies cheapest first: (1) stream.nb_frames (MP4/MOV carry this;
+// MKV doesn't), (2) the MKV stream tag NUMBER_OF_FRAMES, (3) the MKV stream
+// tag DURATION × r_frame_rate, (4) format.duration × r_frame_rate (works for
+// any container), (5) stream.duration × r_frame_rate. Returns 0 with no error
+// when all strategies yield nothing usable.
 func (r *Runner) ProbeFrameCount(ctx context.Context, absPath string) (int, error) {
-	probe := func(entries string) (string, error) {
-		var buf bytes.Buffer
-		cmd := exec.CommandContext(ctx, r.cfg.FFprobeBin,
-			"-v", "error",
-			"-select_streams", "v:0",
-			"-show_entries", entries,
-			"-of", "default=noprint_wrappers=1:nokey=1",
-			absPath,
-		)
-		cmd.Stdout = &buf
-		cmd.Stderr = &buf
-		if err := cmd.Run(); err != nil {
-			return "", err
-		}
-		return strings.TrimSpace(buf.String()), nil
+	probeStream := func(entries string) string {
+		return probeFFprobe(ctx, r.cfg.FFprobeBin, absPath, []string{"-select_streams", "v:0"}, entries)
+	}
+	probeFormat := func(entries string) string {
+		return probeFFprobe(ctx, r.cfg.FFprobeBin, absPath, nil, entries)
 	}
 
-	// 1. stream.nb_frames
-	if out, err := probe("stream=nb_frames"); err == nil {
-		if n, err := strconv.Atoi(out); err == nil && n > 0 {
-			return n, nil
-		}
+	// 1. stream.nb_frames (set by MP4/MOV, not MKV)
+	if n, _ := strconv.Atoi(probeStream("stream=nb_frames")); n > 0 {
+		return n, nil
 	}
 
 	// 2. MKV stream tag NUMBER_OF_FRAMES
-	if out, err := probe("stream_tags=NUMBER_OF_FRAMES"); err == nil {
-		if n, err := strconv.Atoi(out); err == nil && n > 0 {
-			return n, nil
-		}
+	if n, _ := strconv.Atoi(probeStream("stream_tags=NUMBER_OF_FRAMES")); n > 0 {
+		return n, nil
 	}
 
-	// 3. Compute from duration × r_frame_rate
-	if out, err := probe("stream=duration,r_frame_rate"); err == nil {
-		lines := strings.Split(out, "\n")
-		if len(lines) >= 2 {
-			rate := strings.TrimSpace(lines[0])
-			dur := strings.TrimSpace(lines[1])
-			if fps := parseRational(rate); fps > 0 {
-				if seconds, err := strconv.ParseFloat(dur, 64); err == nil && seconds > 0 {
-					if n := int(seconds*fps + 0.5); n > 0 {
-						return n, nil
-					}
-				}
-			}
+	rate := probeStream("stream=r_frame_rate")
+	fps := parseRational(rate)
+	if fps <= 0 {
+		return 0, nil
+	}
+
+	compute := func(dur string) int {
+		seconds, err := strconv.ParseFloat(dur, 64)
+		if err != nil || seconds <= 0 {
+			return 0
 		}
+		return int(seconds*fps + 0.5)
+	}
+
+	// 3. MKV stream tag DURATION (e.g. "00:24:12.345000000")
+	if n := compute(parseMKVDuration(probeStream("stream_tags=DURATION"))); n > 0 {
+		return n, nil
+	}
+
+	// 4. format.duration (container-level; MKV always has this)
+	if n := compute(probeFormat("format=duration")); n > 0 {
+		return n, nil
+	}
+
+	// 5. stream.duration (MP4/MOV fallback)
+	if n := compute(probeStream("stream=duration")); n > 0 {
+		return n, nil
 	}
 
 	return 0, nil
+}
+
+// probeFFprobe runs ffprobe with the given selector + entries and returns
+// trimmed stdout, or "" on error. Uses default flat output with nokey so lines
+// are bare values.
+func probeFFprobe(ctx context.Context, bin, absPath string, selector []string, entries string) string {
+	args := []string{"-v", "error"}
+	args = append(args, selector...)
+	args = append(args, "-show_entries", entries, "-of", "default=noprint_wrappers=1:nokey=1", absPath)
+	var buf bytes.Buffer
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(buf.String())
+}
+
+// parseMKVDuration converts the MKV DURATION tag format "HH:MM:SS.fff" to
+// a decimal seconds string, or returns the input unchanged if it doesn't match.
+func parseMKVDuration(s string) string {
+	parts := strings.Split(s, ":")
+	if len(parts) != 3 {
+		return s
+	}
+	h, err1 := strconv.ParseFloat(parts[0], 64)
+	m, err2 := strconv.ParseFloat(parts[1], 64)
+	sec, err3 := strconv.ParseFloat(parts[2], 64)
+	if err1 != nil || err2 != nil || err3 != nil {
+		return s
+	}
+	return strconv.FormatFloat(h*3600+m*60+sec, 'f', -1, 64)
 }
 
 // parseRational parses ffprobe rational strings like "24000/1001" or "30/1".
