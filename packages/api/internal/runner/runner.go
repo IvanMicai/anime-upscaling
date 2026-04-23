@@ -466,22 +466,75 @@ func buildGPUEncodeArgs(opts EncodeOptions, crf int) []string {
 	return args
 }
 
-// ProbeFrameCount returns the total number of video frames in a file using container metadata.
+// ProbeFrameCount returns the total number of video frames in a file. Tries
+// three strategies cheapest first: (1) stream.nb_frames (MP4/MOV carry this,
+// MKV usually doesn't), (2) the MKV stream tag NUMBER_OF_FRAMES, (3) compute
+// from duration * r_frame_rate. Returns 0 with no error when all strategies
+// yield nothing usable, so callers can treat it as "unknown" without logging.
 func (r *Runner) ProbeFrameCount(ctx context.Context, absPath string) (int, error) {
-	var buf bytes.Buffer
-	cmd := exec.CommandContext(ctx, r.cfg.FFprobeBin,
-		"-v", "error",
-		"-select_streams", "v:0",
-		"-show_entries", "stream=nb_frames",
-		"-of", "csv=p=0",
-		absPath,
-	)
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-	if err := cmd.Run(); err != nil {
-		return 0, err
+	probe := func(entries string) (string, error) {
+		var buf bytes.Buffer
+		cmd := exec.CommandContext(ctx, r.cfg.FFprobeBin,
+			"-v", "error",
+			"-select_streams", "v:0",
+			"-show_entries", entries,
+			"-of", "default=noprint_wrappers=1:nokey=1",
+			absPath,
+		)
+		cmd.Stdout = &buf
+		cmd.Stderr = &buf
+		if err := cmd.Run(); err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(buf.String()), nil
 	}
-	return strconv.Atoi(strings.TrimSpace(buf.String()))
+
+	// 1. stream.nb_frames
+	if out, err := probe("stream=nb_frames"); err == nil {
+		if n, err := strconv.Atoi(out); err == nil && n > 0 {
+			return n, nil
+		}
+	}
+
+	// 2. MKV stream tag NUMBER_OF_FRAMES
+	if out, err := probe("stream_tags=NUMBER_OF_FRAMES"); err == nil {
+		if n, err := strconv.Atoi(out); err == nil && n > 0 {
+			return n, nil
+		}
+	}
+
+	// 3. Compute from duration × r_frame_rate
+	if out, err := probe("stream=duration,r_frame_rate"); err == nil {
+		lines := strings.Split(out, "\n")
+		if len(lines) >= 2 {
+			rate := strings.TrimSpace(lines[0])
+			dur := strings.TrimSpace(lines[1])
+			if fps := parseRational(rate); fps > 0 {
+				if seconds, err := strconv.ParseFloat(dur, 64); err == nil && seconds > 0 {
+					if n := int(seconds*fps + 0.5); n > 0 {
+						return n, nil
+					}
+				}
+			}
+		}
+	}
+
+	return 0, nil
+}
+
+// parseRational parses ffprobe rational strings like "24000/1001" or "30/1".
+// Returns 0 on any malformed input.
+func parseRational(s string) float64 {
+	parts := strings.SplitN(s, "/", 2)
+	if len(parts) != 2 {
+		return 0
+	}
+	num, err1 := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+	den, err2 := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	if err1 != nil || err2 != nil || den == 0 {
+		return 0
+	}
+	return num / den
 }
 
 // FFprobe runs ffprobe on a file, returns stdout+stderr combined.
