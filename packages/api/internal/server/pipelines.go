@@ -253,6 +253,9 @@ func validateSteps(steps []pipeline.PipelineStep) error {
 			if !pipeline.ValidAudioCodecs[s.AudioCodec] {
 				return fmt.Errorf("step %d: invalid audio_codec %q", i+1, s.AudioCodec)
 			}
+			if s.UseGPU && (s.Codec == "copy" || s.Codec == "libvpx-vp9") {
+				return fmt.Errorf("step %d: use_gpu is incompatible with codec %q", i+1, s.Codec)
+			}
 		}
 	}
 	return nil

@@ -26,6 +26,7 @@ type Config struct {
 	GPUCount      int
 	StreamsPerGPU int
 	FFmpegStreams int
+	GPUVendor     string // "" | "nvidia" | "amd" | "intel"
 }
 
 func NewConfig() Config {
@@ -62,6 +63,7 @@ func NewConfig() Config {
 		GPUCount:        envInt("GPU_COUNT", 2),
 		StreamsPerGPU:   envInt("STREAMS_PER_GPU", 1),
 		FFmpegStreams:   envInt("FFMPEG_STREAMS", 1),
+		GPUVendor:       envVendor("GPU_VENDOR", ""),
 	}
 
 	// Overlay persisted runtime settings over env/defaults.
@@ -71,6 +73,9 @@ func NewConfig() Config {
 		}
 		if s.FFmpegStreams >= 1 {
 			cfg.FFmpegStreams = s.FFmpegStreams
+		}
+		if ValidGPUVendors[s.GPUVendor] {
+			cfg.GPUVendor = s.GPUVendor
 		}
 	}
 
@@ -87,4 +92,15 @@ func envInt(key string, def int) int {
 		return def
 	}
 	return n
+}
+
+func envVendor(key, def string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	if !ValidGPUVendors[v] {
+		return def
+	}
+	return v
 }

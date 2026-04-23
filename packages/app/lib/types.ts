@@ -8,10 +8,13 @@ export type LogLevel = "INFO" | "OK" | "ERRO" | "SKIP" | "WARN" | "STEP";
 // Known patterns: "GPU N", "GPU N·S", "FFMPEG", "FFMPEG N", "PIPELINE".
 export type LogSource = string;
 
+export type GPUVendor = "" | "nvidia" | "amd" | "intel";
+
 export interface Settings {
   streams_per_gpu: number;
   ffmpeg_streams: number;
   gpu_count: number;
+  gpu_vendor: GPUVendor;
 }
 
 export interface ContainerProgress {
@@ -134,6 +137,7 @@ export interface CreateJobRequest {
   tune?: "animation" | "film" | "grain" | "zerolatency" | "none";
   pix_fmt?: "yuv420p10le" | "yuv420p" | "yuv444p";
   audio_codec?: "copy" | "aac" | "libopus" | "libmp3lame";
+  use_gpu?: boolean;
 }
 
 export interface CreateJobResponse extends Job {}
@@ -178,6 +182,7 @@ export interface PipelineStep {
   tune?: "animation" | "film" | "grain" | "zerolatency" | "none";
   pix_fmt?: "yuv420p10le" | "yuv420p" | "yuv444p";
   audio_codec?: "copy" | "aac" | "libopus" | "libmp3lame";
+  use_gpu?: boolean;
 }
 
 export const QUALITY_PRESETS: Record<QualityPreset, { crf: number; label: string }> = {
@@ -300,6 +305,13 @@ export const AUDIO_CODEC_OPTIONS = [
   { value: "aac", label: "AAC", desc: "Compatível com MP4/streaming" },
   { value: "libopus", label: "Opus", desc: "Melhor qualidade em baixo bitrate" },
   { value: "libmp3lame", label: "MP3", desc: "Compatibilidade universal" },
+] as const;
+
+export const GPU_VENDOR_OPTIONS = [
+  { value: "", label: "Nenhum (CPU)", desc: "Optimize sempre roda em CPU" },
+  { value: "nvidia", label: "NVIDIA (NVENC)", desc: "hevc_nvenc / h264_nvenc" },
+  { value: "amd", label: "AMD (AMF)", desc: "hevc_amf / h264_amf" },
+  { value: "intel", label: "Intel (QSV)", desc: "hevc_qsv / h264_qsv" },
 ] as const;
 
 export interface Pipeline {

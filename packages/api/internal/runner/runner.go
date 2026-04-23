@@ -262,6 +262,13 @@ type EncodeOptions struct {
 	PixFmt     string   // "yuv420p10le" (default), "yuv420p", "yuv444p"
 	AudioCodec string   // "copy" (default), "aac", "libopus", "libmp3lame"
 	ExtraArgs  []string // extra ffmpeg args appended before the output path (e.g. -x265-params pools=none)
+
+	// GPU acceleration. When UseGPU=true and GPUVendor is set, the runner maps
+	// the logical Codec ("libx265"/"libx264") to the vendor-specific encoder
+	// (hevc_nvenc, hevc_amf, hevc_qsv, ...) and builds -hwaccel args.
+	UseGPU    bool
+	GPUVendor string // "nvidia" | "amd" | "intel"
+	GPUDevice int    // device index for -hwaccel_device
 }
 
 // WithDefaults returns a copy with zero-value fields replaced by defaults.
@@ -296,20 +303,40 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	inputPath := r.cfg.BaseDir + "/" + inputRelPath
 	outputPath := r.cfg.BaseDir + "/" + outputRelPath
 
-	args := []string{
-		"-i", inputPath,
-	}
 	opts = opts.WithDefaults()
+	useGPU := opts.UseGPU && opts.Codec != "copy" && gpuEncoderFor(opts.Codec, opts.GPUVendor) != ""
+
+	// -progress pipe:2 emits machine-readable key=value lines (frame=N, fps=N,
+	// out_time_us=N, speed=Nx, progress=continue|end) to stderr roughly every
+	// 500ms. -nostats suppresses the legacy \r-delimited status line so the
+	// progress parser only sees one format.
+	args := []string{"-progress", "pipe:2", "-nostats"}
+
+	if useGPU && opts.GPUVendor == "nvidia" {
+		args = append(args,
+			"-hwaccel", "cuda",
+			"-hwaccel_output_format", "cuda",
+			"-hwaccel_device", strconv.Itoa(opts.GPUDevice),
+		)
+	}
+
+	args = append(args, "-i", inputPath)
 
 	if copySubtitles {
 		args = append(args, "-map", "0")
 	}
 	if scaleDivisor > 1 && opts.Codec != "copy" {
-		args = append(args, "-vf", fmt.Sprintf("scale=iw/%d:ih/%d", scaleDivisor, scaleDivisor))
+		vf := fmt.Sprintf("scale=iw/%d:ih/%d", scaleDivisor, scaleDivisor)
+		if useGPU && opts.GPUVendor == "nvidia" {
+			vf = fmt.Sprintf("scale_cuda=iw/%d:ih/%d", scaleDivisor, scaleDivisor)
+		}
+		args = append(args, "-vf", vf)
 	}
 
 	if opts.Codec == "copy" {
 		args = append(args, "-c:v", "copy")
+	} else if useGPU {
+		args = append(args, buildGPUEncodeArgs(opts, crf)...)
 	} else {
 		args = append(args, "-c:v", opts.Codec)
 		if opts.Codec != "libvpx-vp9" {
@@ -350,6 +377,92 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	defer tracker.unregister(label)
 
 	return runError(cmd.Run(), tail)
+}
+
+// gpuEncoderFor maps a logical CPU codec + vendor to the corresponding hardware
+// encoder name. Returns "" when the combination is not supported (caller falls
+// back to the CPU branch).
+func gpuEncoderFor(codec, vendor string) string {
+	switch vendor {
+	case "nvidia":
+		switch codec {
+		case "libx265":
+			return "hevc_nvenc"
+		case "libx264":
+			return "h264_nvenc"
+		}
+	case "amd":
+		switch codec {
+		case "libx265":
+			return "hevc_amf"
+		case "libx264":
+			return "h264_amf"
+		}
+	case "intel":
+		switch codec {
+		case "libx265":
+			return "hevc_qsv"
+		case "libx264":
+			return "h264_qsv"
+		}
+	}
+	return ""
+}
+
+// gpuPixFmt maps software pixel formats to the GPU-side equivalent used by the
+// NVENC/AMF/QSV encoders. NVENC only accepts p010le (10-bit) or nv12 (8-bit);
+// yuv444p is not supported so it downgrades to p010le with a warning in logs.
+func gpuPixFmt(pixfmt, vendor string) string {
+	if vendor != "nvidia" {
+		return pixfmt
+	}
+	switch pixfmt {
+	case "yuv420p10le":
+		return "p010le"
+	case "yuv420p":
+		return "nv12"
+	case "yuv444p":
+		// NVENC doesn't support yuv444 — closest 10-bit layout.
+		return "p010le"
+	}
+	return pixfmt
+}
+
+// buildGPUEncodeArgs builds the -c:v and vendor-specific rate-control args for
+// hardware-accelerated encoding. Mirrors the validated commands from the plan:
+//
+//	NVIDIA: -c:v hevc_nvenc -preset p6 -tune hq -rc vbr -cq <CRF> -b:v 0
+//	        -pix_fmt p010le -bf 4 -spatial-aq 1
+//	AMD:    -c:v hevc_amf -quality quality -rc vbr_latency
+//	INTEL:  -c:v hevc_qsv -preset veryslow -global_quality <CRF>
+func buildGPUEncodeArgs(opts EncodeOptions, crf int) []string {
+	encoder := gpuEncoderFor(opts.Codec, opts.GPUVendor)
+	args := []string{"-c:v", encoder}
+
+	switch opts.GPUVendor {
+	case "nvidia":
+		args = append(args,
+			"-preset", "p6",
+			"-tune", "hq",
+			"-rc", "vbr",
+			"-cq", strconv.Itoa(crf),
+			"-b:v", "0",
+			"-pix_fmt", gpuPixFmt(opts.PixFmt, opts.GPUVendor),
+			"-bf", "4",
+			"-spatial-aq", "1",
+		)
+	case "amd":
+		args = append(args,
+			"-quality", "quality",
+			"-rc", "vbr_latency",
+		)
+	case "intel":
+		args = append(args,
+			"-preset", "veryslow",
+			"-global_quality", strconv.Itoa(crf),
+		)
+	}
+	return args
 }
 
 // ProbeFrameCount returns the total number of video frames in a file using container metadata.
