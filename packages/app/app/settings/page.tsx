@@ -14,6 +14,10 @@ import {
 import { getSettings, updateSettings } from "@/lib/api";
 import { GPU_VENDOR_OPTIONS, type GPUVendor, type Settings } from "@/lib/types";
 
+const NONE_VENDOR = "none";
+const toVendorUI = (v: GPUVendor): string => (v === "" ? NONE_VENDOR : v);
+const fromVendorUI = (v: string): GPUVendor => (v === NONE_VENDOR ? "" : (v as GPUVendor));
+
 export default function SettingsPage() {
   const [loaded, setLoaded] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -99,15 +103,15 @@ export default function SettingsPage() {
           <div className="space-y-2">
             <Label htmlFor="gpu_vendor">GPU vendor (encode ffmpeg)</Label>
             <Select
-              value={gpuVendor}
-              onValueChange={(v) => setGpuVendor(v as GPUVendor)}
+              value={toVendorUI(gpuVendor)}
+              onValueChange={(v) => setGpuVendor(fromVendorUI(v))}
             >
               <SelectTrigger id="gpu_vendor" className="h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {GPU_VENDOR_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value || "none"} value={opt.value}>
+                  <SelectItem key={opt.value || NONE_VENDOR} value={opt.value || NONE_VENDOR}>
                     {opt.label} — {opt.desc}
                   </SelectItem>
                 ))}
