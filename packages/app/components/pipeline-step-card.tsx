@@ -1,5 +1,6 @@
 import { ArrowUp, ArrowDown, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -7,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { PipelineStep, PipelineOperationType, UpscaleProcessor } from "@/lib/types";
+import type { PipelineStep, PipelineOperationType, UpscaleProcessor, GPUVendor } from "@/lib/types";
 import {
   PROCESSOR_OPTIONS,
   NOISE_LEVEL_OPTIONS,
@@ -28,6 +29,7 @@ interface PipelineStepCardProps {
   index: number;
   totalSteps: number;
   allSteps: PipelineStep[];
+  gpuVendor?: GPUVendor;
   onChange: (step: PipelineStep) => void;
   onRemove: () => void;
   onMoveUp: () => void;
@@ -39,6 +41,7 @@ export function PipelineStepCard({
   index,
   totalSteps,
   allSteps,
+  gpuVendor = "",
   onChange,
   onRemove,
   onMoveUp,
@@ -287,6 +290,9 @@ export function PipelineStepCard({
         {step.operation === "optimize" && (() => {
           const isStreamCopy = step.codec === "copy";
           const isVP9 = step.codec === "libvpx-vp9";
+          const gpuEligible = !isStreamCopy && !isVP9;
+          const gpuSupported = gpuEligible && gpuVendor !== "";
+          const useGPU = !!step.use_gpu && gpuSupported;
           return (
             <>
               <Field label="Codec de Vídeo">
@@ -294,6 +300,9 @@ export function PipelineStepCard({
                   value={step.codec ?? "libx265"}
                   onValueChange={(v) => {
                     const updates: Partial<PipelineStep> = { codec: v as PipelineStep["codec"] };
+                    if (v === "copy" || v === "libvpx-vp9") {
+                      updates.use_gpu = false;
+                    }
                     if (v === "copy") {
                       updates.quality = undefined;
                       updates.preset = undefined;
@@ -315,6 +324,22 @@ export function PipelineStepCard({
                   </SelectContent>
                 </Select>
               </Field>
+              {gpuEligible && (
+                <Field label="Acelerar com GPU">
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={useGPU}
+                      disabled={!gpuSupported}
+                      onCheckedChange={(c) => updateField({ use_gpu: c === true })}
+                    />
+                    <span className="text-muted-foreground">
+                      {gpuSupported
+                        ? "Usa encoder de hardware (NVENC/AMF/QSV) e disputa slots com upscale"
+                        : "Configure um vendor de GPU em /settings para habilitar"}
+                    </span>
+                  </label>
+                </Field>
+              )}
               {!isStreamCopy && (
                 <>
                   <Field label="Qualidade">
@@ -333,7 +358,7 @@ export function PipelineStepCard({
                       </SelectContent>
                     </Select>
                   </Field>
-                  {!isVP9 && (
+                  {!isVP9 && !useGPU && (
                     <Field label="Preset">
                       <Select
                         value={step.preset ?? "fast"}
@@ -352,7 +377,7 @@ export function PipelineStepCard({
                       </Select>
                     </Field>
                   )}
-                  {!isVP9 && (
+                  {!isVP9 && !useGPU && (
                     <Field label="Tune">
                       <Select
                         value={step.tune ?? "animation"}
@@ -424,25 +449,27 @@ export function PipelineStepCard({
                   </Select>
                 </Field>
               )}
-              <Field label="Threads">
-                <Select
-                  value={String(step.threads ?? 0)}
-                  onValueChange={(v) => updateField({ threads: Number(v) })}
-                >
-                  <SelectTrigger className="h-8">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">Auto</SelectItem>
-                    <SelectItem value="1">1</SelectItem>
-                    <SelectItem value="2">2</SelectItem>
-                    <SelectItem value="4">4</SelectItem>
-                    <SelectItem value="8">8</SelectItem>
-                    <SelectItem value="16">16</SelectItem>
-                    <SelectItem value="32">32</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
+              {!useGPU && (
+                <Field label="Threads">
+                  <Select
+                    value={String(step.threads ?? 0)}
+                    onValueChange={(v) => updateField({ threads: Number(v) })}
+                  >
+                    <SelectTrigger className="h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">Auto</SelectItem>
+                      <SelectItem value="1">1</SelectItem>
+                      <SelectItem value="2">2</SelectItem>
+                      <SelectItem value="4">4</SelectItem>
+                      <SelectItem value="8">8</SelectItem>
+                      <SelectItem value="16">16</SelectItem>
+                      <SelectItem value="32">32</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
             </>
           );
         })()}

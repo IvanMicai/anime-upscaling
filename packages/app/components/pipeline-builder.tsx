@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PipelineStepCard } from "@/components/pipeline-step-card";
 import { PipelinePreview } from "@/components/pipeline-preview";
-import type { PipelineStep, Pipeline } from "@/lib/types";
-import { createPipeline, updatePipeline } from "@/lib/api";
+import type { PipelineStep, Pipeline, GPUVendor } from "@/lib/types";
+import { createPipeline, updatePipeline, getSettings } from "@/lib/api";
 
 interface PipelineBuilderProps {
   pipeline?: Pipeline;
@@ -19,6 +19,13 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
   const [steps, setSteps] = useState<PipelineStep[]>(existing?.steps ?? []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gpuVendor, setGpuVendor] = useState<GPUVendor>("");
+
+  useEffect(() => {
+    getSettings()
+      .then((s) => setGpuVendor(s.gpu_vendor ?? ""))
+      .catch(() => {});
+  }, []);
 
   function addStep(operation: PipelineStep["operation"]) {
     const step: PipelineStep = { operation };
@@ -124,6 +131,7 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
             index={i}
             totalSteps={steps.length}
             allSteps={steps}
+            gpuVendor={gpuVendor}
             onChange={(s) => updateStep(i, s)}
             onRemove={() => removeStep(i)}
             onMoveUp={() => moveStep(i, i - 1)}

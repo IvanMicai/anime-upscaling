@@ -313,9 +313,14 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	args := []string{"-progress", "pipe:2", "-nostats"}
 
 	if useGPU && opts.GPUVendor == "nvidia" {
+		// Intentionally NOT using -hwaccel_output_format cuda: forcing frames to
+		// stay in CUDA memory requires every downstream filter/format conversion
+		// to have a CUDA implementation, which triggers ENOSYS (-38) when the
+		// input bit depth differs from the encoder's -pix_fmt (e.g. 8-bit yuv420p
+		// input → p010le NVENC output). Letting decoded frames land in CPU memory
+		// lets NVENC upload + convert them internally. Encode still runs on GPU.
 		args = append(args,
 			"-hwaccel", "cuda",
-			"-hwaccel_output_format", "cuda",
 			"-hwaccel_device", strconv.Itoa(opts.GPUDevice),
 		)
 	}
@@ -326,11 +331,7 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 		args = append(args, "-map", "0")
 	}
 	if scaleDivisor > 1 && opts.Codec != "copy" {
-		vf := fmt.Sprintf("scale=iw/%d:ih/%d", scaleDivisor, scaleDivisor)
-		if useGPU && opts.GPUVendor == "nvidia" {
-			vf = fmt.Sprintf("scale_cuda=iw/%d:ih/%d", scaleDivisor, scaleDivisor)
-		}
-		args = append(args, "-vf", vf)
+		args = append(args, "-vf", fmt.Sprintf("scale=iw/%d:ih/%d", scaleDivisor, scaleDivisor))
 	}
 
 	if opts.Codec == "copy" {
