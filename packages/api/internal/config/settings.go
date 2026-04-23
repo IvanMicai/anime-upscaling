@@ -9,8 +9,18 @@ import (
 )
 
 type Settings struct {
-	StreamsPerGPU int `json:"streams_per_gpu"`
-	FFmpegStreams int `json:"ffmpeg_streams"`
+	StreamsPerGPU int    `json:"streams_per_gpu"`
+	FFmpegStreams int    `json:"ffmpeg_streams"`
+	GPUVendor     string `json:"gpu_vendor,omitempty"`
+}
+
+// ValidGPUVendors lists allowed vendor values for GPU-accelerated FFmpeg.
+// Empty string means "no GPU encoder available" — optimize jobs must run on CPU.
+var ValidGPUVendors = map[string]bool{
+	"":       true,
+	"nvidia": true,
+	"amd":    true,
+	"intel":  true,
 }
 
 var settingsMu sync.Mutex
@@ -37,6 +47,9 @@ func LoadSettings(baseDir string) (Settings, error) {
 func SaveSettings(baseDir string, s Settings) error {
 	if s.StreamsPerGPU < 1 || s.FFmpegStreams < 1 {
 		return errors.New("streams_per_gpu and ffmpeg_streams must be >= 1")
+	}
+	if !ValidGPUVendors[s.GPUVendor] {
+		return errors.New("gpu_vendor must be one of: '', nvidia, amd, intel")
 	}
 
 	settingsMu.Lock()

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -54,6 +55,63 @@ func TestSignalFromError_Wrapped(t *testing.T) {
 	sig, ok := SignalFromError(wrapped)
 	if !ok || sig != syscall.SIGSEGV {
 		t.Fatalf("expected SIGSEGV through wrap, got sig=%v ok=%v", sig, ok)
+	}
+}
+
+func TestGPUEncoderFor(t *testing.T) {
+	cases := []struct {
+		codec, vendor, want string
+	}{
+		{"libx265", "nvidia", "hevc_nvenc"},
+		{"libx264", "nvidia", "h264_nvenc"},
+		{"libx265", "amd", "hevc_amf"},
+		{"libx265", "intel", "hevc_qsv"},
+		{"libvpx-vp9", "nvidia", ""},
+		{"libx265", "", ""},
+		{"copy", "nvidia", ""},
+	}
+	for _, c := range cases {
+		got := gpuEncoderFor(c.codec, c.vendor)
+		if got != c.want {
+			t.Errorf("gpuEncoderFor(%q,%q) = %q, want %q", c.codec, c.vendor, got, c.want)
+		}
+	}
+}
+
+func TestBuildGPUEncodeArgs_NVIDIA_matchesValidatedCommand(t *testing.T) {
+	// Mirrors the exact NVENC command the user validated:
+	//   -c:v hevc_nvenc -preset p6 -tune hq -rc vbr -cq 26 -b:v 0
+	//   -pix_fmt p010le -bf 4 -spatial-aq 1
+	opts := EncodeOptions{
+		Codec:     "libx265",
+		PixFmt:    "yuv420p10le",
+		UseGPU:    true,
+		GPUVendor: "nvidia",
+		GPUDevice: 0,
+	}
+	got := strings.Join(buildGPUEncodeArgs(opts, 26), " ")
+	want := "-c:v hevc_nvenc -preset p6 -tune hq -rc vbr -cq 26 -b:v 0 -pix_fmt p010le -bf 4 -spatial-aq 1"
+	if got != want {
+		t.Errorf("NVENC args mismatch:\n got:  %s\n want: %s", got, want)
+	}
+}
+
+func TestGPUPixFmt_NVIDIA(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"yuv420p10le", "p010le"},
+		{"yuv420p", "nv12"},
+		{"yuv444p", "p010le"}, // NVENC doesn't support 4:4:4; we fall back to 10-bit 4:2:0
+	}
+	for _, c := range cases {
+		got := gpuPixFmt(c.in, "nvidia")
+		if got != c.want {
+			t.Errorf("gpuPixFmt(%q,nvidia) = %q, want %q", c.in, got, c.want)
+		}
+	}
+	if gpuPixFmt("yuv420p10le", "") != "yuv420p10le" {
+		t.Error("empty vendor should pass through pixfmt unchanged")
 	}
 }
 

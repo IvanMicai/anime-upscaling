@@ -48,6 +48,7 @@ type Job struct {
 	Tune          string                  `json:"tune,omitempty"`
 	PixFmt        string                  `json:"pix_fmt,omitempty"`
 	AudioCodec    string                  `json:"audio_codec,omitempty"`
+	UseGPU        bool                    `json:"use_gpu,omitempty"`
 	PipelineName  string                  `json:"pipeline_name,omitempty"`
 	PipelineSteps []pipeline.PipelineStep `json:"pipeline_steps,omitempty"`
 	Files         []string                `json:"files"`
@@ -80,6 +81,7 @@ type StartJobParams struct {
 	Tune        string
 	PixFmt      string
 	AudioCodec  string
+	UseGPU      bool
 }
 
 func (j *Job) updateContainerProgress(p runner.Progress) {
@@ -201,6 +203,7 @@ func (j *Job) snapshot() Job {
 		Tune:          j.Tune,
 		PixFmt:        j.PixFmt,
 		AudioCodec:    j.AudioCodec,
+		UseGPU:        j.UseGPU,
 		PipelineName:  j.PipelineName,
 		PipelineSteps: j.PipelineSteps,
 		Files:         j.Files,
@@ -237,6 +240,7 @@ func (j *Job) snapshotWithLogs() Job {
 		Tune:          j.Tune,
 		PixFmt:        j.PixFmt,
 		AudioCodec:    j.AudioCodec,
+		UseGPU:        j.UseGPU,
 		PipelineName:  j.PipelineName,
 		PipelineSteps: j.PipelineSteps,
 		Files:         j.Files,
@@ -284,11 +288,12 @@ func (m *JobManager) HasActiveJobs() bool {
 // ApplySettings reconstructs the GPU and FFmpeg queues with new concurrency settings.
 // Only safe when there are no active jobs — callers must check HasActiveJobs first
 // to avoid discarding queues that still hold acquired slots.
-func (m *JobManager) ApplySettings(streamsPerGPU, ffmpegStreams int) {
+func (m *JobManager) ApplySettings(streamsPerGPU, ffmpegStreams int, gpuVendor string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.cfg.StreamsPerGPU = streamsPerGPU
 	m.cfg.FFmpegStreams = ffmpegStreams
+	m.cfg.GPUVendor = gpuVendor
 	m.gpuQ = queue.NewGPUQueue(m.cfg.GPUCount, streamsPerGPU)
 	m.ffmpegQ = queue.New(ffmpegStreams)
 }
@@ -328,6 +333,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 		Tune:        p.Tune,
 		PixFmt:      p.PixFmt,
 		AudioCodec:  p.AudioCodec,
+		UseGPU:      p.UseGPU,
 		Files:       p.Files,
 		Progress:    JobProgress{Total: len(p.Files)},
 		CreatedAt:   time.Now().UTC(),
@@ -385,22 +391,42 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				Tune:       job.Tune,
 				PixFmt:     job.PixFmt,
 				AudioCodec: job.AudioCodec,
+				GPUVendor:  cfg.GPUVendor,
 			}
 			jobSource := p.Source
 			jobResolution := job.Resolution
 			jobThreads := job.Threads
+			useGPU := job.UseGPU && cfg.GPUVendor != "" && job.Codec != "copy" && job.Codec != "libvpx-vp9"
 			for i, f := range p.Files {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
-				if err := m.ffmpegQ.Submit(ctx, func(slot int) {
-					defer wg.Done()
-					job.setRunningOnce()
-					ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
-					process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, ffSrc, jobResolution, crf, jobThreads, encOpts, onEvent, onProgress)
-				}); err != nil {
-					wg.Done()
-					break // ctx cancelled
+				if useGPU {
+					gpuID, streamIdx, err := m.gpuQ.Acquire(ctx, 0)
+					if err != nil {
+						wg.Done()
+						break // ctx cancelled
+					}
+					stepOpts := encOpts
+					stepOpts.UseGPU = true
+					stepOpts.GPUDevice = gpuID
+					src := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
+					go func() {
+						defer wg.Done()
+						defer m.gpuQ.Release(gpuID, streamIdx)
+						job.setRunningOnce()
+						process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, src, jobResolution, crf, jobThreads, stepOpts, onEvent, onProgress)
+					}()
+				} else {
+					if err := m.ffmpegQ.Submit(ctx, func(slot int) {
+						defer wg.Done()
+						job.setRunningOnce()
+						ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
+						process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, ffSrc, jobResolution, crf, jobThreads, encOpts, onEvent, onProgress)
+					}); err != nil {
+						wg.Done()
+						break // ctx cancelled
+					}
 				}
 			}
 

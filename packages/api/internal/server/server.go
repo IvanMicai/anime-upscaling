@@ -312,6 +312,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		Tune        string   `json:"tune"`
 		PixFmt      string   `json:"pix_fmt"`
 		AudioCodec  string   `json:"audio_codec"`
+		UseGPU      bool     `json:"use_gpu"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -402,6 +403,16 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid audio_codec"})
 			return
 		}
+		if req.UseGPU {
+			if jm.Config().GPUVendor == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "use_gpu requires gpu_vendor to be set in settings"})
+				return
+			}
+			if req.Codec == "copy" || req.Codec == "libvpx-vp9" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "use_gpu is incompatible with codec=copy or libvpx-vp9"})
+				return
+			}
+		}
 	}
 
 	// threads: 0 means auto (will use HalfCPUs at process level)
@@ -484,6 +495,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		Tune:        req.Tune,
 		PixFmt:      req.PixFmt,
 		AudioCodec:  req.AudioCodec,
+		UseGPU:      req.UseGPU,
 	})
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{

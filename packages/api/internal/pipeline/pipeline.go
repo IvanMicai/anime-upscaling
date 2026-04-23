@@ -27,6 +27,7 @@ type PipelineStep struct {
 	Tune        string  `json:"tune,omitempty"`
 	PixFmt      string  `json:"pix_fmt,omitempty"`
 	AudioCodec  string  `json:"audio_codec,omitempty"`
+	UseGPU      bool    `json:"use_gpu,omitempty"`
 }
 
 // Pipeline is a named, ordered sequence of processing steps.

@@ -8,9 +8,10 @@ import (
 )
 
 type settingsResponse struct {
-	StreamsPerGPU int `json:"streams_per_gpu"`
-	FFmpegStreams int `json:"ffmpeg_streams"`
-	GPUCount      int `json:"gpu_count"`
+	StreamsPerGPU int    `json:"streams_per_gpu"`
+	FFmpegStreams int    `json:"ffmpeg_streams"`
+	GPUCount      int    `json:"gpu_count"`
+	GPUVendor     string `json:"gpu_vendor"`
 }
 
 func handleSettings(jm *JobManager) http.HandlerFunc {
@@ -22,11 +23,13 @@ func handleSettings(jm *JobManager) http.HandlerFunc {
 				StreamsPerGPU: cfg.StreamsPerGPU,
 				FFmpegStreams: cfg.FFmpegStreams,
 				GPUCount:      cfg.GPUCount,
+				GPUVendor:     cfg.GPUVendor,
 			})
 		case http.MethodPut:
 			var body struct {
-				StreamsPerGPU int `json:"streams_per_gpu"`
-				FFmpegStreams int `json:"ffmpeg_streams"`
+				StreamsPerGPU int    `json:"streams_per_gpu"`
+				FFmpegStreams int    `json:"ffmpeg_streams"`
+				GPUVendor     string `json:"gpu_vendor"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -34,6 +37,10 @@ func handleSettings(jm *JobManager) http.HandlerFunc {
 			}
 			if body.StreamsPerGPU < 1 || body.FFmpegStreams < 1 {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "streams_per_gpu and ffmpeg_streams must be >= 1"})
+				return
+			}
+			if !config.ValidGPUVendors[body.GPUVendor] {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "gpu_vendor must be one of: '', nvidia, amd, intel"})
 				return
 			}
 			if jm.HasActiveJobs() {
@@ -44,15 +51,17 @@ func handleSettings(jm *JobManager) http.HandlerFunc {
 			if err := config.SaveSettings(cfg.BaseDir, config.Settings{
 				StreamsPerGPU: body.StreamsPerGPU,
 				FFmpegStreams: body.FFmpegStreams,
+				GPUVendor:     body.GPUVendor,
 			}); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save settings: " + err.Error()})
 				return
 			}
-			jm.ApplySettings(body.StreamsPerGPU, body.FFmpegStreams)
+			jm.ApplySettings(body.StreamsPerGPU, body.FFmpegStreams, body.GPUVendor)
 			writeJSON(w, http.StatusOK, settingsResponse{
 				StreamsPerGPU: body.StreamsPerGPU,
 				FFmpegStreams: body.FFmpegStreams,
 				GPUCount:      cfg.GPUCount,
+				GPUVendor:     body.GPUVendor,
 			})
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
