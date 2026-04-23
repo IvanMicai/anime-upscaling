@@ -79,7 +79,6 @@ export function ProgressBar({ progress }: { progress: JobProgress }) {
             </span>
             {c.fps > 0 && <span>FPS: {c.fps}</span>}
             {c.elapsed && <span>Elapsed: {c.elapsed}</span>}
-            {c.speed && <span>Speed: {c.speed}</span>}
             {eta && <span className="text-green-400">ETA: {eta}</span>}
           </div>
         );
