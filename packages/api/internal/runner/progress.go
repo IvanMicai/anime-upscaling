@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"fmt"
 	"io"
 	"regexp"
 	"strconv"
@@ -8,6 +9,19 @@ import (
 	"sync"
 	"time"
 )
+
+// formatMicroseconds renders a microsecond count as "H:MM:SS" (or "MM:SS" when
+// under an hour) to match the shape of video2x's elapsed field.
+func formatMicroseconds(us int64) string {
+	total := us / 1_000_000
+	h := total / 3600
+	m := (total % 3600) / 60
+	s := total % 60
+	if h > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", h, m, s)
+	}
+	return fmt.Sprintf("%d:%02d", m, s)
+}
 
 // Progress holds parsed process progress data.
 type Progress struct {
@@ -27,6 +41,8 @@ var (
 	reFPS         = regexp.MustCompile(`fps=\s*([\d.]+)`)
 	reElapsed     = regexp.MustCompile(`elapsed=(\S+)`)
 	reSpeed       = regexp.MustCompile(`speed=\s*(\S+)`)
+	reOutTimeUS   = regexp.MustCompile(`out_time_us=\s*(\d+)`)
+	reOutTimeMS   = regexp.MustCompile(`out_time_ms=\s*(\d+)`)
 	reTotalFrames = regexp.MustCompile(`NUMBER_OF_FRAMES:\s*(\d+)`)
 	reStreamVideo = regexp.MustCompile(`Stream\s+#\d+:\d+.*Video:`)
 	reStreamAny   = regexp.MustCompile(`Stream\s+#\d+:\d+`)
@@ -140,6 +156,21 @@ func (pw *progressWriter) parseLine(line string) {
 		changed = true
 	}
 
+	// ffmpeg -progress emits out_time_us (new) or out_time_ms (older) — both
+	// are actually microseconds despite the "ms" name. Format as H:MM:SS so it
+	// renders consistently with video2x's elapsed=... output.
+	if m := reOutTimeUS.FindStringSubmatch(line); m != nil {
+		if v, err := strconv.ParseInt(m[1], 10, 64); err == nil && v >= 0 {
+			pw.current.Elapsed = formatMicroseconds(v)
+			changed = true
+		}
+	} else if m := reOutTimeMS.FindStringSubmatch(line); m != nil {
+		if v, err := strconv.ParseInt(m[1], 10, 64); err == nil && v >= 0 {
+			pw.current.Elapsed = formatMicroseconds(v)
+			changed = true
+		}
+	}
+
 	if m := reSpeed.FindStringSubmatch(line); m != nil {
 		s := strings.TrimSpace(m[1])
 		if s != "N/A" {
@@ -148,7 +179,12 @@ func (pw *progressWriter) parseLine(line string) {
 		changed = true
 	}
 
-	if !changed {
+	// ffmpeg -progress blocks end with "progress=continue" or "progress=end".
+	// Emit at the block boundary so frame/fps/speed/elapsed from the same tick
+	// arrive together, bypassing the rate-limit (blocks already ~500ms apart).
+	blockEnd := strings.HasPrefix(line, "progress=")
+
+	if !changed && !blockEnd {
 		return
 	}
 
@@ -157,9 +193,9 @@ func (pw *progressWriter) parseLine(line string) {
 		pw.current.Percent = float64(pw.current.Frame) / float64(pw.current.TotalFrames) * 100
 	}
 
-	// Rate-limit emissions
+	// Rate-limit emissions (block boundary always emits)
 	now := time.Now()
-	if now.Sub(pw.lastEmit) >= pw.minInterval {
+	if blockEnd || now.Sub(pw.lastEmit) >= pw.minInterval {
 		pw.lastEmit = now
 		p := pw.current // copy
 		pw.onProgress(p)

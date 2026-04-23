@@ -15,8 +15,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FilePicker } from "@/components/file-picker";
-import { createJob, getPipelines, runPipeline } from "@/lib/api";
-import type { JobType, Pipeline, UpscaleProcessor, QualityPreset, PipelineStep } from "@/lib/types";
+import { createJob, getPipelines, getSettings, runPipeline } from "@/lib/api";
+import type { GPUVendor, JobType, Pipeline, UpscaleProcessor, QualityPreset, PipelineStep } from "@/lib/types";
 import {
   PROCESSOR_OPTIONS,
   NOISE_LEVEL_OPTIONS,
@@ -53,6 +53,8 @@ export default function NewJobPage() {
   const [audioCodec, setAudioCodec] = useState<PipelineStep["audio_codec"]>("copy");
   const [resolution, setResolution] = useState<1 | 2 | 4>(1);
   const [threads, setThreads] = useState(0);
+  const [useGPU, setUseGPU] = useState(false);
+  const [gpuVendor, setGpuVendor] = useState<GPUVendor>("");
 
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -64,6 +66,9 @@ export default function NewJobPage() {
     getPipelines()
       .then(setPipelines)
       .catch(() => setPipelines([]));
+    getSettings()
+      .then((s) => setGpuVendor(s.gpu_vendor ?? ""))
+      .catch(() => setGpuVendor(""));
   }, []);
 
   const isPipelineSelected = selectedPipelineId !== null;
@@ -101,6 +106,7 @@ export default function NewJobPage() {
         setAudioCodec("copy" as PipelineStep["audio_codec"]);
         setResolution(1);
         setThreads(0);
+        setUseGPU(false);
         break;
     }
   }
@@ -136,6 +142,7 @@ export default function NewJobPage() {
             audio_codec: audioCodec,
             resolution: resolution !== 1 ? resolution : undefined,
             threads: threads > 0 ? threads : undefined,
+            use_gpu: useGPU || undefined,
           }),
           ...(type === "check" && {
             source: source !== "input" ? source : undefined,
@@ -381,6 +388,24 @@ export default function NewJobPage() {
                     </SelectContent>
                   </Select>
                 </Field>
+                {!isStreamCopy && !isVP9 && (
+                  <Field label="Acelerar com GPU">
+                    <label className="flex items-center gap-2 text-sm h-8">
+                      <input
+                        type="checkbox"
+                        checked={useGPU}
+                        disabled={!gpuVendor}
+                        onChange={(e) => setUseGPU(e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                      <span className="text-muted-foreground">
+                        {gpuVendor
+                          ? `Usar ${gpuVendor.toUpperCase()} (hevc_${gpuVendor === "nvidia" ? "nvenc" : gpuVendor === "amd" ? "amf" : "qsv"}); compete com upscale pelos slots da GPU`
+                          : "Configure GPU vendor em Settings para habilitar"}
+                      </span>
+                    </label>
+                  </Field>
+                )}
                 {!isStreamCopy && (
                   <>
                     <Field label="Qualidade">
@@ -399,7 +424,7 @@ export default function NewJobPage() {
                         </SelectContent>
                       </Select>
                     </Field>
-                    {!isVP9 && (
+                    {!isVP9 && !useGPU && (
                       <Field label="Preset">
                         <Select
                           value={preset}
@@ -418,7 +443,7 @@ export default function NewJobPage() {
                         </Select>
                       </Field>
                     )}
-                    {!isVP9 && (
+                    {!isVP9 && !useGPU && (
                       <Field label="Tune">
                         <Select
                           value={tune}
@@ -490,25 +515,27 @@ export default function NewJobPage() {
                     </Select>
                   </Field>
                 )}
-                <Field label="Threads">
-                  <Select
-                    value={String(threads)}
-                    onValueChange={(v) => setThreads(Number(v))}
-                  >
-                    <SelectTrigger className="h-8">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">Auto</SelectItem>
-                      <SelectItem value="1">1</SelectItem>
-                      <SelectItem value="2">2</SelectItem>
-                      <SelectItem value="4">4</SelectItem>
-                      <SelectItem value="8">8</SelectItem>
-                      <SelectItem value="16">16</SelectItem>
-                      <SelectItem value="32">32</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
+                {!useGPU && (
+                  <Field label="Threads">
+                    <Select
+                      value={String(threads)}
+                      onValueChange={(v) => setThreads(Number(v))}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Auto</SelectItem>
+                        <SelectItem value="1">1</SelectItem>
+                        <SelectItem value="2">2</SelectItem>
+                        <SelectItem value="4">4</SelectItem>
+                        <SelectItem value="8">8</SelectItem>
+                        <SelectItem value="16">16</SelectItem>
+                        <SelectItem value="32">32</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                )}
               </>
             )}
 

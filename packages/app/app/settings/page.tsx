@@ -4,14 +4,22 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { getSettings, updateSettings } from "@/lib/api";
-import type { Settings } from "@/lib/types";
+import { GPU_VENDOR_OPTIONS, type GPUVendor, type Settings } from "@/lib/types";
 
 export default function SettingsPage() {
   const [loaded, setLoaded] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [streamsPerGPU, setStreamsPerGPU] = useState(1);
   const [ffmpegStreams, setFfmpegStreams] = useState(1);
+  const [gpuVendor, setGpuVendor] = useState<GPUVendor>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -22,6 +30,7 @@ export default function SettingsPage() {
         setSettings(s);
         setStreamsPerGPU(s.streams_per_gpu);
         setFfmpegStreams(s.ffmpeg_streams);
+        setGpuVendor(s.gpu_vendor ?? "");
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoaded(true));
@@ -35,6 +44,7 @@ export default function SettingsPage() {
       const updated = await updateSettings({
         streams_per_gpu: streamsPerGPU,
         ffmpeg_streams: ffmpegStreams,
+        gpu_vendor: gpuVendor,
       });
       setSettings(updated);
       setNotice("Settings aplicadas com sucesso.");
@@ -49,7 +59,9 @@ export default function SettingsPage() {
 
   const dirty =
     settings &&
-    (streamsPerGPU !== settings.streams_per_gpu || ffmpegStreams !== settings.ffmpeg_streams);
+    (streamsPerGPU !== settings.streams_per_gpu ||
+      ffmpegStreams !== settings.ffmpeg_streams ||
+      gpuVendor !== (settings.gpu_vendor ?? ""));
 
   return (
     <div className="space-y-4 max-w-xl">
@@ -81,6 +93,31 @@ export default function SettingsPage() {
               Quantos processos video2x rodam simultaneamente em cada GPU. Útil
               quando a GPU não está saturada (aumenta uso útil preenchendo gaps
               de I/O e CPU encode).
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="gpu_vendor">GPU vendor (encode ffmpeg)</Label>
+            <Select
+              value={gpuVendor}
+              onValueChange={(v) => setGpuVendor(v as GPUVendor)}
+            >
+              <SelectTrigger id="gpu_vendor" className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {GPU_VENDOR_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value || "none"} value={opt.value}>
+                    {opt.label} — {opt.desc}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Habilita o toggle <em>Usar GPU</em> em jobs de optimize, que roda
+              o ffmpeg no encoder de hardware correspondente (NVENC/AMF/QSV).
+              Cada optimize-GPU consome um slot do mesmo pool que o upscale,
+              então com 2 GPUs × 2 streams são 4 slots compartilhados.
             </p>
           </div>
 

@@ -100,7 +100,7 @@ export function getSettings(): Promise<Settings> {
   return fetchJSON<Settings>("/api/settings");
 }
 
-export function updateSettings(req: { streams_per_gpu: number; ffmpeg_streams: number }): Promise<Settings> {
+export function updateSettings(req: { streams_per_gpu: number; ffmpeg_streams: number; gpu_vendor?: string }): Promise<Settings> {
   return fetchJSON<Settings>("/api/settings", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
