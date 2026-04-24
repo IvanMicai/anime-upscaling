@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/select";
 import { FilePicker } from "@/components/file-picker";
 import { createJob, getPipelines, getSettings, runPipeline } from "@/lib/api";
+import { FOLDER_OPTIONS, type FolderKey } from "@/lib/file-utils";
+import { computeFinalCanonicalFolder } from "@/components/pipeline-preview";
 import type { GPUVendor, JobType, Pipeline, UpscaleProcessor, QualityPreset, PipelineStep } from "@/lib/types";
 import {
   PROCESSOR_OPTIONS,
@@ -34,7 +36,8 @@ import {
 export default function NewJobPage() {
   const router = useRouter();
   const [type, setType] = useState<JobType>("upscale");
-  const [source, setSource] = useState<"input" | "output" | "optimized">("input");
+  const [source, setSource] = useState<FolderKey>("input");
+  const [output, setOutput] = useState<FolderKey>("output");
   // Upscale
   const [scale, setScale] = useState<2 | 3 | 4>(2);
   const [processor, setProcessor] = useState<UpscaleProcessor>("realesrgan");
@@ -75,8 +78,11 @@ export default function NewJobPage() {
 
   function handleTypeChange(v: string) {
     if (v.startsWith("pipeline:")) {
-      setSelectedPipelineId(v.substring("pipeline:".length));
+      const pipelineId = v.substring("pipeline:".length);
+      setSelectedPipelineId(pipelineId);
       setSource("input");
+      const p = pipelines.find((x) => x.id === pipelineId);
+      if (p) setOutput(computeFinalCanonicalFolder(p.steps));
       return;
     }
     setSelectedPipelineId(null);
@@ -116,11 +122,12 @@ export default function NewJobPage() {
     setError(null);
     try {
       if (selectedPipelineId) {
-        await runPipeline(selectedPipelineId, { files });
+        await runPipeline(selectedPipelineId, { files, source, output });
       } else {
         await createJob({
           type,
           files,
+          source: source !== "input" ? source : undefined,
           ...(type === "upscale" && {
             scale,
             processor,
@@ -133,7 +140,6 @@ export default function NewJobPage() {
             scene_thresh: sceneThresh,
           }),
           ...(type === "optimize" && {
-            source: source !== "input" ? source : undefined,
             quality,
             codec,
             preset,
@@ -144,9 +150,6 @@ export default function NewJobPage() {
             threads: threads > 0 ? threads : undefined,
             use_gpu: useGPU || undefined,
           }),
-          ...(type === "check" && {
-            source: source !== "input" ? source : undefined,
-          }),
         });
       }
       router.push("/");
@@ -156,9 +159,6 @@ export default function NewJobPage() {
       setSubmitting(false);
     }
   }
-
-  const fileSource =
-    !isPipelineSelected && (type === "optimize" || type === "check") ? source : "input";
 
   const modelOptions = getModelOptions(processor);
   const validScales = getValidScales(processor, model);
@@ -203,6 +203,35 @@ export default function NewJobPage() {
               )}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="space-y-3">
+          <Field label="Pasta de origem">
+            <Select value={source} onValueChange={(v) => setSource(v as FolderKey)}>
+              <SelectTrigger className="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {FOLDER_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          {isPipelineSelected && (
+            <Field label="Pasta de destino">
+              <Select value={output} onValueChange={(v) => setOutput(v as FolderKey)}>
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FOLDER_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
         </div>
 
         {!isPipelineSelected && (
@@ -349,20 +378,6 @@ export default function NewJobPage() {
 
             {type === "optimize" && (
               <>
-                <Field label="Source">
-                  <Select
-                    value={source}
-                    onValueChange={(v) => setSource(v as "input" | "output" | "optimized")}
-                  >
-                    <SelectTrigger className="h-8">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="input">Input</SelectItem>
-                      <SelectItem value="output">Output (upscaled)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
                 <Field label="Codec de Vídeo">
                   <Select
                     value={codec}
@@ -539,29 +554,12 @@ export default function NewJobPage() {
               </>
             )}
 
-            {type === "check" && (
-              <Field label="Source">
-                <Select
-                  value={source}
-                  onValueChange={(v) => setSource(v as "input" | "output" | "optimized")}
-                >
-                  <SelectTrigger className="h-8">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="input">Input</SelectItem>
-                    <SelectItem value="output">Output (upscaled)</SelectItem>
-                    <SelectItem value="optimized">Optimized</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-            )}
           </div>
         )}
 
         <div className="flex flex-col flex-1 min-h-0 gap-2">
           <label className="text-sm font-medium">Files</label>
-          <FilePicker selected={selectedFiles} onChange={setSelectedFiles} dir={fileSource} />
+          <FilePicker selected={selectedFiles} onChange={setSelectedFiles} dir={source} />
         </div>
 
         {error && <p className="text-sm text-red-400">{error}</p>}

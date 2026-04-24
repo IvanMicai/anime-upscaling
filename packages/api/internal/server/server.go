@@ -431,27 +431,10 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 	if req.Source == "" {
 		req.Source = "input"
 	}
-	validSources := map[string]bool{"input": true, "output": true}
-	if req.Type == "check" {
-		validSources["optimized"] = true
-	}
-	if !validSources[req.Source] {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source"})
+	sourceDir, ok := resolveFolder(cfg, req.Source)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source (must be input, output, interpolated, or optimized)"})
 		return
-	}
-	if req.Source == "output" && req.Type != "optimize" && req.Type != "check" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source=output is only allowed for optimize or check jobs"})
-		return
-	}
-
-	sourceDir := cfg.InputDir
-	switch req.Source {
-	case "output":
-		sourceDir = cfg.OutputDir
-	case "optimized":
-		sourceDir = cfg.OptimizedDir
-	case "interpolated":
-		sourceDir = cfg.InterpolatedDir
 	}
 
 	// If no files specified, use all videos in source dir
@@ -480,6 +463,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		Type:        req.Type,
 		Files:       req.Files,
 		Source:      req.Source,
+		SourceDir:   sourceDir,
 		Scale:       req.Scale,
 		Resolution:  req.Resolution,
 		Multiplier:  req.Multiplier,
@@ -672,4 +656,36 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+// resolveFolder maps a logical folder name (input/output/interpolated/optimized)
+// to its absolute directory path from config. Returns ok=false for unknown names.
+func resolveFolder(cfg config.Config, name string) (string, bool) {
+	switch name {
+	case "input":
+		return cfg.InputDir, true
+	case "output":
+		return cfg.OutputDir, true
+	case "optimized":
+		return cfg.OptimizedDir, true
+	case "interpolated":
+		return cfg.InterpolatedDir, true
+	}
+	return "", false
+}
+
+// dirToSourceName is the inverse of resolveFolder: maps an absolute directory
+// path back to its logical name. Returns "" for unknown paths.
+func dirToSourceName(cfg config.Config, dir string) string {
+	switch filepath.Clean(dir) {
+	case filepath.Clean(cfg.InputDir):
+		return "input"
+	case filepath.Clean(cfg.OutputDir):
+		return "output"
+	case filepath.Clean(cfg.OptimizedDir):
+		return "optimized"
+	case filepath.Clean(cfg.InterpolatedDir):
+		return "interpolated"
+	}
+	return ""
 }

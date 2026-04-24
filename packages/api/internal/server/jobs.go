@@ -66,6 +66,7 @@ type StartJobParams struct {
 	Type        string
 	Files       []string
 	Source      string
+	SourceDir   string
 	Scale       int
 	Resolution  int
 	Multiplier  int
@@ -376,7 +377,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 					defer wg.Done()
 					defer m.gpuQ.Release(gpuID, streamIdx)
 					job.setRunningOnce()
-					process.UpscaleFile(ctx, cfg, r, gpuID, streamIdx, filename, idx, job.Scale, upOpts, cfg.InputDir, cfg.OutputDir, onEvent, onProgress)
+					process.UpscaleFile(ctx, cfg, r, gpuID, streamIdx, filename, idx, job.Scale, upOpts, p.SourceDir, cfg.OutputDir, onEvent, onProgress)
 				}()
 			}
 
@@ -465,7 +466,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 					defer wg.Done()
 					defer m.gpuQ.Release(gpuID, streamIdx)
 					job.setRunningOnce()
-					process.InterpolateFile(ctx, cfg, r, gpuID, streamIdx, filename, idx, job.Multiplier, rifeOpts, cfg.InputDir, cfg.InterpolatedDir, onEvent, onProgress)
+					process.InterpolateFile(ctx, cfg, r, gpuID, streamIdx, filename, idx, job.Multiplier, rifeOpts, p.SourceDir, cfg.InterpolatedDir, onEvent, onProgress)
 				}()
 			}
 		}
@@ -491,15 +492,20 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 	return job
 }
 
-func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.PipelineStep, files []string) *Job {
+func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.PipelineStep, files []string, sourceDir, outputDir string) *Job {
 	sort.Strings(files)
 	ctx, cancel := context.WithCancel(context.Background())
+
+	source := "input"
+	if s := dirToSourceName(m.cfg, sourceDir); s != "" {
+		source = s
+	}
 
 	job := &Job{
 		ID:            m.generateID(),
 		Type:          "custom_pipeline",
 		Status:        "queued",
-		Source:        "input",
+		Source:        source,
 		PipelineName:  pipelineName,
 		PipelineSteps: steps,
 		Files:         files,
@@ -533,7 +539,7 @@ func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.Pipe
 			go func() {
 				defer wg.Done()
 				job.setRunningOnce()
-				process.RunCustomPipelineForFile(ctx, cfg, r, gpuQ, ffmpegQ, steps, filename, idx, onEvent, onProgress)
+				process.RunCustomPipelineForFile(ctx, cfg, r, gpuQ, ffmpegQ, steps, filename, idx, sourceDir, outputDir, onEvent, onProgress)
 			}()
 		}
 

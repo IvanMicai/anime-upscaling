@@ -1,6 +1,6 @@
 import type { PipelineStep } from "@/lib/types";
 import { QUALITY_PRESETS, PROCESSOR_OPTIONS } from "@/lib/types";
-import { formatBytes } from "@/lib/file-utils";
+import { formatBytes, type FolderKey } from "@/lib/file-utils";
 
 interface VideoState {
   width: number;
@@ -27,6 +27,20 @@ const CODEC_LABELS: Record<string, string> = {
 
 export function codecLabel(codec: string | null): string {
   return CODEC_LABELS[codec ?? "libx265"] ?? "H.265";
+}
+
+// computeFinalCanonicalFolder returns the canonical destination folder of the last
+// step in a pipeline (where the file naturally lands when no custom output folder
+// is chosen). Defaults to "output" for empty pipelines.
+export function computeFinalCanonicalFolder(steps: PipelineStep[]): FolderKey {
+  const last = steps[steps.length - 1];
+  if (!last) return "output";
+  switch (last.operation) {
+    case "upscale": return "output";
+    case "interpolate": return "interpolated";
+    case "optimize": return "optimized";
+  }
+  return "output";
 }
 
 export function computePreview(steps: PipelineStep[]): VideoState {

@@ -11,15 +11,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { FilePicker } from "@/components/file-picker";
 import { usePoll } from "@/lib/use-poll";
 import { getPipelines, deletePipeline, runPipeline } from "@/lib/api";
+import { FOLDER_OPTIONS, type FolderKey } from "@/lib/file-utils";
 import type { Pipeline } from "@/lib/types";
 import {
   computePreview,
   formatStateLabel,
   formatSizeEstimate,
   formatStepSummary,
+  computeFinalCanonicalFolder,
 } from "@/components/pipeline-preview";
 
 export default function PipelinesPage() {
@@ -27,6 +36,8 @@ export default function PipelinesPage() {
   const router = useRouter();
   const [runTarget, setRunTarget] = useState<Pipeline | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const [source, setSource] = useState<FolderKey>("input");
+  const [output, setOutput] = useState<FolderKey>("output");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +55,7 @@ export default function PipelinesPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await runPipeline(runTarget.id, { files });
+      await runPipeline(runTarget.id, { files, source, output });
       setRunTarget(null);
       router.push("/");
     } catch (err) {
@@ -109,6 +120,8 @@ export default function PipelinesPage() {
                       onClick={() => {
                         setSelectedFiles([]);
                         setError(null);
+                        setSource("input");
+                        setOutput(computeFinalCanonicalFolder(p.steps));
                         setRunTarget(p);
                       }}
                     >
@@ -142,8 +155,36 @@ export default function PipelinesPage() {
           <DialogHeader>
             <DialogTitle>Executar: {runTarget?.name}</DialogTitle>
           </DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Pasta de origem</label>
+              <Select value={source} onValueChange={(v) => setSource(v as FolderKey)}>
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FOLDER_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Pasta de destino</label>
+              <Select value={output} onValueChange={(v) => setOutput(v as FolderKey)}>
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FOLDER_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <div className="flex-1 min-h-0 overflow-auto">
-            <FilePicker selected={selectedFiles} onChange={setSelectedFiles} dir="input" />
+            <FilePicker selected={selectedFiles} onChange={setSelectedFiles} dir={source} />
           </div>
           {error && <p className="text-sm text-red-400">{error}</p>}
           <div className="flex gap-2 pt-2">
