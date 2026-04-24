@@ -140,9 +140,9 @@ export interface CreateJobRequest {
   use_gpu?: boolean;
 }
 
-export interface CreateJobResponse extends Job {}
+export type CreateJobResponse = Job;
 
-export interface CancelJobResponse extends Job {}
+export type CancelJobResponse = Job;
 
 export interface DeleteFilesRequest {
   items: { name: string; folders: string[] }[];
@@ -336,4 +336,3 @@ export interface RunPipelineRequest {
   files?: string[];
   source?: "input" | "output" | "optimized" | "interpolated";
 }
-

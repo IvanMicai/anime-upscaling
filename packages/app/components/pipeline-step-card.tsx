@@ -82,13 +82,6 @@ export function PipelineStepCard({
     onChange(base);
   }
 
-  const opLabel =
-    step.operation === "upscale"
-      ? "UPSCALE"
-      : step.operation === "interpolate"
-        ? "INTERPOLATE"
-        : "OPTIMIZE";
-
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="flex items-center justify-between mb-3">

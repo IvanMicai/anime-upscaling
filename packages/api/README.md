@@ -13,8 +13,9 @@ Go HTTP API for managing video upscaling and optimization jobs using Docker cont
 | Input directory | `{BaseDir}/input` |
 | Output directory | `{BaseDir}/output` |
 | Optimized directory | `{BaseDir}/optimized` |
+| Interpolated directory | `{BaseDir}/interpolated` |
 | Supported extensions | `.mkv`, `.mp4`, `.avi` |
-| CORS | All origins (`*`), methods `GET, POST, OPTIONS` |
+| CORS | All origins (`*`), methods `GET, POST, PUT, DELETE, OPTIONS` |
 
 ## Endpoints
 
@@ -26,7 +27,7 @@ List video files in a directory.
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `dir` | string | `"input"` | One of `input`, `output`, `optimized` |
+| `dir` | string | `"input"` | One of `input`, `output`, `interpolated`, `optimized` |
 
 **Response 200:**
 
@@ -40,7 +41,7 @@ List video files in a directory.
 **Response 400:**
 
 ```json
-{ "error": "invalid dir: must be input, output, or optimized" }
+{ "error": "invalid dir: must be input, output, optimized, or interpolated" }
 ```
 
 **Example:**
@@ -93,8 +94,9 @@ Create a new job.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | string | yes | `"upscale"`, `"optimize"`, or `"pipeline"` |
-| `files` | string[] | no | Filenames from `input/`. If empty, uses all videos in `input/` |
+| `type` | string | yes | `"upscale"`, `"interpolate"`, `"optimize"`, or `"check"` |
+| `files` | string[] | no | Filenames from the selected source. If empty, uses all videos in that source |
+| `source` | string | no | One of `input`, `output`, `interpolated`, `optimized`; defaults to `input` |
 
 ```json
 {
@@ -109,7 +111,7 @@ Create a new job.
 {
   "id": "j_1708540800_1a2b",
   "type": "upscale",
-  "status": "running",
+  "status": "queued",
   "files": ["video1.mkv", "video2.mp4"]
 }
 ```
@@ -117,7 +119,7 @@ Create a new job.
 **Response 400:**
 
 ```json
-{ "error": "type must be upscale, optimize, or pipeline" }
+{ "error": "type must be upscale, optimize, check, or interpolate" }
 ```
 
 ```json
@@ -141,10 +143,10 @@ curl -X POST http://localhost:4751/api/jobs \
   -H 'Content-Type: application/json' \
   -d '{"type": "optimize"}'
 
-# Full pipeline (upscale + optimize)
+# Check all files in optimized/
 curl -X POST http://localhost:4751/api/jobs \
   -H 'Content-Type: application/json' \
-  -d '{"type": "pipeline", "files": ["video1.mkv", "video2.mp4"]}'
+  -d '{"type": "check", "source": "optimized"}'
 ```
 
 ---
@@ -284,9 +286,10 @@ curl -X POST http://localhost:4751/api/jobs/j_1708540800_1a2b/cancel
 
 | Type | Description | Workers |
 |------|-------------|---------|
-| `upscale` | 2x upscale using video2x (RealESRGAN) | 2 GPU workers in parallel |
-| `optimize` | H.265 compression using ffmpeg | 1 CPU worker, sequential |
-| `pipeline` | Upscale then optimize in a streaming pipeline | 2 GPU + 1 CPU in parallel |
+| `upscale` | Super-resolution using video2x | GPU queue |
+| `interpolate` | Frame interpolation using video2x/RIFE | GPU queue |
+| `optimize` | Compression/transcode using ffmpeg | FFmpeg queue or GPU queue when hardware encode is enabled |
+| `check` | Integrity check using full ffmpeg decode | FFmpeg queue |
 
 ### Upscale
 
@@ -298,7 +301,6 @@ curl -X POST http://localhost:4751/api/jobs/j_1708540800_1a2b/cancel
 
 ### Optimize
 
-- Docker image: `linuxserver/ffmpeg`
 - Codec: `libx265` (HEVC)
 - Preset: `fast`, tune: `animation`
 - CRF: 19, pixel format: `yuv420p10le` (10-bit)
@@ -306,12 +308,11 @@ curl -X POST http://localhost:4751/api/jobs/j_1708540800_1a2b/cancel
 - Output: `{BaseDir}/optimized/`
 - CPUs: half of available cores
 
-### Pipeline
+### Saved Pipelines
 
-- Combines upscale and optimize in a streaming pipeline
-- GPU workers feed completed files to the FFmpeg worker via channel
-- FFmpeg CRF: 22 (slightly lower quality for speed)
-- Does not copy subtitles in pipeline mode
+- Managed through `/api/pipelines`
+- Supports ordered `upscale`, `interpolate`, and `optimize` steps
+- Run with `POST /api/pipelines/{id}/run`
 
 ## Job Statuses
 

@@ -2,6 +2,9 @@
 -include .env
 export
 
+API_PORT ?= 4751
+APP_PORT ?= 4750
+
 .PHONY: all build build-api build-app run stop dev dev-api dev-app clean deploy
 
 # --- Build ---
@@ -20,9 +23,11 @@ build-app:
 
 run: stop
 	@mkdir -p logs
+	@-docker network create anime-upscaling 2>/dev/null || true
 	@echo "Starting API on :$(API_PORT)..."
 	@-docker rm -f anime-upscaling-api 2>/dev/null
 	@nohup docker run --rm --name anime-upscaling-api \
+		--network anime-upscaling \
 		--env-file .env \
 		-e API_PORT=$(API_PORT) \
 		-p $(API_PORT):$(API_PORT) \
@@ -32,8 +37,10 @@ run: stop
 	@echo "Starting App on :$(APP_PORT)..."
 	@-docker rm -f anime-upscaling-app 2>/dev/null
 	@nohup docker run --rm --name anime-upscaling-app \
+		--network anime-upscaling \
 		--env-file .env \
 		-e PORT=$(APP_PORT) \
+		-e API_URL=http://anime-upscaling-api:$(API_PORT) \
 		-p $(APP_PORT):$(APP_PORT) \
 		anime-upscaling-app > logs/app.log 2>&1 &
 	@sleep 1

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useCallback, useRef } from "react";
 
 export function useShiftSelect(
   selected: string[],
@@ -6,11 +6,11 @@ export function useShiftSelect(
 ) {
   const lastClickedIndex = useRef<number | null>(null);
 
-  function handleToggle(
+  const handleToggle = useCallback((
     index: number,
     sortedNames: string[],
     shiftKey: boolean,
-  ) {
+  ) => {
     const name = sortedNames[index];
     const wasSelected = selected.includes(name);
     const selecting = !wasSelected;
@@ -39,11 +39,11 @@ export function useShiftSelect(
     }
 
     lastClickedIndex.current = index;
-  }
+  }, [selected, setSelected]);
 
-  function resetLastClicked() {
+  const resetLastClicked = useCallback(() => {
     lastClickedIndex.current = null;
-  }
+  }, []);
 
   return { handleToggle, resetLastClicked };
 }

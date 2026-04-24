@@ -2,14 +2,9 @@ package process
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
-	"time"
 
 	"anime-upscaling/internal/config"
-	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/logger"
 	"anime-upscaling/internal/runner"
 )
@@ -26,7 +21,7 @@ func RunPipeline(ctx context.Context, cfg config.Config, r *runner.Runner, fileL
 	}
 	close(fileCh)
 
-	readyCh := make(chan string, len(fileList))
+	readyCh := make(chan work, len(fileList))
 
 	var gpuWg sync.WaitGroup
 	gpuCount := cfg.GPUCount
@@ -42,7 +37,7 @@ func RunPipeline(ctx context.Context, cfg config.Config, r *runner.Runner, fileL
 					}
 					ok := UpscaleFile(ctx, cfg, r, gpuID, streamIdx, w.filename, w.index, scale, runner.UpscaleOptions{}, cfg.InputDir, cfg.OutputDir, onEvent, safeProgress(onProgress))
 					if ok {
-						readyCh <- w.filename
+						readyCh <- w
 					}
 				}
 			}(gpuID, streamIdx)
@@ -54,57 +49,16 @@ func RunPipeline(ctx context.Context, cfg config.Config, r *runner.Runner, fileL
 		close(readyCh)
 	}()
 
-	for filename := range readyCh {
+	for w := range readyCh {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		EncodeFile(ctx, cfg, r, filename, 0, onEvent, safeProgress(onProgress))
+		OptimizeFile(ctx, cfg, r, w.filename, w.index, "output", "FFMPEG", 1, 22, 0, runner.EncodeOptions{}, onEvent, safeProgress(onProgress))
 	}
 	return nil
 }
 
 // EncodeFile compresses a single file from output/ to optimized/ using FFmpeg (pipeline phase 2).
-func EncodeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, threads int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) {
-	for _, dir := range []string{cfg.OutputDir, cfg.OptimizedDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: 0, Message: fmt.Sprintf("mkdir: %v", err), Time: time.Now()})
-			return
-		}
-	}
-
-	ffmpegProgress := func(p runner.Progress) {
-		p.Source = "FFMPEG"
-		onProgress(p)
-	}
-
-	optPath := filepath.Join(cfg.OptimizedDir, filename)
-	if files.FileExists(optPath) {
-		onEvent(logger.JobLog{Source: "FFMPEG", Level: "SKIP", Index: 0, Message: "Pulando " + filename + " (já existe)", Time: time.Now()})
-		return
-	}
-
-	onEvent(logger.JobLog{Source: "FFMPEG", Level: "INFO", Index: 0, Message: "Comprimindo: " + filename, Time: time.Now()})
-
-	t := threads
-	if t == 0 {
-		t = cfg.HalfCPUs
-	}
-
-	err := r.FFmpegEncode(ctx,
-		"output/"+filename,
-		"optimized/"+filename,
-		22,
-		t,
-		runner.EncodeOptions{},
-		"",
-		false,
-		1,
-		ffmpegProgress,
-	)
-	if err != nil {
-		onEvent(logger.JobLog{Source: "FFMPEG", Level: "ERRO", Index: 0, Message: fmt.Sprintf("Falha: %s (%v)", filename, err), Time: time.Now()})
-		return
-	}
-
-	onEvent(logger.JobLog{Source: "FFMPEG", Level: "OK", Index: 0, Message: "Concluído: " + filename, Time: time.Now()})
+func EncodeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, threads int, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
+	return OptimizeFile(ctx, cfg, r, filename, 0, "output", "FFMPEG", 1, 22, threads, runner.EncodeOptions{}, onEvent, onProgress)
 }
