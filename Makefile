@@ -4,12 +4,22 @@ export
 
 API_PORT ?= 4751
 APP_PORT ?= 4750
+HOST_PROCESS_DIR ?= ./data
 
-.PHONY: all build build-api build-app run stop dev dev-api dev-app clean deploy
+.PHONY: all init build build-api build-app run run-gpu stop logs dev dev-api dev-app clean deploy
 
 # --- Build ---
 
 all: build
+
+init:
+	@test -f .env || cp .env.example .env
+	@mkdir -p "$(HOST_PROCESS_DIR)/input" \
+		"$(HOST_PROCESS_DIR)/output" \
+		"$(HOST_PROCESS_DIR)/optimized" \
+		"$(HOST_PROCESS_DIR)/interpolated" \
+		"$(HOST_PROCESS_DIR)/temp"
+	@echo "Initialized .env and media folders under $(HOST_PROCESS_DIR)."
 
 build: build-api build-app
 
@@ -21,35 +31,19 @@ build-app:
 
 # --- Run (production) ---
 
-run: stop
-	@mkdir -p logs
-	@-docker network create anime-upscaling 2>/dev/null || true
-	@echo "Starting API on :$(API_PORT)..."
-	@-docker rm -f anime-upscaling-api 2>/dev/null
-	@nohup docker run --rm --name anime-upscaling-api \
-		--network anime-upscaling \
-		--env-file .env \
-		-e API_PORT=$(API_PORT) \
-		-p $(API_PORT):$(API_PORT) \
-		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v $(PROCESS_DIR):$(PROCESS_DIR) \
-		anime-upscaling-api > logs/api.log 2>&1 &
-	@echo "Starting App on :$(APP_PORT)..."
-	@-docker rm -f anime-upscaling-app 2>/dev/null
-	@nohup docker run --rm --name anime-upscaling-app \
-		--network anime-upscaling \
-		--env-file .env \
-		-e PORT=$(APP_PORT) \
-		-e API_URL=http://anime-upscaling-api:$(API_PORT) \
-		-p $(APP_PORT):$(APP_PORT) \
-		anime-upscaling-app > logs/app.log 2>&1 &
-	@sleep 1
-	@echo "Done. Containers: anime-upscaling-api, anime-upscaling-app."
-	@echo "Logs: logs/api.log, logs/app.log"
+run: init
+	docker compose up -d --build
+	@echo "App: http://localhost:$(APP_PORT)"
+
+run-gpu: init
+	docker compose -f docker-compose.yml -f docker-compose.nvidia.yml up -d --build
+	@echo "App: http://localhost:$(APP_PORT)"
 
 stop:
-	@-docker rm -f anime-upscaling-api 2>/dev/null
-	@-docker rm -f anime-upscaling-app 2>/dev/null
+	docker compose down
+
+logs:
+	docker compose logs -f
 
 # --- Dev (foreground) ---
 
@@ -66,10 +60,11 @@ dev-app:
 # --- Deploy ---
 
 deploy:
-	ssh truenas_admin@192.168.15.4 'bash -s' < deploy.sh
+	@echo "See docs/DEPLOYMENT.md for a generic self-hosted deployment flow."
+	@exit 1
 
 # --- Clean ---
 
 clean:
-	rm -rf bin packages/app/.next packages/app/node_modules
+	rm -rf bin packages/api/animeup packages/app/.next packages/app/node_modules
 	-docker rmi anime-upscaling-api anime-upscaling-app 2>/dev/null

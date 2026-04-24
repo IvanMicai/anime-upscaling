@@ -1,6 +1,21 @@
 .DS_Store
+
+# Local environment files. Keep the public example committed.
 .env
+.env.*
+!.env.example
+
+# Local agent/editor state
+.claude/
+.audiosync_temp/
+
+# Build and runtime artifacts
+bin/
+logs/
+data/
+sources.json
+packages/api/animeup
 packages/app/node_modules/
 packages/app/.next/
-logs/
-sources.json
+packages/app/next-env.d.ts
+packages/app/tsconfig.tsbuildinfo

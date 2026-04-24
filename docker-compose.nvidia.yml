@@ -1,0 +1,12 @@
+services:
+  api:
+    environment:
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics,video
+      - GPU_VENDOR=${GPU_VENDOR:-nvidia}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, utility, graphics, video]

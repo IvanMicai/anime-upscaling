@@ -3,3 +3,7 @@ node_modules
 .env*
 Dockerfile
 .dockerignore
+.git
+.DS_Store
+next-env.d.ts
+tsconfig.tsbuildinfo
