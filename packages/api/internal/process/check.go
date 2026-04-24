@@ -20,6 +20,7 @@ func CheckFile(ctx context.Context, cfg config.Config, r *runner.Runner, filenam
 	}
 	ffmpegProgress := func(p runner.Progress) {
 		p.Source = logSource
+		p.Filename = filename
 		onProgress(p)
 	}
 
@@ -35,7 +36,7 @@ func CheckFile(ctx context.Context, cfg config.Config, r *runner.Runner, filenam
 				continue
 			}
 			// Skip ffmpeg stats/progress lines
-			if strings.Contains(line, "frame=") || strings.Contains(line, "size=") || strings.HasPrefix(line, "video:") {
+			if isFFmpegProgressLine(line) {
 				continue
 			}
 			errors = append(errors, line)
@@ -49,4 +50,19 @@ func CheckFile(ctx context.Context, cfg config.Config, r *runner.Runner, filenam
 	}
 
 	onEvent(logger.JobLog{Source: logSource, Level: "OK", Index: index, Message: "Íntegro: " + filename, Time: time.Now()})
+}
+
+func isFFmpegProgressLine(line string) bool {
+	if strings.HasPrefix(line, "video:") {
+		return true
+	}
+	for _, prefix := range []string{
+		"frame=", "fps=", "stream_", "bitrate=", "total_size=", "out_time_",
+		"out_time=", "dup_frames=", "drop_frames=", "speed=", "progress=",
+	} {
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
+	}
+	return strings.Contains(line, "size=")
 }

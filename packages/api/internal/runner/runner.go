@@ -365,7 +365,7 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	tail := newTailWriter(20)
 	var out io.Writer = io.MultiWriter(f, tail)
 	if onProgress != nil {
-		out = io.MultiWriter(newProgressWriter(f, onProgress), tail)
+		out = io.MultiWriter(newFFmpegProgressWriter(f, onProgress, "Encode"), tail)
 	}
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -590,9 +590,13 @@ func (r *Runner) FFprobe(ctx context.Context, relPath string) (string, error) {
 // If onProgress is non-nil, stderr is parsed for progress data.
 func (r *Runner) FFmpegDecode(ctx context.Context, relPath string, processName string, onProgress func(Progress)) (string, error) {
 	absPath := r.cfg.BaseDir + "/" + relPath
+	phase := "Check"
+	if processName == "precheck-optimize" {
+		phase = "Pre-check"
+	}
 
 	cmd := exec.CommandContext(ctx, r.cfg.FFmpegBin,
-		"-stats", "-v", "error",
+		"-progress", "pipe:2", "-nostats", "-v", "error",
 		"-i", absPath,
 		"-f", "null",
 		"-",
@@ -601,7 +605,7 @@ func (r *Runner) FFmpegDecode(ctx context.Context, relPath string, processName s
 	var errBuf bytes.Buffer
 	var out io.Writer = &errBuf
 	if onProgress != nil {
-		out = io.MultiWriter(&errBuf, newProgressWriter(io.Discard, onProgress))
+		out = io.MultiWriter(&errBuf, newFFmpegProgressWriter(io.Discard, onProgress, phase))
 	}
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -686,12 +690,12 @@ type ffprobeJSON struct {
 }
 
 type ffprobeStream struct {
-	Index     int            `json:"index"`
-	CodecType string         `json:"codec_type"`
-	CodecName string         `json:"codec_name"`
-	Width     int            `json:"width,omitempty"`
-	Height    int            `json:"height,omitempty"`
-	Channels  int            `json:"channels,omitempty"`
+	Index     int               `json:"index"`
+	CodecType string            `json:"codec_type"`
+	CodecName string            `json:"codec_name"`
+	Width     int               `json:"width,omitempty"`
+	Height    int               `json:"height,omitempty"`
+	Channels  int               `json:"channels,omitempty"`
 	Tags      map[string]string `json:"tags,omitempty"`
 }
 

@@ -52,7 +52,17 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 	// Pre-check: verify the input decodes end-to-end before we commit to a long encode.
 	// Catches corrupted outputs from upstream steps (e.g. truncated interpolation writes)
 	// that would otherwise surface as a mid-encode SIGSEGV in the ffmpeg encoder.
-	decodeOut, decodeErr := r.FFmpegDecode(ctx, source+"/"+filename, "precheck-optimize", nil)
+	precheckStarted := time.Now()
+	precheckProgress := func(p runner.Progress) {
+		p.Source = logSource
+		p.Filename = filename
+		if p.Phase == "" {
+			p.Phase = "Pre-check"
+		}
+		onProgress(p)
+	}
+	onEvent(logger.JobLog{Source: logSource, Level: "INFO", Index: index, Message: "Pre-checking input: " + filename, Time: time.Now()})
+	decodeOut, decodeErr := r.FFmpegDecode(ctx, source+"/"+filename, "precheck-optimize", precheckProgress)
 	if decodeErr != nil {
 		if ctx.Err() != nil {
 			return false
@@ -65,6 +75,7 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 		})
 		return false
 	}
+	onEvent(logger.JobLog{Source: logSource, Level: "INFO", Index: index, Message: fmt.Sprintf("Pre-check completed in %s: %s", runner.FormatDuration(time.Since(precheckStarted)), filename), Time: time.Now()})
 
 	onEvent(logger.JobLog{Source: logSource, Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
 
