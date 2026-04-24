@@ -25,6 +25,7 @@ export interface ContainerProgress {
   speed?: string;
   percent?: number;
   filename?: string;
+  phase?: string;
 }
 
 export interface JobProgress {

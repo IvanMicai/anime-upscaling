@@ -21,7 +21,9 @@ export function ProgressBar({ progress }: { progress: JobProgress }) {
   const done = completed + failed + skipped;
 
   const entries = containers
-    ? Object.entries(containers).filter(([, c]) => c && c.frame > 0)
+    ? Object.entries(containers).filter(
+        ([, c]) => c && (c.frame > 0 || c.phase || c.elapsed),
+      )
     : [];
 
   return (
@@ -71,12 +73,15 @@ export function ProgressBar({ progress }: { progress: JobProgress }) {
             {c.filename && (
               <span className="truncate max-w-[150px] sm:max-w-none text-muted-foreground">{c.filename}</span>
             )}
-            <span>
-              Frame: {c.frame}
-              {c.total_frames
-                ? `/${c.total_frames} (${c.percent?.toFixed(1)}%)`
-                : ""}
-            </span>
+            {c.phase && <span>{c.phase}</span>}
+            {c.frame > 0 && (
+              <span>
+                Frame: {c.frame}
+                {c.total_frames
+                  ? `/${c.total_frames} (${c.percent?.toFixed(1)}%)`
+                  : ""}
+              </span>
+            )}
             {c.fps > 0 && <span>FPS: {c.fps}</span>}
             {c.elapsed && <span>Elapsed: {c.elapsed}</span>}
             {eta && <span className="text-green-400">ETA: {eta}</span>}

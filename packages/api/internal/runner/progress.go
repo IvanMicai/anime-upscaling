@@ -14,6 +14,19 @@ import (
 // video2x's elapsed field (always zero-padded, always includes hours).
 func formatMicroseconds(us int64) string {
 	total := us / 1_000_000
+	return formatSeconds(total)
+}
+
+// FormatDuration renders wall-clock process duration as "HH:MM:SS".
+func FormatDuration(d time.Duration) string {
+	total := int64(d / time.Second)
+	if total < 0 {
+		total = 0
+	}
+	return formatSeconds(total)
+}
+
+func formatSeconds(total int64) string {
 	h := total / 3600
 	m := (total % 3600) / 60
 	s := total % 60
@@ -44,6 +57,7 @@ type Progress struct {
 	Elapsed     string  `json:"elapsed,omitempty"`
 	Speed       string  `json:"speed,omitempty"`
 	Percent     float64 `json:"percent,omitempty"`
+	Phase       string  `json:"phase,omitempty"`
 }
 
 var (
@@ -71,6 +85,9 @@ type progressWriter struct {
 	lastEmit      time.Time
 	minInterval   time.Duration
 	inVideoStream bool
+	startedAt     time.Time
+	wallClock     bool
+	phase         string
 }
 
 func newProgressWriter(w io.Writer, onProgress func(Progress)) *progressWriter {
@@ -79,6 +96,14 @@ func newProgressWriter(w io.Writer, onProgress func(Progress)) *progressWriter {
 		onProgress:  onProgress,
 		minInterval: time.Second,
 	}
+}
+
+func newFFmpegProgressWriter(w io.Writer, onProgress func(Progress), phase string) *progressWriter {
+	pw := newProgressWriter(w, onProgress)
+	pw.startedAt = time.Now()
+	pw.wallClock = true
+	pw.phase = phase
+	return pw
 }
 
 func (pw *progressWriter) Write(p []byte) (int, error) {
@@ -202,6 +227,12 @@ func (pw *progressWriter) parseLine(line string) {
 	// Compute percent
 	if pw.current.TotalFrames > 0 && pw.current.Frame > 0 {
 		pw.current.Percent = float64(pw.current.Frame) / float64(pw.current.TotalFrames) * 100
+	}
+	if pw.wallClock {
+		pw.current.Elapsed = FormatDuration(time.Since(pw.startedAt))
+	}
+	if pw.phase != "" {
+		pw.current.Phase = pw.phase
 	}
 
 	// Rate-limit emissions (block boundary always emits)
