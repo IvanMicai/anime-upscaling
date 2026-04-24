@@ -3,8 +3,6 @@ package process
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -18,9 +16,8 @@ import (
 
 // RunCustomPipelineForFile executes all pipeline steps sequentially for a single file.
 // It acquires/releases GPU and FFmpeg queue slots as needed per step.
-// sourceDir is the directory the first step reads from. outputDir, if non-empty,
-// is where the final file is moved after the last step (if different from the last
-// step's canonical output).
+// sourceDir is the directory the first step reads from; each step writes to its
+// canonical output folder (output/, interpolated/, optimized/).
 func RunCustomPipelineForFile(
 	ctx context.Context,
 	cfg config.Config,
@@ -31,7 +28,6 @@ func RunCustomPipelineForFile(
 	filename string,
 	index int,
 	sourceDir string,
-	outputDir string,
 	onEvent func(logger.JobLog),
 	onProgress func(runner.Progress),
 ) bool {
@@ -201,66 +197,8 @@ func RunCustomPipelineForFile(
 		}
 	}
 
-	// If the caller requested a custom final output folder, move the resulting
-	// file from the last step's canonical directory to outputDir.
-	if outputDir != "" && filepath.Clean(outputDir) != filepath.Clean(currentInputDir) {
-		if err := moveFinalOutput(currentInputDir, outputDir, filename); err != nil {
-			onEvent(logger.JobLog{
-				Source: "PIPELINE", Level: "ERRO", Index: index,
-				Message: fmt.Sprintf("Falha ao mover para %s/: %s (%v)", dirToSource(cfg, outputDir), filename, err),
-				Time:    time.Now(),
-			})
-			return false
-		}
-		onEvent(logger.JobLog{
-			Source: "PIPELINE", Level: "INFO", Index: index,
-			Message: fmt.Sprintf("Movido para %s/: %s", dirToSource(cfg, outputDir), filename),
-			Time:    time.Now(),
-		})
-	}
-
 	onEvent(logger.JobLog{Source: "PIPELINE", Level: "OK", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
 	return true
-}
-
-// moveFinalOutput moves a file from srcDir/name to dstDir/name. Tries rename first
-// (atomic when on the same filesystem), falls back to copy+delete across devices.
-func moveFinalOutput(srcDir, dstDir, name string) error {
-	srcPath := filepath.Join(srcDir, name)
-	dstPath := filepath.Join(dstDir, name)
-
-	if err := os.MkdirAll(dstDir, 0755); err != nil {
-		return fmt.Errorf("mkdir %s: %w", dstDir, err)
-	}
-
-	if err := os.Rename(srcPath, dstPath); err == nil {
-		return nil
-	}
-
-	// Cross-device fallback: copy then delete.
-	src, err := os.Open(srcPath)
-	if err != nil {
-		return fmt.Errorf("open src: %w", err)
-	}
-	defer src.Close()
-
-	dst, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return fmt.Errorf("create dst: %w", err)
-	}
-	if _, err := io.Copy(dst, src); err != nil {
-		dst.Close()
-		os.Remove(dstPath)
-		return fmt.Errorf("copy: %w", err)
-	}
-	if err := dst.Close(); err != nil {
-		os.Remove(dstPath)
-		return fmt.Errorf("close dst: %w", err)
-	}
-	if err := os.Remove(srcPath); err != nil {
-		return fmt.Errorf("remove src: %w", err)
-	}
-	return nil
 }
 
 // dirToSource converts an absolute directory path back to the source name used by OptimizeFile.
