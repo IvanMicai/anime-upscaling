@@ -12,6 +12,13 @@ export type FolderKey = keyof typeof FOLDER_COLORS;
 
 export const COLUMN_ORDER: FolderKey[] = ["input", "output", "interpolated", "optimized"];
 
+export const FOLDER_OPTIONS: { value: FolderKey; label: string }[] = [
+  { value: "input", label: "Input" },
+  { value: "output", label: "Output (upscaled)" },
+  { value: "interpolated", label: "Interpolated" },
+  { value: "optimized", label: "Optimized" },
+];
+
 export interface FolderEntry {
   key: FolderKey;
   exists: boolean;

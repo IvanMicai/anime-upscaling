@@ -118,7 +118,7 @@ export interface FilesResponse {
 export interface CreateJobRequest {
   type: JobType;
   files?: string[];
-  source?: "input" | "output" | "optimized";
+  source?: "input" | "output" | "optimized" | "interpolated";
   // Upscale
   scale?: 2 | 3 | 4;
   processor?: UpscaleProcessor;
@@ -334,5 +334,7 @@ export interface UpdatePipelineRequest {
 
 export interface RunPipelineRequest {
   files?: string[];
+  source?: "input" | "output" | "optimized" | "interpolated";
+  output?: "input" | "output" | "optimized" | "interpolated";
 }
 

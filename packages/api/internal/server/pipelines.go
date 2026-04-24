@@ -148,35 +148,55 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 	}
 
 	var req struct {
-		Files []string `json:"files"`
+		Files  []string `json:"files"`
+		Source string   `json:"source"`
+		Output string   `json:"output"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
 
-	// Resolve files from input/
+	if req.Source == "" {
+		req.Source = "input"
+	}
+	sourceDir, ok := resolveFolder(cfg, req.Source)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source (must be input, output, interpolated, or optimized)"})
+		return
+	}
+
+	var outputDir string
+	if req.Output != "" {
+		outputDir, ok = resolveFolder(cfg, req.Output)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid output (must be input, output, interpolated, or optimized)"})
+			return
+		}
+	}
+
+	// Resolve files from source dir
 	if len(req.Files) == 0 {
-		all, err := files.ListVideos(cfg.InputDir, cfg.VideoExts)
+		all, err := files.ListVideos(sourceDir, cfg.VideoExts)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list files"})
 			return
 		}
 		if len(all) == 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no video files found in input/"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("no video files found in %s/", req.Source)})
 			return
 		}
 		req.Files = all
 	} else {
 		for _, f := range req.Files {
-			if !files.FileExists(filepath.Join(cfg.InputDir, f)) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("file not found in input/: %s", f)})
+			if !files.FileExists(filepath.Join(sourceDir, f)) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("file not found in %s/: %s", req.Source, f)})
 				return
 			}
 		}
 	}
 
-	job := jm.StartPipelineJob(p.Name, p.Steps, req.Files)
+	job := jm.StartPipelineJob(p.Name, p.Steps, req.Files, sourceDir, outputDir)
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":            job.ID,
