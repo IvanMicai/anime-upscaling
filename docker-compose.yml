@@ -27,6 +27,7 @@ services:
     env_file: .env
     environment:
       - PORT=${APP_PORT:-4750}
+      - API_URL=http://api:${API_PORT:-4751}
     ports:
       - "${APP_PORT:-4750}:${APP_PORT:-4750}"
     depends_on:

@@ -9,7 +9,10 @@ export function usePoll<T>(
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
+
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  }, [fetcher]);
 
   const doFetch = useCallback(async () => {
     try {
@@ -25,7 +28,7 @@ export function usePoll<T>(
     doFetch();
     const id = setInterval(doFetch, intervalMs);
     return () => clearInterval(id);
-  }, [doFetch, intervalMs]);
+  }, [doFetch, fetcher, intervalMs]);
 
   return { data, error, refresh: doFetch };
 }

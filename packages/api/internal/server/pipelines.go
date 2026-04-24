@@ -25,7 +25,7 @@ func handlePipelines(ps *pipeline.Store) http.HandlerFunc {
 
 		case http.MethodPost:
 			var req struct {
-				Name  string              `json:"name"`
+				Name  string                  `json:"name"`
 				Steps []pipeline.PipelineStep `json:"steps"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -87,7 +87,7 @@ func handlePipelineRoutes(ps *pipeline.Store, jm *JobManager, cfg config.Config)
 
 			case http.MethodPut:
 				var req struct {
-					Name  *string              `json:"name"`
+					Name  *string                 `json:"name"`
 					Steps []pipeline.PipelineStep `json:"steps"`
 				}
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -179,6 +179,10 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 		req.Files = all
 	} else {
 		for _, f := range req.Files {
+			if !files.SafeVideoFilename(f, cfg.VideoExts) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid filename: %s", f)})
+				return
+			}
 			if !files.FileExists(filepath.Join(sourceDir, f)) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("file not found in %s/: %s", req.Source, f)})
 				return
