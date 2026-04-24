@@ -1,21 +1,24 @@
 # Anime Upscaling API
 
-Go HTTP API for managing video upscaling and optimization jobs using Docker containers (video2x, ffmpeg).
+Go HTTP API for managing video upscaling and optimization jobs with video2x
+and FFmpeg.
 
-**Base URL:** `http://localhost:4751`
+**Base URL:** `http://localhost:4751` when running the API directly. In the
+default Docker Compose stack, the API is private to the Compose network and the
+web app proxies browser requests to it.
 
 ## Configuration
 
 | Setting | Value |
 |---------|-------|
-| Port | `4751` |
-| Base directory | `/mnt/SSD2/process` |
+| Port | `API_PORT`, default `4751` |
+| Base directory | `PROCESS_DIR`, default `/data` |
 | Input directory | `{BaseDir}/input` |
 | Output directory | `{BaseDir}/output` |
 | Optimized directory | `{BaseDir}/optimized` |
 | Interpolated directory | `{BaseDir}/interpolated` |
 | Supported extensions | `.mkv`, `.mp4`, `.avi` |
-| CORS | All origins (`*`), methods `GET, POST, PUT, DELETE, OPTIONS` |
+| CORS | All origins (`*`), methods `GET, POST, PUT, DELETE, OPTIONS`. Keep the API on a trusted private network. |
 
 ## Endpoints
 
