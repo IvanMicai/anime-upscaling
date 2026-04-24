@@ -110,7 +110,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
       })
       .catch(() => setFiles([]))
       .finally(() => setLoading(false));
-  }, [dir]);
+  }, [dir, onChange, resetLastClicked]);
 
   function handleRefresh() {
     setRefreshing(true);

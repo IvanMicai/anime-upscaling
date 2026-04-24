@@ -32,15 +32,15 @@ type VideoFile struct {
 	InterpolatedHeight int    `json:"interpolated_height,omitempty"`
 
 	Audio                 []runner.AudioTrack    `json:"audio,omitempty"`
-	Subtitles             []runner.SubtitleTrack  `json:"subtitles,omitempty"`
+	Subtitles             []runner.SubtitleTrack `json:"subtitles,omitempty"`
 	InputAudio            []runner.AudioTrack    `json:"input_audio,omitempty"`
-	InputSubtitles        []runner.SubtitleTrack  `json:"input_subtitles,omitempty"`
+	InputSubtitles        []runner.SubtitleTrack `json:"input_subtitles,omitempty"`
 	UpscaledAudio         []runner.AudioTrack    `json:"upscaled_audio,omitempty"`
-	UpscaledSubtitles     []runner.SubtitleTrack  `json:"upscaled_subtitles,omitempty"`
+	UpscaledSubtitles     []runner.SubtitleTrack `json:"upscaled_subtitles,omitempty"`
 	OptimizedAudio        []runner.AudioTrack    `json:"optimized_audio,omitempty"`
-	OptimizedSubtitles    []runner.SubtitleTrack  `json:"optimized_subtitles,omitempty"`
+	OptimizedSubtitles    []runner.SubtitleTrack `json:"optimized_subtitles,omitempty"`
 	InterpolatedAudio     []runner.AudioTrack    `json:"interpolated_audio,omitempty"`
-	InterpolatedSubtitles []runner.SubtitleTrack  `json:"interpolated_subtitles,omitempty"`
+	InterpolatedSubtitles []runner.SubtitleTrack `json:"interpolated_subtitles,omitempty"`
 }
 
 func ListVideos(dir string, exts []string) ([]string, error) {
@@ -171,7 +171,7 @@ type DeleteItem struct {
 	Folders []string `json:"folders"`
 }
 
-func DeleteFiles(items []DeleteItem, inputDir, outputDir, optimizedDir, interpolatedDir string) (int, []string) {
+func DeleteFiles(items []DeleteItem, inputDir, outputDir, optimizedDir, interpolatedDir string, exts []string) (int, []string) {
 	folderDirs := map[string]string{
 		"input":        inputDir,
 		"output":       outputDir,
@@ -183,6 +183,10 @@ func DeleteFiles(items []DeleteItem, inputDir, outputDir, optimizedDir, interpol
 	var errors []string
 
 	for _, item := range items {
+		if !SafeVideoFilename(item.Name, exts) {
+			errors = append(errors, fmt.Sprintf("invalid filename %q", item.Name))
+			continue
+		}
 		for _, folder := range item.Folders {
 			dir, ok := folderDirs[folder]
 			if !ok {
@@ -204,4 +208,23 @@ func DeleteFiles(items []DeleteItem, inputDir, outputDir, optimizedDir, interpol
 func FileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func SafeVideoFilename(name string, exts []string) bool {
+	if name == "" || strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
+		return false
+	}
+	if filepath.Base(name) != name {
+		return false
+	}
+	if len(exts) == 0 {
+		return true
+	}
+	ext := strings.ToLower(filepath.Ext(name))
+	for _, allowed := range exts {
+		if ext == strings.ToLower(allowed) {
+			return true
+		}
+	}
+	return false
 }
