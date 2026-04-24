@@ -20,11 +20,11 @@ import (
 type logEntry = logger.JobLog
 
 type JobProgress struct {
-	Total      int                          `json:"total"`
-	Completed  int                          `json:"completed"`
-	Failed     int                          `json:"failed"`
-	Skipped    int                          `json:"skipped"`
-	Current    string                       `json:"current"`
+	Total      int                         `json:"total"`
+	Completed  int                         `json:"completed"`
+	Failed     int                         `json:"failed"`
+	Skipped    int                         `json:"skipped"`
+	Current    string                      `json:"current"`
 	Containers map[string]*runner.Progress `json:"containers,omitempty"`
 }
 
@@ -128,6 +128,24 @@ func (j *Job) addLog(e logEntry) {
 		default:
 		}
 	}
+}
+
+func (j *Job) finish(ctx context.Context) {
+	j.mu.Lock()
+	now := time.Now().UTC()
+	j.FinishedAt = &now
+	if ctx.Err() != nil {
+		j.Status = "cancelled"
+	} else if j.Progress.Failed > 0 {
+		j.Status = "failed"
+	} else {
+		j.Status = "completed"
+	}
+	for _, ch := range j.listeners {
+		close(ch)
+	}
+	j.listeners = nil
+	j.mu.Unlock()
 }
 
 // setRunningOnce transitions the job from "queued" to "running" exactly once.
@@ -473,20 +491,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 
 		wg.Wait()
 
-		job.mu.Lock()
-		now := time.Now().UTC()
-		job.FinishedAt = &now
-		if ctx.Err() != nil {
-			job.Status = "cancelled"
-		} else {
-			job.Status = "completed"
-		}
-		// Close all listener channels to signal end
-		for _, ch := range job.listeners {
-			close(ch)
-		}
-		job.listeners = nil
-		job.mu.Unlock()
+		job.finish(ctx)
 	}()
 
 	return job
@@ -545,19 +550,7 @@ func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.Pipe
 
 		wg.Wait()
 
-		job.mu.Lock()
-		now := time.Now().UTC()
-		job.FinishedAt = &now
-		if ctx.Err() != nil {
-			job.Status = "cancelled"
-		} else {
-			job.Status = "completed"
-		}
-		for _, ch := range job.listeners {
-			close(ch)
-		}
-		job.listeners = nil
-		job.mu.Unlock()
+		job.finish(ctx)
 	}()
 
 	return job

@@ -76,7 +76,7 @@ func handleFileDownload(cfg config.Config) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid dir"})
 			return
 		}
-		if name == "" || strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
+		if !files.SafeVideoFilename(name, cfg.VideoExts) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid filename"})
 			return
 		}
@@ -127,7 +127,7 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no items to delete"})
 				return
 			}
-			deleted, errs := files.DeleteFiles(body.Items, cfg.InputDir, cfg.OutputDir, cfg.OptimizedDir, cfg.InterpolatedDir)
+			deleted, errs := files.DeleteFiles(body.Items, cfg.InputDir, cfg.OutputDir, cfg.OptimizedDir, cfg.InterpolatedDir, cfg.VideoExts)
 			// Invalidate cache after deletion
 			if deleted > 0 {
 				if err := cache.BuildFileStatusCache(cfg); err != nil {
@@ -266,10 +266,14 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 			}
 		}
 
-		writeJSON(w, http.StatusOK, map[string]interface{}{
+		resp := map[string]interface{}{
 			"dir":   dir,
 			"files": videoFiles,
-		})
+		}
+		if info, err := os.Stat(cachePath); err == nil {
+			resp["cached_at"] = info.ModTime().UTC()
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
@@ -452,6 +456,10 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 	} else {
 		// Validate each file exists
 		for _, f := range req.Files {
+			if !files.SafeVideoFilename(f, cfg.VideoExts) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid filename: %s", f)})
+				return
+			}
 			if !files.FileExists(filepath.Join(sourceDir, f)) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("file not found in %s/: %s", req.Source, f)})
 				return
