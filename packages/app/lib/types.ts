@@ -335,6 +335,5 @@ export interface UpdatePipelineRequest {
 export interface RunPipelineRequest {
   files?: string[];
   source?: "input" | "output" | "optimized" | "interpolated";
-  output?: "input" | "output" | "optimized" | "interpolated";
 }
 

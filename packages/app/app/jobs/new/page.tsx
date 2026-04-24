@@ -17,7 +17,6 @@ import {
 import { FilePicker } from "@/components/file-picker";
 import { createJob, getPipelines, getSettings, runPipeline } from "@/lib/api";
 import { FOLDER_OPTIONS, type FolderKey } from "@/lib/file-utils";
-import { computeFinalCanonicalFolder } from "@/components/pipeline-preview";
 import type { GPUVendor, JobType, Pipeline, UpscaleProcessor, QualityPreset, PipelineStep } from "@/lib/types";
 import {
   PROCESSOR_OPTIONS,
@@ -37,7 +36,6 @@ export default function NewJobPage() {
   const router = useRouter();
   const [type, setType] = useState<JobType>("upscale");
   const [source, setSource] = useState<FolderKey>("input");
-  const [output, setOutput] = useState<FolderKey>("output");
   // Upscale
   const [scale, setScale] = useState<2 | 3 | 4>(2);
   const [processor, setProcessor] = useState<UpscaleProcessor>("realesrgan");
@@ -81,8 +79,6 @@ export default function NewJobPage() {
       const pipelineId = v.substring("pipeline:".length);
       setSelectedPipelineId(pipelineId);
       setSource("input");
-      const p = pipelines.find((x) => x.id === pipelineId);
-      if (p) setOutput(computeFinalCanonicalFolder(p.steps));
       return;
     }
     setSelectedPipelineId(null);
@@ -122,7 +118,7 @@ export default function NewJobPage() {
     setError(null);
     try {
       if (selectedPipelineId) {
-        await runPipeline(selectedPipelineId, { files, source, output });
+        await runPipeline(selectedPipelineId, { files, source });
       } else {
         await createJob({
           type,
@@ -218,20 +214,6 @@ export default function NewJobPage() {
               </SelectContent>
             </Select>
           </Field>
-          {isPipelineSelected && (
-            <Field label="Pasta de destino">
-              <Select value={output} onValueChange={(v) => setOutput(v as FolderKey)}>
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FOLDER_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          )}
         </div>
 
         {!isPipelineSelected && (

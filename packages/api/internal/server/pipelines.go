@@ -150,7 +150,6 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 	var req struct {
 		Files  []string `json:"files"`
 		Source string   `json:"source"`
-		Output string   `json:"output"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -164,15 +163,6 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source (must be input, output, interpolated, or optimized)"})
 		return
-	}
-
-	var outputDir string
-	if req.Output != "" {
-		outputDir, ok = resolveFolder(cfg, req.Output)
-		if !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid output (must be input, output, interpolated, or optimized)"})
-			return
-		}
 	}
 
 	// Resolve files from source dir
@@ -196,7 +186,7 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 		}
 	}
 
-	job := jm.StartPipelineJob(p.Name, p.Steps, req.Files, sourceDir, outputDir)
+	job := jm.StartPipelineJob(p.Name, p.Steps, req.Files, sourceDir)
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":            job.ID,

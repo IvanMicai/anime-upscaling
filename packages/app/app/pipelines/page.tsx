@@ -28,7 +28,6 @@ import {
   formatStateLabel,
   formatSizeEstimate,
   formatStepSummary,
-  computeFinalCanonicalFolder,
 } from "@/components/pipeline-preview";
 
 export default function PipelinesPage() {
@@ -37,7 +36,6 @@ export default function PipelinesPage() {
   const [runTarget, setRunTarget] = useState<Pipeline | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [source, setSource] = useState<FolderKey>("input");
-  const [output, setOutput] = useState<FolderKey>("output");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +53,7 @@ export default function PipelinesPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await runPipeline(runTarget.id, { files, source, output });
+      await runPipeline(runTarget.id, { files, source });
       setRunTarget(null);
       router.push("/");
     } catch (err) {
@@ -121,7 +119,6 @@ export default function PipelinesPage() {
                         setSelectedFiles([]);
                         setError(null);
                         setSource("input");
-                        setOutput(computeFinalCanonicalFolder(p.steps));
                         setRunTarget(p);
                       }}
                     >
@@ -155,33 +152,18 @@ export default function PipelinesPage() {
           <DialogHeader>
             <DialogTitle>Executar: {runTarget?.name}</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Pasta de origem</label>
-              <Select value={source} onValueChange={(v) => setSource(v as FolderKey)}>
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FOLDER_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Pasta de destino</label>
-              <Select value={output} onValueChange={(v) => setOutput(v as FolderKey)}>
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FOLDER_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Pasta de origem</label>
+            <Select value={source} onValueChange={(v) => setSource(v as FolderKey)}>
+              <SelectTrigger className="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {FOLDER_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex-1 min-h-0 overflow-auto">
             <FilePicker selected={selectedFiles} onChange={setSelectedFiles} dir={source} />

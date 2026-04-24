@@ -492,7 +492,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 	return job
 }
 
-func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.PipelineStep, files []string, sourceDir, outputDir string) *Job {
+func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.PipelineStep, files []string, sourceDir string) *Job {
 	sort.Strings(files)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -539,7 +539,7 @@ func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.Pipe
 			go func() {
 				defer wg.Done()
 				job.setRunningOnce()
-				process.RunCustomPipelineForFile(ctx, cfg, r, gpuQ, ffmpegQ, steps, filename, idx, sourceDir, outputDir, onEvent, onProgress)
+				process.RunCustomPipelineForFile(ctx, cfg, r, gpuQ, ffmpegQ, steps, filename, idx, sourceDir, onEvent, onProgress)
 			}()
 		}
 
