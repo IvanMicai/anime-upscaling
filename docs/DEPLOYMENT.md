@@ -68,6 +68,28 @@ NVIDIA GPU stack:
 docker compose -f docker-compose.yml -f docker-compose.nvidia.yml up -d --build
 ```
 
+Published Docker Hub images can be used instead of local builds after a release
+has been created. Add the Docker Hub namespace and image tag to `.env`:
+
+```bash
+DOCKERHUB_NAMESPACE=my-user
+IMAGE_TAG=1.2.3
+```
+
+Then start the stack from published images:
+
+```bash
+docker compose -f docker-compose.hub.yml pull
+docker compose -f docker-compose.hub.yml up -d
+```
+
+For NVIDIA GPU processing with published images:
+
+```bash
+docker compose -f docker-compose.hub.yml -f docker-compose.nvidia.yml pull
+docker compose -f docker-compose.hub.yml -f docker-compose.nvidia.yml up -d
+```
+
 View logs:
 
 ```bash
@@ -119,6 +141,13 @@ Use HTTPS whenever the app is reachable outside localhost or a VPN.
 git pull
 docker compose pull
 docker compose up -d --build
+```
+
+When using published Docker Hub images, update `IMAGE_TAG`, then run:
+
+```bash
+docker compose -f docker-compose.hub.yml pull
+docker compose -f docker-compose.hub.yml up -d
 ```
 
 Back up the media directory before upgrades if it contains pipelines, runtime

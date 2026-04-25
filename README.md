@@ -119,6 +119,7 @@ make dev
 ## Documentation
 
 - [Deployment guide](docs/DEPLOYMENT.md)
+- [Releasing guide](docs/RELEASING.md)
 - [API reference](packages/api/README.md)
 - [App notes](packages/app/README.md)
 - [Contributing](CONTRIBUTING.md)

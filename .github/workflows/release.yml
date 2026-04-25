@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+env:
+  API_IMAGE_NAME: anime-upscaling-api
+  APP_IMAGE_NAME: anime-upscaling-app
+  DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: packages/api/go.mod
+
+      - name: Test API
+        run: go test ./...
+        working-directory: packages/api
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.22.0 --activate
+
+      - name: Install app dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: packages/app
+
+      - name: Lint app
+        run: pnpm lint
+        working-directory: packages/app
+
+      - name: Build app
+        run: pnpm build
+        working-directory: packages/app
+
+  release:
+    name: Release and publish images
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Validate Docker Hub configuration
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          test -n "$DOCKERHUB_NAMESPACE" || (echo "Set the DOCKERHUB_NAMESPACE repository variable." && exit 1)
+          test -n "$DOCKERHUB_USERNAME" || (echo "Set the DOCKERHUB_USERNAME secret." && exit 1)
+          test -n "$DOCKERHUB_TOKEN" || (echo "Set the DOCKERHUB_TOKEN secret." && exit 1)
+
+      - name: Semantic release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v6
+        with:
+          semantic_version: 25
+          extra_plugins: |
+            conventional-changelog-conventionalcommits@9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Stop when no release is required
+        if: steps.semantic.outputs.new_release_published != 'true'
+        run: echo "No release was published for this push."
+
+      - name: Set up Docker Buildx
+        if: steps.semantic.outputs.new_release_published == 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        if: steps.semantic.outputs.new_release_published == 'true'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push API image
+        if: steps.semantic.outputs.new_release_published == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: packages/api
+          file: packages/api/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}.${{ steps.semantic.outputs.new_release_minor_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.semantic.outputs.new_release_version }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      - name: Build and push app image
+        if: steps.semantic.outputs.new_release_published == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: packages/app
+          file: packages/app/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}.${{ steps.semantic.outputs.new_release_minor_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.semantic.outputs.new_release_version }}
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,scope=app,mode=max

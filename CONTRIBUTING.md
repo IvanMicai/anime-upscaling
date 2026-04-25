@@ -32,6 +32,7 @@ cd ../app && pnpm lint && pnpm build
 
 - Use English for documentation, comments, issue titles, and user-facing copy.
 - Keep changes scoped to one behavior or feature when possible.
+- Use Conventional Commit titles so releases can be versioned automatically.
 - Include tests when changing API behavior, job orchestration, file handling, or
   pipeline validation.
 - Update documentation when changing deployment, environment variables, CLI
@@ -48,3 +49,16 @@ Please include:
 - Actual behavior.
 - Relevant logs from `docker compose logs` or the job log view.
 - Host OS, Docker version, GPU vendor, and whether the NVIDIA overlay is used.
+
+## Commit Messages
+
+Release versions are calculated from commits merged into `main`:
+
+- `fix: ...` creates a patch release.
+- `perf: ...` creates a patch release.
+- `feat: ...` creates a minor release.
+- `feat!: ...` or a `BREAKING CHANGE:` footer creates a major release.
+- `docs: ...`, `test: ...`, `refactor: ...`, `chore: ...`, and `ci: ...` do
+  not create a release by default.
+
+When using squash merge, the pull request title must follow the same convention.

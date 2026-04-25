@@ -1,0 +1,30 @@
+services:
+  api:
+    image: ${DOCKERHUB_NAMESPACE:?Set DOCKERHUB_NAMESPACE}/anime-upscaling-api:${IMAGE_TAG:-latest}
+    container_name: anime-upscaling-api
+    env_file: .env
+    environment:
+      - API_PORT=${API_PORT:-4751}
+      - PROCESS_DIR=${PROCESS_DIR:-/data}
+      - GPU_COUNT=${GPU_COUNT:-1}
+      - STREAMS_PER_GPU=${STREAMS_PER_GPU:-1}
+      - FFMPEG_STREAMS=${FFMPEG_STREAMS:-1}
+      - GPU_VENDOR=${GPU_VENDOR:-}
+    expose:
+      - "${API_PORT:-4751}"
+    volumes:
+      - ${HOST_PROCESS_DIR:-./data}:${PROCESS_DIR:-/data}
+    restart: unless-stopped
+
+  app:
+    image: ${DOCKERHUB_NAMESPACE:?Set DOCKERHUB_NAMESPACE}/anime-upscaling-app:${IMAGE_TAG:-latest}
+    container_name: anime-upscaling-app
+    env_file: .env
+    environment:
+      - PORT=${APP_PORT:-4750}
+      - API_URL=http://api:${API_PORT:-4751}
+    ports:
+      - "${APP_PORT:-4750}:${APP_PORT:-4750}"
+    depends_on:
+      - api
+    restart: unless-stopped
