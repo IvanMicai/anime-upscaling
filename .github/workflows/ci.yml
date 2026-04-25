@@ -13,12 +13,12 @@ jobs:
         working-directory: packages/api
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: "1.23.x"
+          go-version: "1.26.x"
           cache-dependency-path: packages/api/go.mod
 
       - name: Test
@@ -32,12 +32,12 @@ jobs:
         working-directory: packages/app
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Enable pnpm
         run: |

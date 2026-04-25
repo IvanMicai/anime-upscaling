@@ -19,7 +19,7 @@ optimization, integrity checks, and reusable processing pipelines.
 
 - Docker and Docker Compose.
 - For NVIDIA acceleration: a working NVIDIA driver and NVIDIA Container Toolkit.
-- For local development: Go 1.23+, Node.js 22+, and pnpm 10.
+- For local development: Go 1.26+, Node.js 24 LTS, and pnpm 10.
 
 ## Quick Start
 
