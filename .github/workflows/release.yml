@@ -14,7 +14,6 @@ permissions:
 env:
   API_IMAGE_NAME: anime-upscaling-api
   APP_IMAGE_NAME: anime-upscaling-app
-  DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
 
 jobs:
   validate:
@@ -60,6 +59,9 @@ jobs:
     name: Release and publish images
     runs-on: ubuntu-latest
     needs: validate
+    environment: production
+    env:
+      DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_NAMESPACE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
