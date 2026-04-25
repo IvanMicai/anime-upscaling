@@ -110,6 +110,33 @@ func ephemeralSuffix() string {
 	return strconv.FormatInt(time.Now().UnixNano(), 36)
 }
 
+type jobIDCtxKey struct{}
+
+// WithJobID returns ctx tagged with jobID so that downstream tracker
+// registrations record which job owns the spawned process. The API server
+// sets this on every job context; callers without a job (CLI subcommands)
+// pass plain contexts and registrations stay anonymous.
+func WithJobID(ctx context.Context, jobID string) context.Context {
+	if jobID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, jobIDCtxKey{}, jobID)
+}
+
+// JobIDFromContext returns the jobID set via WithJobID, or "" if none.
+func JobIDFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(jobIDCtxKey{}).(string)
+	return v
+}
+
+func registerForCtx(ctx context.Context, label string, cmd *exec.Cmd) {
+	if id := JobIDFromContext(ctx); id != "" {
+		tracker.registerForJob(label, cmd, id)
+	} else {
+		tracker.register(label, cmd)
+	}
+}
+
 type Runner struct {
 	cfg config.Config
 }
@@ -189,7 +216,7 @@ func (r *Runner) Video2x(ctx context.Context, gpuID, streamIdx int, filename, lo
 	cmd.Stderr = out
 
 	label := fmt.Sprintf("%svideo2x-gpu%d-s%d", ProcessPrefix, gpuID, streamIdx)
-	tracker.register(label, cmd)
+	registerForCtx(ctx, label, cmd)
 	defer tracker.unregister(label)
 
 	err = cmd.Run()
@@ -244,7 +271,7 @@ func (r *Runner) Video2xRife(ctx context.Context, gpuID, streamIdx int, filename
 	cmd.Stderr = out
 
 	label := fmt.Sprintf("%svideo2x-rife-gpu%d-s%d", ProcessPrefix, gpuID, streamIdx)
-	tracker.register(label, cmd)
+	registerForCtx(ctx, label, cmd)
 	defer tracker.unregister(label)
 
 	err = cmd.Run()
@@ -374,7 +401,7 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	if processName != "" {
 		label = ProcessPrefix + processName + "-" + ephemeralSuffix()
 	}
-	tracker.register(label, cmd)
+	registerForCtx(ctx, label, cmd)
 	defer tracker.unregister(label)
 
 	return runError(cmd.Run(), tail)
@@ -614,7 +641,7 @@ func (r *Runner) FFmpegDecode(ctx context.Context, relPath string, processName s
 	if processName != "" {
 		label = ProcessPrefix + "ffmpeg-" + processName + "-" + ephemeralSuffix()
 	}
-	tracker.register(label, cmd)
+	registerForCtx(ctx, label, cmd)
 	defer tracker.unregister(label)
 
 	err := cmd.Run()

@@ -331,9 +331,11 @@ func (m *JobManager) generateID() string {
 func (m *JobManager) StartJob(p StartJobParams) *Job {
 	sort.Strings(p.Files)
 	ctx, cancel := context.WithCancel(context.Background())
+	jobID := m.generateID()
+	ctx = runner.WithJobID(ctx, jobID)
 
 	job := &Job{
-		ID:          m.generateID(),
+		ID:          jobID,
 		Type:        p.Type,
 		Status:      "queued",
 		Source:      p.Source,
@@ -500,6 +502,8 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.PipelineStep, files []string, sourceDir string) *Job {
 	sort.Strings(files)
 	ctx, cancel := context.WithCancel(context.Background())
+	jobID := m.generateID()
+	ctx = runner.WithJobID(ctx, jobID)
 
 	source := "input"
 	if s := dirToSourceName(m.cfg, sourceDir); s != "" {
@@ -507,7 +511,7 @@ func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.Pipe
 	}
 
 	job := &Job{
-		ID:            m.generateID(),
+		ID:            jobID,
 		Type:          "custom_pipeline",
 		Status:        "queued",
 		Source:        source,
@@ -583,14 +587,7 @@ func (m *JobManager) CancelJob(id string) *Job {
 	job.mu.Lock()
 	if job.Status == "running" || job.Status == "queued" {
 		job.cancel()
-		// Stop video2x processes for upscale/pipeline/interpolate jobs
-		if job.Type == "upscale" || job.Type == "pipeline" || job.Type == "interpolate" || job.Type == "custom_pipeline" {
-			go func() { runner.StopByPrefix(runner.ProcessPrefix + "video2x-") }()
-		}
-		// Stop ffmpeg processes for optimize/pipeline/check/custom_pipeline jobs
-		if job.Type == "optimize" || job.Type == "pipeline" || job.Type == "check" || job.Type == "custom_pipeline" {
-			go func() { runner.StopByPrefix(runner.ProcessPrefix + "ffmpeg-") }()
-		}
+		go func() { runner.StopByJobID(job.ID) }()
 	}
 	job.mu.Unlock()
 
