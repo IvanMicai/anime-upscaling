@@ -210,7 +210,7 @@ export function FileBrowser() {
   const deleteTotal = getDeleteTotal();
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col flex-1 min-h-0 gap-3">
       {/* Directory tabs */}
       <Tabs value={dir} onValueChange={(v) => handleDirChange(v as FolderKey)}>
         <TabsList>
@@ -305,7 +305,7 @@ export function FileBrowser() {
         <p className="text-sm text-muted-foreground">No files found in {dir}/{path}.</p>
       ) : (
         <TooltipProvider>
-          <ScrollArea className="rounded-md border max-h-[calc(100vh-22rem)]">
+          <ScrollArea className="rounded-md border flex-1 min-h-0">
             <Table>
               <TableHeader>
                 <TableRow>
