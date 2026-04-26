@@ -40,6 +40,9 @@ export default function RootLayout({
               </p>
             </div>
             <div className="flex items-center gap-3 sm:gap-4">
+              <Link href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Jobs
+              </Link>
               <Link href="/pipelines" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Pipelines
               </Link>

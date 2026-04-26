@@ -48,6 +48,10 @@ Start with the NVIDIA GPU profile:
 docker compose -f docker-compose.yml -f docker-compose.nvidia.yml up -d --build
 ```
 
+For a fast Portainer setup, paste `docker-compose.portainer.yml` into a new
+stack and set the required environment variables. See
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#portainer-stack) for details.
+
 Open the web app at [http://localhost:4750](http://localhost:4750).
 
 Put source videos in `data/input`. Outputs are written to `data/output`,

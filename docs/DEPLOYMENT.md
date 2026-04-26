@@ -102,6 +102,40 @@ Stop the stack:
 docker compose down
 ```
 
+### Portainer Stack
+
+`docker-compose.portainer.yml` is a single-file stack tailored for
+[Portainer](https://www.portainer.io/) deployments. It pulls the published
+Docker Hub images, bundles the NVIDIA GPU reservation inline (no overlay
+file), and exposes only the app port on the host.
+
+In Portainer:
+
+1. Go to **Stacks → Add stack**.
+2. Choose **Web editor** and paste the contents of
+   `docker-compose.portainer.yml` (or use **Repository** and point it at this
+   repo with `docker-compose.portainer.yml` as the compose path).
+3. Under **Environment variables**, set at least:
+
+   ```bash
+   AUTH_PASSWORD=replace-this-password
+   AUTH_SECRET=replace-with-output-of-openssl-rand-hex-32
+   HOST_PROCESS_DIR=/absolute/path/on/host
+   PROCESS_DIR=/absolute/path/on/host
+   ```
+
+   `HOST_PROCESS_DIR` and `PROCESS_DIR` should match so the host and container
+   see the media directory at the same path. Optionally override `APP_PORT`,
+   `API_PORT`, `IMAGE_TAG`, `GPU_COUNT`, `STREAMS_PER_GPU`, `FFMPEG_STREAMS`,
+   or `GPU_VENDOR`.
+
+4. Deploy the stack. The web app is reachable on `APP_PORT` (default `4750`);
+   the API stays internal to the stack network.
+
+The host needs the NVIDIA driver and NVIDIA Container Toolkit installed for
+the GPU reservation to start. Drop the `deploy.resources` block in the editor
+if you want to run CPU-only.
+
 ## 4. Add Media
 
 Place input videos in:
