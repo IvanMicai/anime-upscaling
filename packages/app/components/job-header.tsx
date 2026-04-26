@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
-import { cancelJob } from "@/lib/api";
+import { cancelJob, deleteJob } from "@/lib/api";
 import type { Job } from "@/lib/types";
 
 function formatTime(iso: string | null) {
@@ -19,7 +20,9 @@ interface JobHeaderProps {
 }
 
 export function JobHeader({ job, onCancelled }: JobHeaderProps) {
+  const router = useRouter();
   const [cancelling, setCancelling] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   async function handleCancel() {
     setCancelling(true);
@@ -30,6 +33,23 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
       // ignore — poll will catch up
     } finally {
       setCancelling(false);
+    }
+  }
+
+  async function handleRemove() {
+    const active = job.status === "running" || job.status === "queued";
+    const message = active
+      ? "Cancel this running job and remove it?"
+      : "Remove this job?";
+    if (!window.confirm(message)) return;
+    setRemoving(true);
+    router.push("/");
+    try {
+      await deleteJob(job.id);
+    } catch (err) {
+      window.alert(
+        `Failed to remove job: ${err instanceof Error ? err.message : "unknown error"}`,
+      );
     }
   }
 
@@ -56,6 +76,14 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
               {cancelling ? "Cancelling..." : "Cancel"}
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRemove}
+            disabled={removing}
+          >
+            {removing ? "Removing..." : "Remove"}
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">

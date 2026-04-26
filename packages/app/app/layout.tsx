@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { LogoutButton } from "@/components/logout-button";
+import { NavLink } from "@/components/nav-link";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -40,15 +41,12 @@ export default function RootLayout({
               </p>
             </div>
             <div className="flex items-center gap-3 sm:gap-4">
-              <Link href="/pipelines" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Pipelines
-              </Link>
-              <Link href="/files" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Files
-              </Link>
-              <Link href="/settings" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Settings
-              </Link>
+              <NavLink href="/" matchPrefixes={["/jobs"]}>
+                Jobs
+              </NavLink>
+              <NavLink href="/pipelines">Pipelines</NavLink>
+              <NavLink href="/files">Files</NavLink>
+              <NavLink href="/settings">Settings</NavLink>
               <LogoutButton />
             </div>
           </header>

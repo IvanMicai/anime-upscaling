@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -582,11 +583,14 @@ func handleJobRoutes(jm *JobManager) http.HandlerFunc {
 
 		switch sub {
 		case "":
-			if r.Method != http.MethodGet {
+			switch r.Method {
+			case http.MethodGet:
+				handleGetJob(jm, id, w, r)
+			case http.MethodDelete:
+				handleDeleteJob(jm, id, w, r)
+			default:
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
 			}
-			handleGetJob(jm, id, w, r)
 		case "logs":
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -721,6 +725,20 @@ func handleCancelJob(jm *JobManager, id string, w http.ResponseWriter, r *http.R
 		"id":     snap.ID,
 		"status": snap.Status,
 	})
+}
+
+func handleDeleteJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Request) {
+	err := jm.DeleteJob(id)
+	switch {
+	case err == nil:
+		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, ErrJobNotFound):
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
+	case errors.Is(err, ErrJobShutdownTimeout):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+	default:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

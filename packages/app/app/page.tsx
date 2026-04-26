@@ -7,7 +7,7 @@ import { JobList } from "@/components/job-list";
 import { Button } from "@/components/ui/button";
 
 export default function DashboardPage() {
-  const { data: jobs, error } = usePoll(getJobs, 3000);
+  const { data: jobs, error, refresh } = usePoll(getJobs, 3000);
 
   return (
     <div className="space-y-6">
@@ -22,7 +22,7 @@ export default function DashboardPage() {
           Failed to load jobs: {error}
         </p>
       )}
-      <JobList jobs={jobs ?? []} />
+      <JobList jobs={jobs ?? []} onRemove={refresh} />
     </div>
   );
 }

@@ -19,6 +19,9 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(body.error || res.statusText);
   }
+  if (res.status === 204) {
+    return undefined as T;
+  }
   return res.json();
 }
 
@@ -49,6 +52,10 @@ export function cancelJob(id: string): Promise<CancelJobResponse> {
   return fetchJSON<CancelJobResponse>(`/api/jobs/${id}/cancel`, {
     method: "POST",
   });
+}
+
+export function deleteJob(id: string): Promise<void> {
+  return fetchJSON<void>(`/api/jobs/${id}`, { method: "DELETE" });
 }
 
 export function deleteFiles(req: DeleteFilesRequest): Promise<DeleteFilesResponse> {

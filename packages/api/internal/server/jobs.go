@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -14,6 +15,11 @@ import (
 	"anime-upscaling/internal/process"
 	"anime-upscaling/internal/queue"
 	"anime-upscaling/internal/runner"
+)
+
+var (
+	ErrJobNotFound        = errors.New("job not found")
+	ErrJobShutdownTimeout = errors.New("job did not stop in time")
 )
 
 // logEntry is a type alias for logger.JobLog used within the server package.
@@ -57,6 +63,7 @@ type Job struct {
 	CreatedAt     time.Time               `json:"created_at"`
 	FinishedAt    *time.Time              `json:"finished_at,omitempty"`
 	cancel        context.CancelFunc
+	done          chan struct{}
 	mu            sync.Mutex
 	listeners     []chan logEntry
 }
@@ -145,7 +152,15 @@ func (j *Job) finish(ctx context.Context) {
 		close(ch)
 	}
 	j.listeners = nil
+	done := j.done
 	j.mu.Unlock()
+	if done != nil {
+		select {
+		case <-done:
+		default:
+			close(done)
+		}
+	}
 }
 
 // setRunningOnce transitions the job from "queued" to "running" exactly once.
@@ -359,6 +374,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 		Progress:    JobProgress{Total: len(p.Files)},
 		CreatedAt:   time.Now().UTC(),
 		cancel:      cancel,
+		done:        make(chan struct{}),
 	}
 
 	m.mu.Lock()
@@ -521,6 +537,7 @@ func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.Pipe
 		Progress:      JobProgress{Total: len(files)},
 		CreatedAt:     time.Now().UTC(),
 		cancel:        cancel,
+		done:          make(chan struct{}),
 	}
 
 	m.mu.Lock()
@@ -574,6 +591,43 @@ func (m *JobManager) ListJobs() []Job {
 		list = append(list, j.snapshot())
 	}
 	return list
+}
+
+// DeleteJob cancels the job (if running/queued), waits for it to terminate,
+// then removes it from the manager. Returns ErrJobNotFound if the id is unknown
+// or ErrJobShutdownTimeout if the job did not stop within the timeout.
+func (m *JobManager) DeleteJob(id string) error {
+	m.mu.RLock()
+	job := m.jobs[id]
+	m.mu.RUnlock()
+	if job == nil {
+		return ErrJobNotFound
+	}
+
+	job.mu.Lock()
+	active := job.Status == "running" || job.Status == "queued"
+	done := job.done
+	if active {
+		job.cancel()
+	}
+	job.mu.Unlock()
+
+	if active {
+		go func() { runner.StopByJobID(job.ID) }()
+	}
+
+	if done != nil {
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			return ErrJobShutdownTimeout
+		}
+	}
+
+	m.mu.Lock()
+	delete(m.jobs, id)
+	m.mu.Unlock()
+	return nil
 }
 
 func (m *JobManager) CancelJob(id string) *Job {
