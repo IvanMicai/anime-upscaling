@@ -41,6 +41,7 @@ type Job struct {
 	Source        string                  `json:"source"`
 	Scale         int                     `json:"scale"`
 	Resolution    int                     `json:"resolution"`
+	FrameRate     int                     `json:"frame_rate"`
 	Multiplier    int                     `json:"multiplier,omitempty"`
 	RifeModel     string                  `json:"rife_model,omitempty"`
 	SceneThresh   float64                 `json:"scene_thresh,omitempty"`
@@ -76,6 +77,7 @@ type StartJobParams struct {
 	SourceDir   string
 	Scale       int
 	Resolution  int
+	FrameRate   int
 	Multiplier  int
 	Threads     int
 	RifeModel   string
@@ -224,6 +226,7 @@ func (j *Job) snapshot() Job {
 		Source:        j.Source,
 		Scale:         j.Scale,
 		Resolution:    j.Resolution,
+		FrameRate:     j.FrameRate,
 		Multiplier:    j.Multiplier,
 		RifeModel:     j.RifeModel,
 		SceneThresh:   j.SceneThresh,
@@ -261,6 +264,7 @@ func (j *Job) snapshotWithLogs() Job {
 		Source:        j.Source,
 		Scale:         j.Scale,
 		Resolution:    j.Resolution,
+		FrameRate:     j.FrameRate,
 		Multiplier:    j.Multiplier,
 		RifeModel:     j.RifeModel,
 		SceneThresh:   j.SceneThresh,
@@ -356,6 +360,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 		Source:      p.Source,
 		Scale:       p.Scale,
 		Resolution:  p.Resolution,
+		FrameRate:   p.FrameRate,
 		Multiplier:  p.Multiplier,
 		RifeModel:   p.RifeModel,
 		SceneThresh: p.SceneThresh,
@@ -432,6 +437,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 			}
 			jobSource := p.Source
 			jobResolution := job.Resolution
+			jobFrameRate := job.FrameRate
 			jobThreads := job.Threads
 			useGPU := job.UseGPU && cfg.GPUVendor != "" && job.Codec != "copy" && job.Codec != "libvpx-vp9"
 			for i, f := range p.Files {
@@ -452,14 +458,14 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 						defer wg.Done()
 						defer m.gpuQ.Release(gpuID, streamIdx)
 						job.setRunningOnce()
-						process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, src, jobResolution, crf, jobThreads, stepOpts, onEvent, onProgress)
+						process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, src, jobResolution, jobFrameRate, crf, jobThreads, stepOpts, onEvent, onProgress)
 					}()
 				} else {
 					if err := m.ffmpegQ.Submit(ctx, func(slot int) {
 						defer wg.Done()
 						job.setRunningOnce()
 						ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
-						process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, ffSrc, jobResolution, crf, jobThreads, encOpts, onEvent, onProgress)
+						process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, ffSrc, jobResolution, jobFrameRate, crf, jobThreads, encOpts, onEvent, onProgress)
 					}); err != nil {
 						wg.Done()
 						break // ctx cancelled

@@ -270,6 +270,9 @@ func validateSteps(steps []pipeline.PipelineStep) error {
 			if s.Resolution != 0 && s.Resolution != 1 && s.Resolution != 2 && s.Resolution != 4 {
 				return fmt.Errorf("step %d: resolution must be 1, 2, or 4", i+1)
 			}
+			if s.FrameRate != 0 && s.FrameRate != 1 && s.FrameRate != 2 && s.FrameRate != 4 {
+				return fmt.Errorf("step %d: frame_rate must be 1, 2, or 4", i+1)
+			}
 			if s.Threads < 0 {
 				return fmt.Errorf("step %d: threads must be >= 0", i+1)
 			}

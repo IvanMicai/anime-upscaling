@@ -53,6 +53,7 @@ export default function NewJobPage() {
   const [pixFmt, setPixFmt] = useState<PipelineStep["pix_fmt"]>("yuv420p10le");
   const [audioCodec, setAudioCodec] = useState<PipelineStep["audio_codec"]>("copy");
   const [resolution, setResolution] = useState<1 | 2 | 4>(1);
+  const [frameRate, setFrameRate] = useState<1 | 2 | 4>(1);
   const [threads, setThreads] = useState(0);
   const [useGPU, setUseGPU] = useState(false);
   const [gpuVendor, setGpuVendor] = useState<GPUVendor>("");
@@ -108,6 +109,7 @@ export default function NewJobPage() {
         setPixFmt("yuv420p10le" as PipelineStep["pix_fmt"]);
         setAudioCodec("copy" as PipelineStep["audio_codec"]);
         setResolution(1);
+        setFrameRate(1);
         setThreads(0);
         setUseGPU(false);
         break;
@@ -144,7 +146,8 @@ export default function NewJobPage() {
             tune,
             pix_fmt: pixFmt,
             audio_codec: audioCodec,
-            resolution: resolution !== 1 ? resolution : undefined,
+            resolution: codec !== "copy" && resolution !== 1 ? resolution : undefined,
+            frame_rate: codec !== "copy" && frameRate !== 1 ? frameRate : undefined,
             threads: threads > 0 ? threads : undefined,
             use_gpu: useGPU || undefined,
           }),
@@ -372,6 +375,7 @@ export default function NewJobPage() {
                         setPreset("fast" as PipelineStep["preset"]);
                         setTune("animation" as PipelineStep["tune"]);
                         setPixFmt("yuv420p10le" as PipelineStep["pix_fmt"]);
+                        setFrameRate(1);
                       }
                     }}
                   >
@@ -514,6 +518,23 @@ export default function NewJobPage() {
                     </Select>
                   </Field>
                 )}
+                {!isStreamCopy && (
+                  <Field label="Frame Rate">
+                    <Select
+                      value={String(frameRate)}
+                      onValueChange={(v) => setFrameRate(Number(v) as 1 | 2 | 4)}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">Original</SelectItem>
+                        <SelectItem value="2">1/2</SelectItem>
+                        <SelectItem value="4">1/4</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                )}
                 {!useGPU && (
                   <Field label="Threads">
                     <Select
@@ -554,7 +575,7 @@ export default function NewJobPage() {
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 
-        <div className="flex gap-2">
+        <div className="flex shrink-0 gap-2 pt-1">
           <Button
             className="flex-1"
             onClick={() => submit()}

@@ -44,6 +44,7 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
       case "optimize":
         step.quality = "alta";
         step.resolution = 1;
+        step.frame_rate = 1;
         step.threads = 0;
         step.codec = "libx265";
         step.preset = "fast";

@@ -21,7 +21,7 @@ func RunOptimize(ctx context.Context, cfg config.Config, r *runner.Runner, fileL
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		OptimizeFile(ctx, cfg, r, f, i+1, "input", "FFMPEG", 1, 19, 0, runner.EncodeOptions{}, onEvent, safeProgress(onProgress))
+		OptimizeFile(ctx, cfg, r, f, i+1, "input", "FFMPEG", 1, 1, 19, 0, runner.EncodeOptions{}, onEvent, safeProgress(onProgress))
 	}
 	return nil
 }
@@ -29,7 +29,7 @@ func RunOptimize(ctx context.Context, cfg config.Config, r *runner.Runner, fileL
 // OptimizeFile compresses a single file from input/ to optimized/ using FFmpeg.
 // logSource is the source label emitted on logs/progress (e.g. "FFMPEG" or "FFMPEG 2");
 // empty defaults to "FFMPEG".
-func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, index int, source, logSource string, resolution int, crf int, threads int, opts runner.EncodeOptions, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
+func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, index int, source, logSource string, resolution int, frameRate int, crf int, threads int, opts runner.EncodeOptions, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
 	if logSource == "" {
 		logSource = "FFMPEG"
 	}
@@ -95,6 +95,9 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 	if totalFrames == 0 {
 		totalFrames = runner.ExtractFinalFrameCount(decodeOut)
 	}
+	if frameRate > 1 && totalFrames > 0 {
+		totalFrames = (totalFrames + frameRate - 1) / frameRate
+	}
 
 	ffmpegProgress := func(p runner.Progress) {
 		p.Source = logSource
@@ -126,6 +129,7 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 			"",
 			true,
 			resolution,
+			frameRate,
 			ffmpegProgress,
 		)
 	}

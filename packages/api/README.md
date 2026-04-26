@@ -100,6 +100,7 @@ Create a new job.
 | `type` | string | yes | `"upscale"`, `"interpolate"`, `"optimize"`, or `"check"` |
 | `files` | string[] | no | Filenames from the selected source. If empty, uses all videos in that source |
 | `source` | string | no | One of `input`, `output`, `interpolated`, `optimized`; defaults to `input` |
+| `frame_rate` | number | no | Optimize-only frame-rate divisor: `1` original, `2` half, or `4` quarter |
 
 ```json
 {
@@ -307,6 +308,7 @@ curl -X POST http://localhost:4751/api/jobs/j_1708540800_1a2b/cancel
 - Codec: `libx265` (HEVC)
 - Preset: `fast`, tune: `animation`
 - CRF: 19, pixel format: `yuv420p10le` (10-bit)
+- Optional resolution and frame-rate divisors: original, 1/2, or 1/4
 - Copies audio and subtitles as-is
 - Output: `{BaseDir}/optimized/`
 - CPUs: half of available cores

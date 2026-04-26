@@ -71,6 +71,7 @@ export function PipelineStepCard({
       case "optimize":
         base.quality = "alta";
         base.resolution = 1;
+        base.frame_rate = 1;
         base.threads = 0;
         base.codec = "libx265";
         base.preset = "fast";
@@ -430,6 +431,23 @@ export function PipelineStepCard({
                   <Select
                     value={String(step.resolution ?? 1)}
                     onValueChange={(v) => updateField({ resolution: Number(v) as 1 | 2 | 4 })}
+                  >
+                    <SelectTrigger className="h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">Original</SelectItem>
+                      <SelectItem value="2">1/2</SelectItem>
+                      <SelectItem value="4">1/4</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+              {!isStreamCopy && (
+                <Field label="Frame Rate">
+                  <Select
+                    value={String(step.frame_rate ?? 1)}
+                    onValueChange={(v) => updateField({ frame_rate: Number(v) as 1 | 2 | 4 })}
                   >
                     <SelectTrigger className="h-8">
                       <SelectValue />

@@ -140,6 +140,10 @@ func RunCustomPipelineForFile(
 			if resolution == 0 {
 				resolution = 1
 			}
+			frameRate := step.FrameRate
+			if frameRate == 0 {
+				frameRate = 1
+			}
 			threads := step.Threads
 			encOpts := runner.EncodeOptions{
 				Codec:      step.Codec,
@@ -170,7 +174,7 @@ func RunCustomPipelineForFile(
 					Message: stepLabel + "Optimize GPU (" + quality + "): " + filename,
 					Time:    time.Now(),
 				})
-				optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, src, resolution, crf, threads, stepOpts, stepOnEvent, onProgress)
+				optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, src, resolution, frameRate, crf, threads, stepOpts, stepOnEvent, onProgress)
 				gpuQ.Release(gpuID, streamIdx)
 			} else {
 				done := make(chan struct{})
@@ -182,7 +186,7 @@ func RunCustomPipelineForFile(
 						Message: stepLabel + "Optimize (" + quality + "): " + filename,
 						Time:    time.Now(),
 					})
-					optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, ffSrc, resolution, crf, threads, encOpts, stepOnEvent, onProgress)
+					optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, ffSrc, resolution, frameRate, crf, threads, encOpts, stepOnEvent, onProgress)
 				}); err != nil {
 					return false
 				}

@@ -337,7 +337,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
       )}
 
       <TooltipProvider>
-        <ScrollArea className="flex-1 min-h-0 rounded-md border">
+        <ScrollArea className="mb-3 flex-1 min-h-0 rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -351,7 +351,17 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
               </TableRow>
             </TableHeader>
             <TableBody>
-              {directories.map((name) => (
+              {loading && (
+                <TableRow>
+                  <TableCell
+                    className="py-8 text-center text-sm text-muted-foreground"
+                    colSpan={2 + COLUMN_ORDER.length}
+                  >
+                    Loading files...
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && directories.map((name) => (
                 <TableRow
                   key={`dir:${name}`}
                   className="cursor-pointer hover:bg-muted/50"
@@ -368,7 +378,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
                   </TableCell>
                 </TableRow>
               ))}
-              {filtered.map((file, index) => {
+              {!loading && filtered.map((file, index) => {
                 const folders = getFolderData(file, dir);
                 const rel = toRel(file.name);
                 const fileDeleteFolders = deleteSelections.get(file.name);

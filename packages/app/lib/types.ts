@@ -42,6 +42,7 @@ export interface Job {
   type: JobType;
   status: JobStatus;
   scale: number;
+  frame_rate: number;
   multiplier?: number;
   rife_model?: string;
   scene_thresh?: number;
@@ -135,6 +136,7 @@ export interface CreateJobRequest {
   // Optimize
   quality?: QualityPreset;
   resolution?: 1 | 2 | 4;
+  frame_rate?: 1 | 2 | 4;
   threads?: number;
   codec?: "libx265" | "libx264" | "libvpx-vp9" | "copy";
   preset?: "ultrafast" | "superfast" | "veryfast" | "fast" | "medium" | "slow" | "slower" | "veryslow";
@@ -180,6 +182,7 @@ export interface PipelineStep {
   scene_thresh?: number;
   quality?: QualityPreset;
   resolution?: 1 | 2 | 4;
+  frame_rate?: 1 | 2 | 4;
   threads?: number;
   codec?: "libx265" | "libx264" | "libvpx-vp9" | "copy";
   preset?: "ultrafast" | "superfast" | "veryfast" | "fast" | "medium" | "slow" | "slower" | "veryslow";
