@@ -34,8 +34,13 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 		logSource = "FFMPEG"
 	}
 	tempOptDir := cfg.TempDir + "/optimized"
+	subDir := filepath.Dir(filename)
 	for _, dir := range []string{cfg.OptimizedDir, tempOptDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		target := dir
+		if subDir != "." && subDir != "" {
+			target = filepath.Join(dir, subDir)
+		}
+		if err := os.MkdirAll(target, 0755); err != nil {
 			onEvent(logger.JobLog{Source: logSource, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir optimized: %v", err), Time: time.Now()})
 			return false
 		}

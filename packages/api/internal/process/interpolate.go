@@ -51,8 +51,13 @@ func RunInterpolate(ctx context.Context, cfg config.Config, r *runner.Runner, fi
 func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID, streamIdx int, filename string, index int, multiplier int, rifeOpts runner.RifeOptions, inputDir, outputDir string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
 	tempOutputDir := cfg.TempDir + "/interpolated"
 	source := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
+	subDir := filepath.Dir(filename)
 	for _, dir := range []string{outputDir, tempOutputDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		target := dir
+		if subDir != "." && subDir != "" {
+			target = filepath.Join(dir, subDir)
+		}
+		if err := os.MkdirAll(target, 0755); err != nil {
 			onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir interpolated: %v", err), Time: time.Now()})
 			return false
 		}

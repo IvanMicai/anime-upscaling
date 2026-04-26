@@ -112,6 +112,8 @@ export interface VideoFile {
 
 export interface FilesResponse {
   dir: string;
+  path: string;
+  directories: string[];
   files: VideoFile[];
   cached_at?: string;
 }
@@ -120,6 +122,7 @@ export interface CreateJobRequest {
   type: JobType;
   files?: string[];
   source?: "input" | "output" | "optimized" | "interpolated";
+  path?: string;
   // Upscale
   scale?: 2 | 3 | 4;
   processor?: UpscaleProcessor;
@@ -146,7 +149,7 @@ export type CreateJobResponse = Job;
 export type CancelJobResponse = Job;
 
 export interface DeleteFilesRequest {
-  items: { name: string; folders: string[] }[];
+  items: { name: string; path?: string; folders: string[] }[];
 }
 
 export interface DeleteFilesResponse {
@@ -336,4 +339,5 @@ export interface UpdatePipelineRequest {
 export interface RunPipelineRequest {
   files?: string[];
   source?: "input" | "output" | "optimized" | "interpolated";
+  path?: string;
 }

@@ -39,9 +39,11 @@ import {
   formatBytesCompact,
   formatResolutionLabel,
   formatCacheAge,
+  joinPath,
   type FolderKey,
   type FolderEntry,
 } from "@/lib/file-utils";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import type { VideoFile } from "@/lib/types";
 
 function FileTooltipContent({ entry }: { entry: FolderEntry }) {
@@ -80,10 +82,20 @@ interface FilePickerProps {
   selected: string[];
   onChange: (files: string[]) => void;
   dir?: string;
+  path?: string;
+  onPathChange?: (path: string) => void;
 }
 
-export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProps) {
+export function FilePicker({ selected, onChange, dir = "input", path: pathProp, onPathChange }: FilePickerProps) {
+  const [internalPath, setInternalPath] = useState<string>("");
+  const path = pathProp ?? internalPath;
+  const setPath = (p: string) => {
+    if (onPathChange) onPathChange(p);
+    else setInternalPath(p);
+  };
+
   const [files, setFiles] = useState<VideoFile[]>([]);
+  const [directories, setDirectories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<Set<string>>(new Set());
   const [cachedAt, setCachedAt] = useState<string | null>(null);
@@ -96,27 +108,39 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Reset selection only when the source dir changes (not on path navigation).
+  useEffect(() => {
+    onChange([]);
+    setInternalPath("");
+    if (onPathChange) onPathChange("");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dir]);
+
   useEffect(() => {
     setLoading(true);
-    onChange([]);
     resetLastClicked();
     setFilters(new Set());
     setDeleteMode(false);
     setDeleteSelections(new Map());
-    getFiles(dir)
+    getFiles(dir, path)
       .then((res) => {
         setFiles(res.files ?? []);
+        setDirectories(res.directories ?? []);
         setCachedAt(res.cached_at ?? null);
       })
-      .catch(() => setFiles([]))
+      .catch(() => {
+        setFiles([]);
+        setDirectories([]);
+      })
       .finally(() => setLoading(false));
-  }, [dir, onChange, resetLastClicked]);
+  }, [dir, path, resetLastClicked]);
 
   function handleRefresh() {
     setRefreshing(true);
-    getFiles(dir, true)
+    getFiles(dir, path, true)
       .then((res) => {
         setFiles(res.files ?? []);
+        setDirectories(res.directories ?? []);
         setCachedAt(res.cached_at ?? null);
       })
       .catch(() => {})
@@ -179,9 +203,9 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
   }
 
   async function handleDeleteConfirm() {
-    const items: { name: string; folders: string[] }[] = [];
+    const items: { name: string; path?: string; folders: string[] }[] = [];
     for (const [name, folders] of deleteSelections) {
-      items.push({ name, folders: [...folders] });
+      items.push({ name, path: path || undefined, folders: [...folders] });
     }
     setDeleting(true);
     try {
@@ -189,8 +213,9 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
       setDeleteSelections(new Map());
       setConfirmOpen(false);
       // Refresh file list
-      const res = await getFiles(dir, true);
+      const res = await getFiles(dir, path, true);
       setFiles(res.files ?? []);
+      setDirectories(res.directories ?? []);
       setCachedAt(res.cached_at ?? null);
     } catch {
       // keep dialog open on error
@@ -201,24 +226,25 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
 
   const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
   const filtered = sorted.filter(matchesFilter);
-  const filteredNames = filtered.map((f) => f.name);
+  // Selection identifiers are file paths relative to the source dir
+  // (e.g. "season1/ep01.mkv") so picks survive subfolder navigation.
+  const toRel = (name: string) => (path ? `${path}/${name}` : name);
+  const filteredRelPaths = filtered.map((f) => toRel(f.name));
 
-  const allSelected = filtered.length > 0 && filtered.every((f) => selected.includes(f.name));
+  const allSelected = filtered.length > 0 && filteredRelPaths.every((p) => selected.includes(p));
 
   const selectedTotal = files
-    .filter((f) => selected.includes(f.name))
+    .filter((f) => selected.includes(toRel(f.name)))
     .reduce((sum, f) => sum + f.size, 0);
 
   function toggleAll() {
-    onChange(allSelected ? [] : [...filteredNames]);
-  }
-
-  if (loading) {
-    return <p className="text-sm text-muted-foreground">Loading files...</p>;
-  }
-
-  if (files.length === 0) {
-    return <p className="text-sm text-muted-foreground">No files found in {dir}/.</p>;
+    if (allSelected) {
+      onChange(selected.filter((s) => !filteredRelPaths.includes(s)));
+    } else {
+      const next = new Set(selected);
+      filteredRelPaths.forEach((p) => next.add(p));
+      onChange([...next]);
+    }
   }
 
   const deleteSummary = getDeleteSummary();
@@ -226,6 +252,7 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
 
   return (
     <div className="flex flex-col h-full gap-2">
+      <Breadcrumbs path={path} onNavigate={setPath} />
       <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
         <span className="text-xs text-muted-foreground">Legend:</span>
         {(Object.keys(FOLDER_COLORS) as FolderKey[]).map((key) => {
@@ -324,20 +351,38 @@ export function FilePicker({ selected, onChange, dir = "input" }: FilePickerProp
               </TableRow>
             </TableHeader>
             <TableBody>
+              {directories.map((name) => (
+                <TableRow
+                  key={`dir:${name}`}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => setPath(joinPath(path, name))}
+                >
+                  <TableCell className="w-8" />
+                  <TableCell className="font-mono text-sm" colSpan={1 + COLUMN_ORDER.length}>
+                    <span className="inline-flex items-center gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                      </svg>
+                      {name}/
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))}
               {filtered.map((file, index) => {
                 const folders = getFolderData(file, dir);
+                const rel = toRel(file.name);
                 const fileDeleteFolders = deleteSelections.get(file.name);
                 return (
                   <TableRow
-                    key={file.name}
+                    key={rel}
                     className="cursor-pointer"
                     onClick={(e) => {
-                      if (!deleteMode) handleToggle(index, filteredNames, e.shiftKey);
+                      if (!deleteMode) handleToggle(index, filteredRelPaths, e.shiftKey);
                     }}
                   >
                     <TableCell className="w-8">
                       <Checkbox
-                        checked={selected.includes(file.name)}
+                        checked={selected.includes(rel)}
                         tabIndex={-1}
                         className="pointer-events-none"
                       />

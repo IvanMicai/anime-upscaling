@@ -36,6 +36,7 @@ export default function PipelinesPage() {
   const [runTarget, setRunTarget] = useState<Pipeline | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [source, setSource] = useState<FolderKey>("input");
+  const [browsePath, setBrowsePath] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +54,7 @@ export default function PipelinesPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await runPipeline(runTarget.id, { files, source });
+      await runPipeline(runTarget.id, { files, source, path: browsePath || undefined });
       setRunTarget(null);
       router.push("/");
     } catch (err) {
@@ -117,6 +118,7 @@ export default function PipelinesPage() {
                       size="xs"
                       onClick={() => {
                         setSelectedFiles([]);
+                        setBrowsePath("");
                         setError(null);
                         setSource("input");
                         setRunTarget(p);
@@ -166,7 +168,13 @@ export default function PipelinesPage() {
             </Select>
           </div>
           <div className="flex-1 min-h-0 overflow-auto">
-            <FilePicker selected={selectedFiles} onChange={setSelectedFiles} dir={source} />
+            <FilePicker
+              selected={selectedFiles}
+              onChange={setSelectedFiles}
+              dir={source}
+              path={browsePath}
+              onPathChange={setBrowsePath}
+            />
           </div>
           {error && <p className="text-sm text-red-400">{error}</p>}
           <div className="flex gap-2 pt-2">

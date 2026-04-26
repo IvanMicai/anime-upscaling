@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -70,6 +71,7 @@ func handleFileDownload(cfg config.Config) http.HandlerFunc {
 		}
 		dir := r.URL.Query().Get("dir")
 		name := r.URL.Query().Get("name")
+		subPath := r.URL.Query().Get("path")
 
 		dirPath, ok := allowed[dir]
 		if !ok {
@@ -80,8 +82,12 @@ func handleFileDownload(cfg config.Config) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid filename"})
 			return
 		}
+		if !files.SafeRelDir(subPath) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
+			return
+		}
 
-		fullPath := filepath.Join(dirPath, name)
+		fullPath := filepath.Join(dirPath, subPath, name)
 		f, err := os.Open(fullPath)
 		if err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
@@ -153,6 +159,7 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 		if dir == "" {
 			dir = "input"
 		}
+		subPath := req.URL.Query().Get("path")
 		forceRefresh := req.URL.Query().Get("refresh") == "true"
 
 		allowed := map[string]string{
@@ -165,6 +172,10 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 		fullPath, ok := allowed[dir]
 		if !ok {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid dir: must be input, output, optimized, or interpolated"})
+			return
+		}
+		if !files.SafeRelDir(subPath) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
 			return
 		}
 
@@ -187,18 +198,19 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 		}
 
 		var videoFiles []files.VideoFile
+		var primaryDirs []string
 		var err error
 		switch dir {
 		case "input":
-			videoFiles, err = files.ListVideosWithStatus(fullPath, cfg.OutputDir, cfg.OptimizedDir, cfg.InterpolatedDir, cfg.VideoExts)
+			videoFiles, primaryDirs, err = files.ListVideosWithStatus(fullPath, subPath, cfg.OutputDir, cfg.OptimizedDir, cfg.InterpolatedDir, cfg.VideoExts)
 		case "output":
-			videoFiles, err = files.ListOutputWithStatus(fullPath, cfg.InputDir, cfg.OptimizedDir, cfg.VideoExts)
+			videoFiles, primaryDirs, err = files.ListOutputWithStatus(fullPath, subPath, cfg.InputDir, cfg.OptimizedDir, cfg.VideoExts)
 		case "optimized":
-			videoFiles, err = files.ListOptimizedWithStatus(fullPath, cfg.InputDir, cfg.OutputDir, cfg.VideoExts)
+			videoFiles, primaryDirs, err = files.ListOptimizedWithStatus(fullPath, subPath, cfg.InputDir, cfg.OutputDir, cfg.VideoExts)
 		case "interpolated":
-			videoFiles, err = files.ListInterpolatedWithStatus(fullPath, cfg.InputDir, cfg.VideoExts)
+			videoFiles, primaryDirs, err = files.ListInterpolatedWithStatus(fullPath, subPath, cfg.InputDir, cfg.VideoExts)
 		default:
-			videoFiles, err = files.ListVideosWithSize(fullPath, cfg.VideoExts)
+			videoFiles, primaryDirs, err = files.ListVideosWithSize(fullPath, subPath, cfg.VideoExts)
 		}
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -208,13 +220,40 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 			videoFiles = []files.VideoFile{}
 		}
 
+		// Merge subdirectories from all 4 base folders so navigation reflects
+		// the union of mirror trees (a folder can exist in only one base).
+		dirSet := make(map[string]struct{})
+		for _, d := range primaryDirs {
+			dirSet[d] = struct{}{}
+		}
+		for label, base := range allowed {
+			if label == dir {
+				continue
+			}
+			entries, readErr := os.ReadDir(filepath.Join(base, subPath))
+			if readErr != nil {
+				continue
+			}
+			for _, e := range entries {
+				if e.IsDir() {
+					dirSet[e.Name()] = struct{}{}
+				}
+			}
+		}
+		directories := make([]string, 0, len(dirSet))
+		for d := range dirSet {
+			directories = append(directories, d)
+		}
+		sort.Strings(directories)
+
 		// Enrich with resolution data from cache JSON
 		if len(videoFiles) > 0 {
 			cached := cache.LoadCache(cachePath)
 			primaryLabel := dirToLabel[dir]
 
 			for i, f := range videoFiles {
-				status, exists := cached[f.Name]
+				relKey := filepath.ToSlash(filepath.Join(subPath, f.Name))
+				status, exists := cached[relKey]
 				if !exists {
 					continue
 				}
@@ -267,8 +306,10 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 		}
 
 		resp := map[string]interface{}{
-			"dir":   dir,
-			"files": videoFiles,
+			"dir":         dir,
+			"path":        subPath,
+			"directories": directories,
+			"files":       videoFiles,
 		}
 		if info, err := os.Stat(cachePath); err == nil {
 			resp["cached_at"] = info.ModTime().UTC()
@@ -301,6 +342,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		Type        string   `json:"type"`
 		Files       []string `json:"files"`
 		Source      string   `json:"source"`
+		Path        string   `json:"path"`
 		Scale       int      `json:"scale"`
 		Resolution  int      `json:"resolution"`
 		Multiplier  int      `json:"multiplier"`
@@ -441,22 +483,43 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		return
 	}
 
-	// If no files specified, use all videos in source dir
+	if !files.SafeRelDir(req.Path) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
+		return
+	}
+
+	// If no files specified, use all videos under source/path (recursive).
 	if len(req.Files) == 0 {
-		all, err := files.ListVideos(sourceDir, cfg.VideoExts)
+		all, err := files.WalkVideos(filepath.Join(sourceDir, req.Path), cfg.VideoExts)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list files"})
 			return
 		}
 		if len(all) == 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("no video files found in %s/", req.Source)})
+			label := req.Source
+			if req.Path != "" {
+				label = req.Source + "/" + req.Path
+			}
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("no video files found in %s/", label)})
 			return
 		}
-		req.Files = all
+		req.Files = make([]string, 0, len(all))
+		for rel := range all {
+			if req.Path != "" {
+				rel = filepath.ToSlash(filepath.Join(req.Path, rel))
+			}
+			req.Files = append(req.Files, rel)
+		}
+		sort.Strings(req.Files)
 	} else {
-		// Validate each file exists
-		for _, f := range req.Files {
-			if !files.SafeVideoFilename(f, cfg.VideoExts) {
+		// Validate each file. Files come as paths relative to sourceDir; allow
+		// a bare filename when path is set (legacy frontends), prefixing it.
+		for i, f := range req.Files {
+			if req.Path != "" && !strings.Contains(f, "/") {
+				f = filepath.ToSlash(filepath.Join(req.Path, f))
+				req.Files[i] = f
+			}
+			if !files.SafeVideoRelPath(f, cfg.VideoExts) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid filename: %s", f)})
 				return
 			}

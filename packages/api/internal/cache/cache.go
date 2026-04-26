@@ -20,7 +20,7 @@ type SourceEntry struct {
 	Subtitles []runner.SubtitleTrack `json:"subtitles,omitempty"`
 }
 
-const currentCacheVersion = 2
+const currentCacheVersion = 3
 
 type cacheEnvelope struct {
 	Version int       `json:"version"`
@@ -81,16 +81,13 @@ func BuildFileStatusCache(cfg config.Config) error {
 		{"interpolated", cfg.InterpolatedDir},
 	}
 
-	// Scan all directories and index by map for O(1) lookup
-	scannedIndex := make(map[string]map[string]int64) // label -> name -> size
+	// Scan all directories recursively and index by map for O(1) lookup.
+	// Keys are relative paths from the base dir (forward-slash separated).
+	scannedIndex := make(map[string]map[string]int64) // label -> relPath -> size
 	for _, d := range dirs {
-		vfiles, err := files.ListVideosWithSize(d.dir, cfg.VideoExts)
+		idx, err := files.WalkVideos(d.dir, cfg.VideoExts)
 		if err != nil {
-			vfiles = nil
-		}
-		idx := make(map[string]int64, len(vfiles))
-		for _, f := range vfiles {
-			idx[f.Name] = f.Size
+			idx = make(map[string]int64)
 		}
 		scannedIndex[d.label] = idx
 	}
