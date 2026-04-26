@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"anime-upscaling/internal/runner"
@@ -144,79 +145,79 @@ func WalkVideos(baseDir string, exts []string) (map[string]int64, error) {
 	return out, nil
 }
 
-func ListVideosWithStatus(dir, subPath, outputDir, optimizedDir, interpolatedDir string, exts []string) ([]VideoFile, []string, error) {
-	vfiles, dirs, err := ListVideosWithSize(dir, subPath, exts)
-	if err != nil {
-		return nil, nil, err
+// ListAllWithStatus reads every base dir at subPath and returns the union of
+// video files and subdirectories. For each file, has_* and *_size are set for
+// every base where the file exists. Name and the primary Size mirror the
+// `primary` base when the file is present there; otherwise Size stays 0 and
+// the active tab's column renders as missing.
+func ListAllWithStatus(primary string, baseDirs map[string]string, subPath string, exts []string) ([]VideoFile, []string, error) {
+	extSet := make(map[string]bool, len(exts))
+	for _, e := range exts {
+		extSet[strings.ToLower(e)] = true
 	}
-	for i, f := range vfiles {
-		rel := filepath.Join(subPath, f.Name)
-		if info, err := os.Stat(filepath.Join(outputDir, rel)); err == nil {
-			vfiles[i].HasUpscaled = true
-			vfiles[i].UpscaledSize = info.Size()
-		}
-		if info, err := os.Stat(filepath.Join(optimizedDir, rel)); err == nil {
-			vfiles[i].HasOptimized = true
-			vfiles[i].OptimizedSize = info.Size()
-		}
-		if info, err := os.Stat(filepath.Join(interpolatedDir, rel)); err == nil {
-			vfiles[i].HasInterpolated = true
-			vfiles[i].InterpolatedSize = info.Size()
-		}
-	}
-	return vfiles, dirs, nil
-}
 
-func ListOutputWithStatus(dir, subPath, inputDir, optimizedDir string, exts []string) ([]VideoFile, []string, error) {
-	vfiles, dirs, err := ListVideosWithSize(dir, subPath, exts)
-	if err != nil {
-		return nil, nil, err
-	}
-	for i, f := range vfiles {
-		rel := filepath.Join(subPath, f.Name)
-		if info, err := os.Stat(filepath.Join(inputDir, rel)); err == nil {
-			vfiles[i].HasInput = true
-			vfiles[i].InputSize = info.Size()
-		}
-		if info, err := os.Stat(filepath.Join(optimizedDir, rel)); err == nil {
-			vfiles[i].HasOptimized = true
-			vfiles[i].OptimizedSize = info.Size()
-		}
-	}
-	return vfiles, dirs, nil
-}
+	dirSet := make(map[string]struct{})
+	fileMap := make(map[string]*VideoFile)
 
-func ListOptimizedWithStatus(dir, subPath, inputDir, outputDir string, exts []string) ([]VideoFile, []string, error) {
-	vfiles, dirs, err := ListVideosWithSize(dir, subPath, exts)
-	if err != nil {
-		return nil, nil, err
-	}
-	for i, f := range vfiles {
-		rel := filepath.Join(subPath, f.Name)
-		if info, err := os.Stat(filepath.Join(inputDir, rel)); err == nil {
-			vfiles[i].HasInput = true
-			vfiles[i].InputSize = info.Size()
+	for label, base := range baseDirs {
+		entries, err := os.ReadDir(filepath.Join(base, subPath))
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, nil, err
 		}
-		if info, err := os.Stat(filepath.Join(outputDir, rel)); err == nil {
-			vfiles[i].HasUpscaled = true
-			vfiles[i].UpscaledSize = info.Size()
+		for _, entry := range entries {
+			if entry.IsDir() {
+				dirSet[entry.Name()] = struct{}{}
+				continue
+			}
+			ext := strings.ToLower(filepath.Ext(entry.Name()))
+			if !extSet[ext] {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			vf, ok := fileMap[entry.Name()]
+			if !ok {
+				vf = &VideoFile{Name: entry.Name()}
+				fileMap[entry.Name()] = vf
+			}
+			size := info.Size()
+			switch label {
+			case "input":
+				vf.HasInput = true
+				vf.InputSize = size
+			case "output":
+				vf.HasUpscaled = true
+				vf.UpscaledSize = size
+			case "optimized":
+				vf.HasOptimized = true
+				vf.OptimizedSize = size
+			case "interpolated":
+				vf.HasInterpolated = true
+				vf.InterpolatedSize = size
+			}
+			if label == primary {
+				vf.Size = size
+			}
 		}
 	}
-	return vfiles, dirs, nil
-}
 
-func ListInterpolatedWithStatus(dir, subPath, inputDir string, exts []string) ([]VideoFile, []string, error) {
-	vfiles, dirs, err := ListVideosWithSize(dir, subPath, exts)
-	if err != nil {
-		return nil, nil, err
+	dirs := make([]string, 0, len(dirSet))
+	for d := range dirSet {
+		dirs = append(dirs, d)
 	}
-	for i, f := range vfiles {
-		rel := filepath.Join(subPath, f.Name)
-		if info, err := os.Stat(filepath.Join(inputDir, rel)); err == nil {
-			vfiles[i].HasInput = true
-			vfiles[i].InputSize = info.Size()
-		}
+	sort.Strings(dirs)
+
+	vfiles := make([]VideoFile, 0, len(fileMap))
+	for _, vf := range fileMap {
+		vfiles = append(vfiles, *vf)
 	}
+	sort.Slice(vfiles, func(i, j int) bool { return vfiles[i].Name < vfiles[j].Name })
+
 	return vfiles, dirs, nil
 }
 

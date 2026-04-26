@@ -170,8 +170,7 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 			"interpolated": cfg.InterpolatedDir,
 		}
 
-		fullPath, ok := allowed[dir]
-		if !ok {
+		if _, ok := allowed[dir]; !ok {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid dir: must be input, output, optimized, or interpolated"})
 			return
 		}
@@ -198,21 +197,7 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 			}
 		}
 
-		var videoFiles []files.VideoFile
-		var primaryDirs []string
-		var err error
-		switch dir {
-		case "input":
-			videoFiles, primaryDirs, err = files.ListVideosWithStatus(fullPath, subPath, cfg.OutputDir, cfg.OptimizedDir, cfg.InterpolatedDir, cfg.VideoExts)
-		case "output":
-			videoFiles, primaryDirs, err = files.ListOutputWithStatus(fullPath, subPath, cfg.InputDir, cfg.OptimizedDir, cfg.VideoExts)
-		case "optimized":
-			videoFiles, primaryDirs, err = files.ListOptimizedWithStatus(fullPath, subPath, cfg.InputDir, cfg.OutputDir, cfg.VideoExts)
-		case "interpolated":
-			videoFiles, primaryDirs, err = files.ListInterpolatedWithStatus(fullPath, subPath, cfg.InputDir, cfg.VideoExts)
-		default:
-			videoFiles, primaryDirs, err = files.ListVideosWithSize(fullPath, subPath, cfg.VideoExts)
-		}
+		videoFiles, directories, err := files.ListAllWithStatus(dir, allowed, subPath, cfg.VideoExts)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -220,32 +205,9 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 		if videoFiles == nil {
 			videoFiles = []files.VideoFile{}
 		}
-
-		// Merge subdirectories from all 4 base folders so navigation reflects
-		// the union of mirror trees (a folder can exist in only one base).
-		dirSet := make(map[string]struct{})
-		for _, d := range primaryDirs {
-			dirSet[d] = struct{}{}
+		if directories == nil {
+			directories = []string{}
 		}
-		for label, base := range allowed {
-			if label == dir {
-				continue
-			}
-			entries, readErr := os.ReadDir(filepath.Join(base, subPath))
-			if readErr != nil {
-				continue
-			}
-			for _, e := range entries {
-				if e.IsDir() {
-					dirSet[e.Name()] = struct{}{}
-				}
-			}
-		}
-		directories := make([]string, 0, len(dirSet))
-		for d := range dirSet {
-			directories = append(directories, d)
-		}
-		sort.Strings(directories)
 
 		// Enrich with resolution data from cache JSON
 		if len(videoFiles) > 0 {

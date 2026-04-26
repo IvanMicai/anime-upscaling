@@ -33,7 +33,7 @@ export function getFolderData(file: VideoFile, dir: string): FolderEntry[] {
   const entries: FolderEntry[] = [
     {
       key: "input",
-      exists: dir === "input" ? true : !!file.has_input,
+      exists: !!file.has_input,
       size: dir === "input" ? file.size : (file.input_size ?? 0),
       width: dir === "input" ? file.width : file.input_width,
       height: dir === "input" ? file.height : file.input_height,
@@ -42,7 +42,7 @@ export function getFolderData(file: VideoFile, dir: string): FolderEntry[] {
     },
     {
       key: "output",
-      exists: dir === "output" ? true : !!file.has_upscaled,
+      exists: !!file.has_upscaled,
       size: dir === "output" ? file.size : (file.upscaled_size ?? 0),
       width: dir === "output" ? file.width : file.upscaled_width,
       height: dir === "output" ? file.height : file.upscaled_height,
@@ -51,7 +51,7 @@ export function getFolderData(file: VideoFile, dir: string): FolderEntry[] {
     },
     {
       key: "interpolated",
-      exists: dir === "interpolated" ? true : !!file.has_interpolated,
+      exists: !!file.has_interpolated,
       size: dir === "interpolated" ? file.size : (file.interpolated_size ?? 0),
       width: dir === "interpolated" ? file.width : file.interpolated_width,
       height: dir === "interpolated" ? file.height : file.interpolated_height,
@@ -60,7 +60,7 @@ export function getFolderData(file: VideoFile, dir: string): FolderEntry[] {
     },
     {
       key: "optimized",
-      exists: dir === "optimized" ? true : !!file.has_optimized,
+      exists: !!file.has_optimized,
       size: dir === "optimized" ? file.size : (file.optimized_size ?? 0),
       width: dir === "optimized" ? file.width : file.optimized_width,
       height: dir === "optimized" ? file.height : file.optimized_height,
