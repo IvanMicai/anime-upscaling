@@ -30,8 +30,9 @@ export function getJob(id: string): Promise<Job> {
   return fetchJSON<Job>(`/api/jobs/${id}`);
 }
 
-export function getFiles(dir: string = "input", refresh = false): Promise<FilesResponse> {
+export function getFiles(dir: string = "input", path: string = "", refresh = false): Promise<FilesResponse> {
   const params = new URLSearchParams({ dir });
+  if (path) params.set("path", path);
   if (refresh) params.set("refresh", "true");
   return fetchJSON<FilesResponse>(`/api/files?${params}`);
 }
@@ -108,8 +109,9 @@ export function updateSettings(req: { streams_per_gpu: number; ffmpeg_streams: n
   });
 }
 
-export function downloadFile(dir: string, name: string): void {
+export function downloadFile(dir: string, name: string, path: string = ""): void {
   const params = new URLSearchParams({ dir, name });
+  if (path) params.set("path", path);
   const a = document.createElement("a");
   a.href = `/api/files/download?${params}`;
   a.download = name;

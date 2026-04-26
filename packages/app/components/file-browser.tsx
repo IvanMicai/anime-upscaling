@@ -37,9 +37,11 @@ import {
   formatBytesCompact,
   formatResolutionLabel,
   formatCacheAge,
+  joinPath,
   type FolderKey,
   type FolderEntry,
 } from "@/lib/file-utils";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import type { VideoFile } from "@/lib/types";
 
 const TAB_ORDER: FolderKey[] = ["input", "output", "optimized", "interpolated"];
@@ -78,7 +80,9 @@ function FileTooltipContent({ entry }: { entry: FolderEntry }) {
 
 export function FileBrowser() {
   const [dir, setDir] = useState<FolderKey>("input");
+  const [path, setPath] = useState<string>("");
   const [files, setFiles] = useState<VideoFile[]>([]);
+  const [directories, setDirectories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<Set<string>>(new Set());
   const [cachedAt, setCachedAt] = useState<string | null>(null);
@@ -95,20 +99,30 @@ export function FileBrowser() {
     setFilters(new Set());
     setDeleteMode(false);
     setDeleteSelections(new Map());
-    getFiles(dir)
+    getFiles(dir, path)
       .then((res) => {
         setFiles(res.files ?? []);
+        setDirectories(res.directories ?? []);
         setCachedAt(res.cached_at ?? null);
       })
-      .catch(() => setFiles([]))
+      .catch(() => {
+        setFiles([]);
+        setDirectories([]);
+      })
       .finally(() => setLoading(false));
-  }, [dir]);
+  }, [dir, path]);
+
+  function handleDirChange(next: FolderKey) {
+    setDir(next);
+    setPath("");
+  }
 
   function handleRefresh() {
     setRefreshing(true);
-    getFiles(dir, true)
+    getFiles(dir, path, true)
       .then((res) => {
         setFiles(res.files ?? []);
+        setDirectories(res.directories ?? []);
         setCachedAt(res.cached_at ?? null);
       })
       .catch(() => {})
@@ -169,17 +183,18 @@ export function FileBrowser() {
   }
 
   async function handleDeleteConfirm() {
-    const items: { name: string; folders: string[] }[] = [];
+    const items: { name: string; path?: string; folders: string[] }[] = [];
     for (const [name, folders] of deleteSelections) {
-      items.push({ name, folders: [...folders] });
+      items.push({ name, path: path || undefined, folders: [...folders] });
     }
     setDeleting(true);
     try {
       await deleteFiles({ items });
       setDeleteSelections(new Map());
       setConfirmOpen(false);
-      const res = await getFiles(dir, true);
+      const res = await getFiles(dir, path, true);
       setFiles(res.files ?? []);
+      setDirectories(res.directories ?? []);
       setCachedAt(res.cached_at ?? null);
     } catch {
       // keep dialog open on error
@@ -197,7 +212,7 @@ export function FileBrowser() {
   return (
     <div className="flex flex-col gap-3">
       {/* Directory tabs */}
-      <Tabs value={dir} onValueChange={(v) => setDir(v as FolderKey)}>
+      <Tabs value={dir} onValueChange={(v) => handleDirChange(v as FolderKey)}>
         <TabsList>
           {TAB_ORDER.map((d) => (
             <TabsTrigger key={d} value={d} className={FOLDER_COLORS[d].text}>
@@ -206,6 +221,8 @@ export function FileBrowser() {
           ))}
         </TabsList>
       </Tabs>
+
+      <Breadcrumbs path={path} onNavigate={setPath} />
 
       {/* Legend + delete mode toggle */}
       <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
@@ -284,11 +301,11 @@ export function FileBrowser() {
       {/* File table */}
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading files...</p>
-      ) : files.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No files found in {dir}/.</p>
+      ) : files.length === 0 && directories.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No files found in {dir}/{path}.</p>
       ) : (
         <TooltipProvider>
-          <ScrollArea className="rounded-md border">
+          <ScrollArea className="rounded-md border max-h-[calc(100vh-22rem)]">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -301,6 +318,22 @@ export function FileBrowser() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {directories.map((name) => (
+                  <TableRow
+                    key={`dir:${name}`}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setPath(joinPath(path, name))}
+                  >
+                    <TableCell className="font-mono text-sm" colSpan={1 + COLUMN_ORDER.length}>
+                      <span className="inline-flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+                          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                        </svg>
+                        {name}/
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
                 {filtered.map((file) => {
                   const folders = getFolderData(file, dir);
                   const fileDeleteFolders = deleteSelections.get(file.name);
@@ -343,7 +376,7 @@ export function FileBrowser() {
                                         type="button"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          downloadFile(entry.key, file.name);
+                                          downloadFile(entry.key, file.name, path);
                                         }}
                                         className="opacity-40 hover:opacity-100 transition-opacity"
                                         title={`Download from ${FOLDER_COLORS[entry.key].label}`}

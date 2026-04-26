@@ -58,8 +58,13 @@ func safeProgress(fn func(runner.Progress)) func(runner.Progress) {
 // Returns true if the file was successfully upscaled (or skipped).
 func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID, streamIdx int, filename string, index int, scale int, opts runner.UpscaleOptions, inputDir, outputDir string, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
 	tempOutputDir := cfg.TempDir + "/output"
+	subDir := filepath.Dir(filename)
 	for _, dir := range []string{outputDir, tempOutputDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		target := dir
+		if subDir != "." && subDir != "" {
+			target = filepath.Join(dir, subDir)
+		}
+		if err := os.MkdirAll(target, 0755); err != nil {
 			source := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
 			onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("mkdir output: %v", err), Time: time.Now()})
 			return false

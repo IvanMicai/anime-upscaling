@@ -58,6 +58,7 @@ export default function NewJobPage() {
   const [gpuVendor, setGpuVendor] = useState<GPUVendor>("");
 
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const [browsePath, setBrowsePath] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -118,12 +119,13 @@ export default function NewJobPage() {
     setError(null);
     try {
       if (selectedPipelineId) {
-        await runPipeline(selectedPipelineId, { files, source });
+        await runPipeline(selectedPipelineId, { files, source, path: browsePath || undefined });
       } else {
         await createJob({
           type,
           files,
           source: source !== "input" ? source : undefined,
+          path: browsePath || undefined,
           ...(type === "upscale" && {
             scale,
             processor,
@@ -163,7 +165,7 @@ export default function NewJobPage() {
   const isVP9 = codec === "libvpx-vp9";
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-12rem)]">
+    <div className="flex flex-col h-[calc(100vh-8rem)] sm:h-[calc(100vh-12rem)]">
       <Link href="/" className="text-sm text-blue-400 hover:underline">
         &larr; Back to Jobs
       </Link>
@@ -541,7 +543,13 @@ export default function NewJobPage() {
 
         <div className="flex flex-col flex-1 min-h-0 gap-2">
           <label className="text-sm font-medium">Files</label>
-          <FilePicker selected={selectedFiles} onChange={setSelectedFiles} dir={source} />
+          <FilePicker
+            selected={selectedFiles}
+            onChange={setSelectedFiles}
+            dir={source}
+            path={browsePath}
+            onPathChange={setBrowsePath}
+          />
         </div>
 
         {error && <p className="text-sm text-red-400">{error}</p>}

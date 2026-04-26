@@ -104,6 +104,30 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
+export function joinPath(base: string, segment: string): string {
+  if (!base) return segment;
+  if (!segment) return base;
+  return `${base}/${segment}`;
+}
+
+export function parentPath(path: string): string {
+  if (!path) return "";
+  const idx = path.lastIndexOf("/");
+  return idx === -1 ? "" : path.slice(0, idx);
+}
+
+export function getBreadcrumbs(path: string): { label: string; path: string }[] {
+  const crumbs: { label: string; path: string }[] = [{ label: "/", path: "" }];
+  if (!path) return crumbs;
+  const segs = path.split("/");
+  let acc = "";
+  for (const seg of segs) {
+    acc = acc ? `${acc}/${seg}` : seg;
+    crumbs.push({ label: seg, path: acc });
+  }
+  return crumbs;
+}
+
 export function formatCacheAge(iso: string): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
   if (diff < 10) return "just now";

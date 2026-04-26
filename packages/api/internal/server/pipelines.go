@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"anime-upscaling/internal/config"
@@ -150,6 +151,7 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 	var req struct {
 		Files  []string `json:"files"`
 		Source string   `json:"source"`
+		Path   string   `json:"path"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -164,22 +166,41 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source (must be input, output, interpolated, or optimized)"})
 		return
 	}
+	if !files.SafeRelDir(req.Path) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
+		return
+	}
 
-	// Resolve files from source dir
+	// Resolve files recursively from sourceDir/path
 	if len(req.Files) == 0 {
-		all, err := files.ListVideos(sourceDir, cfg.VideoExts)
+		all, err := files.WalkVideos(filepath.Join(sourceDir, req.Path), cfg.VideoExts)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list files"})
 			return
 		}
 		if len(all) == 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("no video files found in %s/", req.Source)})
+			label := req.Source
+			if req.Path != "" {
+				label = req.Source + "/" + req.Path
+			}
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("no video files found in %s/", label)})
 			return
 		}
-		req.Files = all
+		req.Files = make([]string, 0, len(all))
+		for rel := range all {
+			if req.Path != "" {
+				rel = filepath.ToSlash(filepath.Join(req.Path, rel))
+			}
+			req.Files = append(req.Files, rel)
+		}
+		sort.Strings(req.Files)
 	} else {
-		for _, f := range req.Files {
-			if !files.SafeVideoFilename(f, cfg.VideoExts) {
+		for i, f := range req.Files {
+			if req.Path != "" && !strings.Contains(f, "/") {
+				f = filepath.ToSlash(filepath.Join(req.Path, f))
+				req.Files[i] = f
+			}
+			if !files.SafeVideoRelPath(f, cfg.VideoExts) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid filename: %s", f)})
 				return
 			}
