@@ -21,6 +21,7 @@ type PipelineStep struct {
 	SceneThresh float64 `json:"scene_thresh,omitempty"`
 	Quality     string  `json:"quality,omitempty"`
 	Resolution  int     `json:"resolution,omitempty"`
+	FrameRate   int     `json:"frame_rate,omitempty"`
 	Threads     int     `json:"threads,omitempty"`
 	Codec       string  `json:"codec,omitempty"`
 	Preset      string  `json:"preset,omitempty"`
@@ -95,7 +96,7 @@ func ValidModelScale(model string, scale int) bool {
 
 // ValidRifeModels lists all valid RIFE model names.
 var ValidRifeModels = map[string]bool{
-	"": true,
+	"":          true,
 	"rife-v4.6": true, "rife-v4.26": true, "rife-v4.25": true, "rife-v4.25-lite": true,
 	"rife-v4": true, "rife-v3.1": true, "rife-v3.0": true,
 	"rife-v2.4": true, "rife-v2.3": true, "rife-v2": true,

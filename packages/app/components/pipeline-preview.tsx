@@ -41,9 +41,13 @@ export function computePreview(steps: PipelineStep[]): VideoState {
         state.fps *= step.multiplier ?? 2;
         break;
       case "optimize": {
-        const div = step.resolution ?? 1;
-        state.width = Math.floor(state.width / div);
-        state.height = Math.floor(state.height / div);
+        if (step.codec !== "copy") {
+          const div = step.resolution ?? 1;
+          const frameDiv = step.frame_rate ?? 1;
+          state.width = Math.floor(state.width / div);
+          state.height = Math.floor(state.height / div);
+          state.fps = Math.max(1, Math.floor(state.fps / frameDiv));
+        }
         state.optimized = true;
         state.crf = step.codec === "copy" ? null : QUALITY_PRESETS[step.quality ?? "alta"].crf;
         state.codec = step.codec ?? "libx265";
@@ -93,9 +97,14 @@ export function formatStepSummary(steps: PipelineStep[]): string {
       case "interpolate":
         return `Interpolate ${s.multiplier ?? 2}x (${s.rife_model ?? "rife-v4.6"})`;
       case "optimize":
-        return s.codec === "copy"
-          ? `Optimize (copy)`
-          : `Optimize (${QUALITY_PRESETS[s.quality ?? "alta"].label}, ${codecLabel(s.codec ?? null)})`;
+        if (s.codec === "copy") {
+          return "Optimize (copy)";
+        }
+        return [
+          `Optimize (${QUALITY_PRESETS[s.quality ?? "alta"].label}, ${codecLabel(s.codec ?? null)})`,
+          (s.resolution ?? 1) > 1 ? `res 1/${s.resolution}` : null,
+          (s.frame_rate ?? 1) > 1 ? `fps 1/${s.frame_rate}` : null,
+        ].filter(Boolean).join(" ");
     }
   }).join(" → ");
 }

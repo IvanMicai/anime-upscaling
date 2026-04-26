@@ -96,6 +96,30 @@ func TestBuildGPUEncodeArgs_NVIDIA_matchesValidatedCommand(t *testing.T) {
 	}
 }
 
+func TestBuildVideoFilter(t *testing.T) {
+	cases := []struct {
+		name         string
+		scaleDivisor int
+		frameDivisor int
+		codec        string
+		want         string
+	}{
+		{name: "none", scaleDivisor: 1, frameDivisor: 1, codec: "libx265", want: ""},
+		{name: "scale", scaleDivisor: 2, frameDivisor: 1, codec: "libx265", want: "scale=iw/2:ih/2"},
+		{name: "fps", scaleDivisor: 1, frameDivisor: 4, codec: "libx265", want: "fps=fps=source_fps/4"},
+		{name: "scale and fps", scaleDivisor: 2, frameDivisor: 4, codec: "libx265", want: "scale=iw/2:ih/2,fps=fps=source_fps/4"},
+		{name: "copy ignores filters", scaleDivisor: 2, frameDivisor: 4, codec: "copy", want: ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := buildVideoFilter(c.scaleDivisor, c.frameDivisor, c.codec)
+			if got != c.want {
+				t.Errorf("buildVideoFilter() = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
 func TestGPUPixFmt_NVIDIA(t *testing.T) {
 	cases := []struct {
 		in, want string

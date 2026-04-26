@@ -177,7 +177,7 @@ export default function PipelinesPage() {
             />
           </div>
           {error && <p className="text-sm text-red-400">{error}</p>}
-          <div className="flex gap-2 pt-2">
+          <div className="flex shrink-0 gap-2 pt-3">
             <Button className="flex-1" onClick={() => handleRun()} disabled={submitting}>
               {submitting ? "Executando..." : "Run All"}
             </Button>

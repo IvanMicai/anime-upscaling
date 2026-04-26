@@ -346,6 +346,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		Path        string   `json:"path"`
 		Scale       int      `json:"scale"`
 		Resolution  int      `json:"resolution"`
+		FrameRate   int      `json:"frame_rate"`
 		Multiplier  int      `json:"multiplier"`
 		Threads     int      `json:"threads"`
 		RifeModel   string   `json:"rife_model"`
@@ -474,6 +475,13 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "resolution must be 1, 2, or 4"})
 		return
 	}
+	if req.FrameRate == 0 {
+		req.FrameRate = 1
+	}
+	if req.Type == "optimize" && req.FrameRate != 1 && req.FrameRate != 2 && req.FrameRate != 4 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "frame_rate must be 1, 2, or 4"})
+		return
+	}
 
 	if req.Source == "" {
 		req.Source = "input"
@@ -538,6 +546,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		SourceDir:   sourceDir,
 		Scale:       req.Scale,
 		Resolution:  req.Resolution,
+		FrameRate:   req.FrameRate,
 		Multiplier:  req.Multiplier,
 		Threads:     req.Threads,
 		RifeModel:   req.RifeModel,
@@ -555,12 +564,13 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 	})
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"id":     job.ID,
-		"type":   job.Type,
-		"status": job.Status,
-		"source": job.Source,
-		"scale":  job.Scale,
-		"files":  job.Files,
+		"id":         job.ID,
+		"type":       job.Type,
+		"status":     job.Status,
+		"source":     job.Source,
+		"scale":      job.Scale,
+		"frame_rate": job.FrameRate,
+		"files":      job.Files,
 	})
 }
 
@@ -624,6 +634,7 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		Source        string                  `json:"source"`
 		Scale         int                     `json:"scale"`
 		Resolution    int                     `json:"resolution"`
+		FrameRate     int                     `json:"frame_rate"`
 		Multiplier    int                     `json:"multiplier,omitempty"`
 		RifeModel     string                  `json:"rife_model,omitempty"`
 		SceneThresh   float64                 `json:"scene_thresh,omitempty"`
@@ -642,6 +653,7 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		Source:        snap.Source,
 		Scale:         snap.Scale,
 		Resolution:    snap.Resolution,
+		FrameRate:     snap.FrameRate,
 		Multiplier:    snap.Multiplier,
 		RifeModel:     snap.RifeModel,
 		SceneThresh:   snap.SceneThresh,
