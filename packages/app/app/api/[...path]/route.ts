@@ -52,6 +52,10 @@ async function proxy(req: NextRequest) {
   }
 
   // Regular JSON response
+  // 101/204/205/304 são "null body status codes" — Response() lança se receber body
+  if (upstream.status === 204 || upstream.status === 205 || upstream.status === 304) {
+    return new Response(null, { status: upstream.status });
+  }
   const body = await upstream.text();
   return new Response(body, {
     status: upstream.status,
