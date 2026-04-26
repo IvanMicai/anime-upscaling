@@ -43,14 +43,13 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
       : "Remove this job?";
     if (!window.confirm(message)) return;
     setRemoving(true);
+    router.push("/");
     try {
       await deleteJob(job.id);
-      router.push("/");
     } catch (err) {
       window.alert(
         `Failed to remove job: ${err instanceof Error ? err.message : "unknown error"}`,
       );
-      setRemoving(false);
     }
   }
 
