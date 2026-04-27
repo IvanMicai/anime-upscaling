@@ -38,6 +38,7 @@ import {
   formatBytes,
   formatBytesCompact,
   formatResolutionLabel,
+  formatFrameRate,
   formatCacheAge,
   joinPath,
   type FolderKey,
@@ -53,6 +54,9 @@ function FileTooltipContent({ entry }: { entry: FolderEntry }) {
       {entry.width && entry.height && (
         <div>Resolution: {entry.width}x{entry.height}</div>
       )}
+      {entry.frameRate ? (
+        <div>Framerate: {formatFrameRate(entry.frameRate)}</div>
+      ) : null}
       {entry.audio && entry.audio.length > 0 && (
         <div>
           <div className="font-medium">Audio ({entry.audio.length}):</div>

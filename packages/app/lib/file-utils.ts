@@ -25,6 +25,7 @@ export interface FolderEntry {
   size: number;
   width?: number;
   height?: number;
+  frameRate?: number;
   audio?: AudioTrack[];
   subtitles?: SubtitleTrack[];
 }
@@ -37,6 +38,7 @@ export function getFolderData(file: VideoFile, dir: string): FolderEntry[] {
       size: dir === "input" ? file.size : (file.input_size ?? 0),
       width: dir === "input" ? file.width : file.input_width,
       height: dir === "input" ? file.height : file.input_height,
+      frameRate: dir === "input" ? file.frame_rate : file.input_frame_rate,
       audio: dir === "input" ? file.audio : file.input_audio,
       subtitles: dir === "input" ? file.subtitles : file.input_subtitles,
     },
@@ -46,6 +48,7 @@ export function getFolderData(file: VideoFile, dir: string): FolderEntry[] {
       size: dir === "output" ? file.size : (file.upscaled_size ?? 0),
       width: dir === "output" ? file.width : file.upscaled_width,
       height: dir === "output" ? file.height : file.upscaled_height,
+      frameRate: dir === "output" ? file.frame_rate : file.upscaled_frame_rate,
       audio: dir === "output" ? file.audio : file.upscaled_audio,
       subtitles: dir === "output" ? file.subtitles : file.upscaled_subtitles,
     },
@@ -55,6 +58,7 @@ export function getFolderData(file: VideoFile, dir: string): FolderEntry[] {
       size: dir === "interpolated" ? file.size : (file.interpolated_size ?? 0),
       width: dir === "interpolated" ? file.width : file.interpolated_width,
       height: dir === "interpolated" ? file.height : file.interpolated_height,
+      frameRate: dir === "interpolated" ? file.frame_rate : file.interpolated_frame_rate,
       audio: dir === "interpolated" ? file.audio : file.interpolated_audio,
       subtitles: dir === "interpolated" ? file.subtitles : file.interpolated_subtitles,
     },
@@ -64,6 +68,7 @@ export function getFolderData(file: VideoFile, dir: string): FolderEntry[] {
       size: dir === "optimized" ? file.size : (file.optimized_size ?? 0),
       width: dir === "optimized" ? file.width : file.optimized_width,
       height: dir === "optimized" ? file.height : file.optimized_height,
+      frameRate: dir === "optimized" ? file.frame_rate : file.optimized_frame_rate,
       audio: dir === "optimized" ? file.audio : file.optimized_audio,
       subtitles: dir === "optimized" ? file.subtitles : file.optimized_subtitles,
     },
@@ -94,6 +99,12 @@ export function formatBytesCompact(bytes: number): string {
     return `${Math.floor(rounded)}${units[i]}`;
   }
   return `${rounded.toFixed(1)}${units[i]}`;
+}
+
+export function formatFrameRate(fps: number): string {
+  if (!fps || fps <= 0) return "";
+  const rounded = Math.round(fps * 1000) / 1000;
+  return Number.isInteger(rounded) ? `${rounded} fps` : `${rounded.toFixed(3)} fps`;
 }
 
 export function formatBytes(bytes: number): string {

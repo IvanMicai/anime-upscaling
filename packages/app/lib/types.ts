@@ -99,6 +99,11 @@ export interface VideoFile {
   input_height?: number;
   interpolated_width?: number;
   interpolated_height?: number;
+  frame_rate?: number;
+  input_frame_rate?: number;
+  upscaled_frame_rate?: number;
+  optimized_frame_rate?: number;
+  interpolated_frame_rate?: number;
   audio?: AudioTrack[];
   subtitles?: SubtitleTrack[];
   input_audio?: AudioTrack[];

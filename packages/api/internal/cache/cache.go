@@ -16,11 +16,12 @@ type SourceEntry struct {
 	Size      int64                  `json:"size"`
 	Width     int                    `json:"width"`
 	Height    int                    `json:"height"`
+	FrameRate float64                `json:"frame_rate,omitempty"`
 	Audio     []runner.AudioTrack    `json:"audio,omitempty"`
 	Subtitles []runner.SubtitleTrack `json:"subtitles,omitempty"`
 }
 
-const currentCacheVersion = 3
+const currentCacheVersion = 4
 
 type cacheEnvelope struct {
 	Version int       `json:"version"`
@@ -196,6 +197,7 @@ func BuildFileStatusCache(cfg config.Config) error {
 					if status.Input != nil {
 						status.Input.Width = res.Width
 						status.Input.Height = res.Height
+						status.Input.FrameRate = res.FrameRate
 						status.Input.Audio = res.Audio
 						status.Input.Subtitles = res.Subtitles
 					}
@@ -203,6 +205,7 @@ func BuildFileStatusCache(cfg config.Config) error {
 					if status.Output != nil {
 						status.Output.Width = res.Width
 						status.Output.Height = res.Height
+						status.Output.FrameRate = res.FrameRate
 						status.Output.Audio = res.Audio
 						status.Output.Subtitles = res.Subtitles
 					}
@@ -210,6 +213,7 @@ func BuildFileStatusCache(cfg config.Config) error {
 					if status.Optimize != nil {
 						status.Optimize.Width = res.Width
 						status.Optimize.Height = res.Height
+						status.Optimize.FrameRate = res.FrameRate
 						status.Optimize.Audio = res.Audio
 						status.Optimize.Subtitles = res.Subtitles
 					}
@@ -217,6 +221,7 @@ func BuildFileStatusCache(cfg config.Config) error {
 					if status.Interpolated != nil {
 						status.Interpolated.Width = res.Width
 						status.Interpolated.Height = res.Height
+						status.Interpolated.FrameRate = res.FrameRate
 						status.Interpolated.Audio = res.Audio
 						status.Interpolated.Subtitles = res.Subtitles
 					}

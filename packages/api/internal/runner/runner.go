@@ -722,6 +722,7 @@ type SubtitleTrack struct {
 type VideoProbeResult struct {
 	Width     int
 	Height    int
+	FrameRate float64
 	Audio     []AudioTrack
 	Subtitles []SubtitleTrack
 }
@@ -732,13 +733,14 @@ type ffprobeJSON struct {
 }
 
 type ffprobeStream struct {
-	Index     int               `json:"index"`
-	CodecType string            `json:"codec_type"`
-	CodecName string            `json:"codec_name"`
-	Width     int               `json:"width,omitempty"`
-	Height    int               `json:"height,omitempty"`
-	Channels  int               `json:"channels,omitempty"`
-	Tags      map[string]string `json:"tags,omitempty"`
+	Index      int               `json:"index"`
+	CodecType  string            `json:"codec_type"`
+	CodecName  string            `json:"codec_name"`
+	Width      int               `json:"width,omitempty"`
+	Height     int               `json:"height,omitempty"`
+	Channels   int               `json:"channels,omitempty"`
+	RFrameRate string            `json:"r_frame_rate,omitempty"`
+	Tags       map[string]string `json:"tags,omitempty"`
 }
 
 // ProbeFullMetadata returns resolution + audio/subtitle track info for a single file.
@@ -746,7 +748,7 @@ func (r *Runner) ProbeFullMetadata(ctx context.Context, absPath string) (VideoPr
 	var buf bytes.Buffer
 	cmd := exec.CommandContext(ctx, r.cfg.FFprobeBin,
 		"-v", "error",
-		"-show_entries", "stream=index,codec_type,codec_name,width,height,channels",
+		"-show_entries", "stream=index,codec_type,codec_name,width,height,channels,r_frame_rate",
 		"-show_entries", "stream_tags=language,title",
 		"-of", "json",
 		absPath,
@@ -769,6 +771,9 @@ func (r *Runner) ProbeFullMetadata(ctx context.Context, absPath string) (VideoPr
 			if result.Width == 0 && result.Height == 0 {
 				result.Width = s.Width
 				result.Height = s.Height
+			}
+			if result.FrameRate == 0 {
+				result.FrameRate = parseRational(s.RFrameRate)
 			}
 		case "audio":
 			result.Audio = append(result.Audio, AudioTrack{
