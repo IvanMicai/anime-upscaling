@@ -32,6 +32,12 @@ type VideoFile struct {
 	InterpolatedWidth  int    `json:"interpolated_width,omitempty"`
 	InterpolatedHeight int    `json:"interpolated_height,omitempty"`
 
+	FrameRate             float64 `json:"frame_rate,omitempty"`
+	InputFrameRate        float64 `json:"input_frame_rate,omitempty"`
+	UpscaledFrameRate     float64 `json:"upscaled_frame_rate,omitempty"`
+	OptimizedFrameRate    float64 `json:"optimized_frame_rate,omitempty"`
+	InterpolatedFrameRate float64 `json:"interpolated_frame_rate,omitempty"`
+
 	Audio                 []runner.AudioTrack    `json:"audio,omitempty"`
 	Subtitles             []runner.SubtitleTrack `json:"subtitles,omitempty"`
 	InputAudio            []runner.AudioTrack    `json:"input_audio,omitempty"`

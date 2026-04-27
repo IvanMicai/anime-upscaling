@@ -236,6 +236,7 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 				if primary != nil {
 					videoFiles[i].Width = primary.Width
 					videoFiles[i].Height = primary.Height
+					videoFiles[i].FrameRate = primary.FrameRate
 					videoFiles[i].Audio = primary.Audio
 					videoFiles[i].Subtitles = primary.Subtitles
 				}
@@ -244,24 +245,28 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 				if dir != "output" && status.Output != nil {
 					videoFiles[i].UpscaledWidth = status.Output.Width
 					videoFiles[i].UpscaledHeight = status.Output.Height
+					videoFiles[i].UpscaledFrameRate = status.Output.FrameRate
 					videoFiles[i].UpscaledAudio = status.Output.Audio
 					videoFiles[i].UpscaledSubtitles = status.Output.Subtitles
 				}
 				if dir != "optimized" && status.Optimize != nil {
 					videoFiles[i].OptimizedWidth = status.Optimize.Width
 					videoFiles[i].OptimizedHeight = status.Optimize.Height
+					videoFiles[i].OptimizedFrameRate = status.Optimize.FrameRate
 					videoFiles[i].OptimizedAudio = status.Optimize.Audio
 					videoFiles[i].OptimizedSubtitles = status.Optimize.Subtitles
 				}
 				if dir != "input" && status.Input != nil {
 					videoFiles[i].InputWidth = status.Input.Width
 					videoFiles[i].InputHeight = status.Input.Height
+					videoFiles[i].InputFrameRate = status.Input.FrameRate
 					videoFiles[i].InputAudio = status.Input.Audio
 					videoFiles[i].InputSubtitles = status.Input.Subtitles
 				}
 				if dir != "interpolated" && status.Interpolated != nil {
 					videoFiles[i].InterpolatedWidth = status.Interpolated.Width
 					videoFiles[i].InterpolatedHeight = status.Interpolated.Height
+					videoFiles[i].InterpolatedFrameRate = status.Interpolated.FrameRate
 					videoFiles[i].InterpolatedAudio = status.Interpolated.Audio
 					videoFiles[i].InterpolatedSubtitles = status.Interpolated.Subtitles
 				}
