@@ -43,10 +43,14 @@ export function computePreview(steps: PipelineStep[]): VideoState {
       case "optimize": {
         if (step.codec !== "copy") {
           const div = step.resolution ?? 1;
-          const frameDiv = step.frame_rate ?? 1;
           state.width = Math.floor(state.width / div);
           state.height = Math.floor(state.height / div);
-          state.fps = Math.max(1, Math.floor(state.fps / frameDiv));
+          if (step.frame_rate_mode === "absolute" && step.frame_rate_absolute && step.frame_rate_absolute > 0) {
+            state.fps = Math.max(1, Math.min(state.fps, Math.floor(step.frame_rate_absolute)));
+          } else {
+            const frameDiv = step.frame_rate ?? 1;
+            state.fps = Math.max(1, Math.floor(state.fps / frameDiv));
+          }
         }
         state.optimized = true;
         state.crf = step.codec === "copy" ? null : QUALITY_PRESETS[step.quality ?? "alta"].crf;
@@ -100,10 +104,13 @@ export function formatStepSummary(steps: PipelineStep[]): string {
         if (s.codec === "copy") {
           return "Optimize (copy)";
         }
+        const fpsLabel = s.frame_rate_mode === "absolute" && s.frame_rate_absolute && s.frame_rate_absolute > 0
+          ? `fps ${s.frame_rate_absolute}`
+          : (s.frame_rate ?? 1) > 1 ? `fps 1/${s.frame_rate}` : null;
         return [
           `Optimize (${QUALITY_PRESETS[s.quality ?? "alta"].label}, ${codecLabel(s.codec ?? null)})`,
           (s.resolution ?? 1) > 1 ? `res 1/${s.resolution}` : null,
-          (s.frame_rate ?? 1) > 1 ? `fps 1/${s.frame_rate}` : null,
+          fpsLabel,
         ].filter(Boolean).join(" ");
     }
   }).join(" → ");

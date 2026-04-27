@@ -39,10 +39,12 @@ type Job struct {
 	Type          string                  `json:"type"`
 	Status        string                  `json:"status"`
 	Source        string                  `json:"source"`
-	Scale         int                     `json:"scale"`
-	Resolution    int                     `json:"resolution"`
-	FrameRate     int                     `json:"frame_rate"`
-	Multiplier    int                     `json:"multiplier,omitempty"`
+	Scale             int                 `json:"scale"`
+	Resolution        int                 `json:"resolution"`
+	FrameRate         int                 `json:"frame_rate"`
+	FrameRateMode     string              `json:"frame_rate_mode,omitempty"`
+	FrameRateAbsolute float64             `json:"frame_rate_absolute,omitempty"`
+	Multiplier        int                 `json:"multiplier,omitempty"`
 	RifeModel     string                  `json:"rife_model,omitempty"`
 	SceneThresh   float64                 `json:"scene_thresh,omitempty"`
 	Threads       int                     `json:"threads,omitempty"`
@@ -71,27 +73,29 @@ type Job struct {
 
 // StartJobParams holds all parameters for creating and starting a job.
 type StartJobParams struct {
-	Type        string
-	Files       []string
-	Source      string
-	SourceDir   string
-	Scale       int
-	Resolution  int
-	FrameRate   int
-	Multiplier  int
-	Threads     int
-	RifeModel   string
-	SceneThresh float64
-	Processor   string
-	Model       string
-	NoiseLevel  int
-	Quality     string
-	Codec       string
-	Preset      string
-	Tune        string
-	PixFmt      string
-	AudioCodec  string
-	UseGPU      bool
+	Type              string
+	Files             []string
+	Source            string
+	SourceDir         string
+	Scale             int
+	Resolution        int
+	FrameRate         int
+	FrameRateMode     string
+	FrameRateAbsolute float64
+	Multiplier        int
+	Threads           int
+	RifeModel         string
+	SceneThresh       float64
+	Processor         string
+	Model             string
+	NoiseLevel        int
+	Quality           string
+	Codec             string
+	Preset            string
+	Tune              string
+	PixFmt            string
+	AudioCodec        string
+	UseGPU            bool
 }
 
 func (j *Job) updateContainerProgress(p runner.Progress) {
@@ -220,33 +224,35 @@ func (j *Job) snapshot() Job {
 	prog := j.Progress
 	prog.Containers = copyContainers(j.Progress.Containers)
 	return Job{
-		ID:            j.ID,
-		Type:          j.Type,
-		Status:        j.Status,
-		Source:        j.Source,
-		Scale:         j.Scale,
-		Resolution:    j.Resolution,
-		FrameRate:     j.FrameRate,
-		Multiplier:    j.Multiplier,
-		RifeModel:     j.RifeModel,
-		SceneThresh:   j.SceneThresh,
-		Threads:       j.Threads,
-		Processor:     j.Processor,
-		Model:         j.Model,
-		NoiseLevel:    j.NoiseLevel,
-		Quality:       j.Quality,
-		Codec:         j.Codec,
-		Preset:        j.Preset,
-		Tune:          j.Tune,
-		PixFmt:        j.PixFmt,
-		AudioCodec:    j.AudioCodec,
-		UseGPU:        j.UseGPU,
-		PipelineName:  j.PipelineName,
-		PipelineSteps: j.PipelineSteps,
-		Files:         j.Files,
-		Progress:      prog,
-		CreatedAt:     j.CreatedAt,
-		FinishedAt:    j.FinishedAt,
+		ID:                j.ID,
+		Type:              j.Type,
+		Status:            j.Status,
+		Source:            j.Source,
+		Scale:             j.Scale,
+		Resolution:        j.Resolution,
+		FrameRate:         j.FrameRate,
+		FrameRateMode:     j.FrameRateMode,
+		FrameRateAbsolute: j.FrameRateAbsolute,
+		Multiplier:        j.Multiplier,
+		RifeModel:         j.RifeModel,
+		SceneThresh:       j.SceneThresh,
+		Threads:           j.Threads,
+		Processor:         j.Processor,
+		Model:             j.Model,
+		NoiseLevel:        j.NoiseLevel,
+		Quality:           j.Quality,
+		Codec:             j.Codec,
+		Preset:            j.Preset,
+		Tune:              j.Tune,
+		PixFmt:            j.PixFmt,
+		AudioCodec:        j.AudioCodec,
+		UseGPU:            j.UseGPU,
+		PipelineName:      j.PipelineName,
+		PipelineSteps:     j.PipelineSteps,
+		Files:             j.Files,
+		Progress:          prog,
+		CreatedAt:         j.CreatedAt,
+		FinishedAt:        j.FinishedAt,
 	}
 }
 
@@ -258,34 +264,36 @@ func (j *Job) snapshotWithLogs() Job {
 	prog := j.Progress
 	prog.Containers = copyContainers(j.Progress.Containers)
 	return Job{
-		ID:            j.ID,
-		Type:          j.Type,
-		Status:        j.Status,
-		Source:        j.Source,
-		Scale:         j.Scale,
-		Resolution:    j.Resolution,
-		FrameRate:     j.FrameRate,
-		Multiplier:    j.Multiplier,
-		RifeModel:     j.RifeModel,
-		SceneThresh:   j.SceneThresh,
-		Threads:       j.Threads,
-		Processor:     j.Processor,
-		Model:         j.Model,
-		NoiseLevel:    j.NoiseLevel,
-		Quality:       j.Quality,
-		Codec:         j.Codec,
-		Preset:        j.Preset,
-		Tune:          j.Tune,
-		PixFmt:        j.PixFmt,
-		AudioCodec:    j.AudioCodec,
-		UseGPU:        j.UseGPU,
-		PipelineName:  j.PipelineName,
-		PipelineSteps: j.PipelineSteps,
-		Files:         j.Files,
-		Progress:      prog,
-		Logs:          logs,
-		CreatedAt:     j.CreatedAt,
-		FinishedAt:    j.FinishedAt,
+		ID:                j.ID,
+		Type:              j.Type,
+		Status:            j.Status,
+		Source:            j.Source,
+		Scale:             j.Scale,
+		Resolution:        j.Resolution,
+		FrameRate:         j.FrameRate,
+		FrameRateMode:     j.FrameRateMode,
+		FrameRateAbsolute: j.FrameRateAbsolute,
+		Multiplier:        j.Multiplier,
+		RifeModel:         j.RifeModel,
+		SceneThresh:       j.SceneThresh,
+		Threads:           j.Threads,
+		Processor:         j.Processor,
+		Model:             j.Model,
+		NoiseLevel:        j.NoiseLevel,
+		Quality:           j.Quality,
+		Codec:             j.Codec,
+		Preset:            j.Preset,
+		Tune:              j.Tune,
+		PixFmt:            j.PixFmt,
+		AudioCodec:        j.AudioCodec,
+		UseGPU:            j.UseGPU,
+		PipelineName:      j.PipelineName,
+		PipelineSteps:     j.PipelineSteps,
+		Files:             j.Files,
+		Progress:          prog,
+		Logs:              logs,
+		CreatedAt:         j.CreatedAt,
+		FinishedAt:        j.FinishedAt,
 	}
 }
 
@@ -354,14 +362,16 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 	ctx = runner.WithJobID(ctx, jobID)
 
 	job := &Job{
-		ID:          jobID,
-		Type:        p.Type,
-		Status:      "queued",
-		Source:      p.Source,
-		Scale:       p.Scale,
-		Resolution:  p.Resolution,
-		FrameRate:   p.FrameRate,
-		Multiplier:  p.Multiplier,
+		ID:                jobID,
+		Type:              p.Type,
+		Status:            "queued",
+		Source:            p.Source,
+		Scale:             p.Scale,
+		Resolution:        p.Resolution,
+		FrameRate:         p.FrameRate,
+		FrameRateMode:     p.FrameRateMode,
+		FrameRateAbsolute: p.FrameRateAbsolute,
+		Multiplier:        p.Multiplier,
 		RifeModel:   p.RifeModel,
 		SceneThresh: p.SceneThresh,
 		Threads:     p.Threads,
@@ -438,6 +448,10 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 			jobSource := p.Source
 			jobResolution := job.Resolution
 			jobFrameRate := job.FrameRate
+			jobFrameRateAbsolute := 0.0
+			if job.FrameRateMode == "absolute" && job.FrameRateAbsolute > 0 {
+				jobFrameRateAbsolute = job.FrameRateAbsolute
+			}
 			jobThreads := job.Threads
 			useGPU := job.UseGPU && cfg.GPUVendor != "" && job.Codec != "copy" && job.Codec != "libvpx-vp9"
 			for i, f := range p.Files {
@@ -458,14 +472,14 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 						defer wg.Done()
 						defer m.gpuQ.Release(gpuID, streamIdx)
 						job.setRunningOnce()
-						process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, src, jobResolution, jobFrameRate, crf, jobThreads, stepOpts, onEvent, onProgress)
+						process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, src, jobResolution, jobFrameRate, jobFrameRateAbsolute, crf, jobThreads, stepOpts, onEvent, onProgress)
 					}()
 				} else {
 					if err := m.ffmpegQ.Submit(ctx, func(slot int) {
 						defer wg.Done()
 						job.setRunningOnce()
 						ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
-						process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, ffSrc, jobResolution, jobFrameRate, crf, jobThreads, encOpts, onEvent, onProgress)
+						process.OptimizeFile(ctx, cfg, r, filename, idx, jobSource, ffSrc, jobResolution, jobFrameRate, jobFrameRateAbsolute, crf, jobThreads, encOpts, onEvent, onProgress)
 					}); err != nil {
 						wg.Done()
 						break // ctx cancelled

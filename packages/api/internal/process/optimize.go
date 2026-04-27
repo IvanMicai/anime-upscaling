@@ -21,7 +21,7 @@ func RunOptimize(ctx context.Context, cfg config.Config, r *runner.Runner, fileL
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		OptimizeFile(ctx, cfg, r, f, i+1, "input", "FFMPEG", 1, 1, 19, 0, runner.EncodeOptions{}, onEvent, safeProgress(onProgress))
+		OptimizeFile(ctx, cfg, r, f, i+1, "input", "FFMPEG", 1, 1, 0, 19, 0, runner.EncodeOptions{}, onEvent, safeProgress(onProgress))
 	}
 	return nil
 }
@@ -29,7 +29,9 @@ func RunOptimize(ctx context.Context, cfg config.Config, r *runner.Runner, fileL
 // OptimizeFile compresses a single file from input/ to optimized/ using FFmpeg.
 // logSource is the source label emitted on logs/progress (e.g. "FFMPEG" or "FFMPEG 2");
 // empty defaults to "FFMPEG".
-func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, index int, source, logSource string, resolution int, frameRate int, crf int, threads int, opts runner.EncodeOptions, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
+// frameRateAbsolute > 0 takes precedence over frameRate (the divisor) and
+// sets a fixed target FPS, capped at the source FPS by the encode filter.
+func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, filename string, index int, source, logSource string, resolution int, frameRate int, frameRateAbsolute float64, crf int, threads int, opts runner.EncodeOptions, onEvent func(logger.JobLog), onProgress func(runner.Progress)) bool {
 	if logSource == "" {
 		logSource = "FFMPEG"
 	}
@@ -95,7 +97,17 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 	if totalFrames == 0 {
 		totalFrames = runner.ExtractFinalFrameCount(decodeOut)
 	}
-	if frameRate > 1 && totalFrames > 0 {
+	if frameRateAbsolute > 0 && totalFrames > 0 {
+		// fps filter caps at source_fps, so the output frame count is
+		// totalFrames * min(absolute, sourceFps) / sourceFps.
+		if sourceFps, _ := r.ProbeFrameRate(ctx, inputPath); sourceFps > 0 {
+			target := frameRateAbsolute
+			if target > sourceFps {
+				target = sourceFps
+			}
+			totalFrames = int(float64(totalFrames)*target/sourceFps + 0.5)
+		}
+	} else if frameRate > 1 && totalFrames > 0 {
 		totalFrames = (totalFrames + frameRate - 1) / frameRate
 	}
 
@@ -130,6 +142,7 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 			true,
 			resolution,
 			frameRate,
+			frameRateAbsolute,
 			ffmpegProgress,
 		)
 	}
