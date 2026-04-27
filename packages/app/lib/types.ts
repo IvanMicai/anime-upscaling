@@ -142,6 +142,8 @@ export interface CreateJobRequest {
   quality?: QualityPreset;
   resolution?: 1 | 2 | 4;
   frame_rate?: 1 | 2 | 4;
+  frame_rate_mode?: "relative" | "absolute";
+  frame_rate_absolute?: number;
   threads?: number;
   codec?: "libx265" | "libx264" | "libvpx-vp9" | "copy";
   preset?: "ultrafast" | "superfast" | "veryfast" | "fast" | "medium" | "slow" | "slower" | "veryslow";
@@ -188,6 +190,8 @@ export interface PipelineStep {
   quality?: QualityPreset;
   resolution?: 1 | 2 | 4;
   frame_rate?: 1 | 2 | 4;
+  frame_rate_mode?: "relative" | "absolute";
+  frame_rate_absolute?: number;
   threads?: number;
   codec?: "libx265" | "libx264" | "libvpx-vp9" | "copy";
   preset?: "ultrafast" | "superfast" | "veryfast" | "fast" | "medium" | "slow" | "slower" | "veryslow";

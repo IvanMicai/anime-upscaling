@@ -54,6 +54,8 @@ export default function NewJobPage() {
   const [audioCodec, setAudioCodec] = useState<PipelineStep["audio_codec"]>("copy");
   const [resolution, setResolution] = useState<1 | 2 | 4>(1);
   const [frameRate, setFrameRate] = useState<1 | 2 | 4>(1);
+  const [frameRateMode, setFrameRateMode] = useState<"relative" | "absolute">("relative");
+  const [frameRateAbsolute, setFrameRateAbsolute] = useState<number | undefined>(undefined);
   const [threads, setThreads] = useState(0);
   const [useGPU, setUseGPU] = useState(false);
   const [gpuVendor, setGpuVendor] = useState<GPUVendor>("");
@@ -110,6 +112,8 @@ export default function NewJobPage() {
         setAudioCodec("copy" as PipelineStep["audio_codec"]);
         setResolution(1);
         setFrameRate(1);
+        setFrameRateMode("relative");
+        setFrameRateAbsolute(undefined);
         setThreads(0);
         setUseGPU(false);
         break;
@@ -147,7 +151,9 @@ export default function NewJobPage() {
             pix_fmt: pixFmt,
             audio_codec: audioCodec,
             resolution: codec !== "copy" && resolution !== 1 ? resolution : undefined,
-            frame_rate: codec !== "copy" && frameRate !== 1 ? frameRate : undefined,
+            frame_rate: codec !== "copy" && frameRateMode === "relative" && frameRate !== 1 ? frameRate : undefined,
+            frame_rate_mode: codec !== "copy" && frameRateMode === "absolute" ? "absolute" : undefined,
+            frame_rate_absolute: codec !== "copy" && frameRateMode === "absolute" && frameRateAbsolute && frameRateAbsolute > 0 ? frameRateAbsolute : undefined,
             threads: threads > 0 ? threads : undefined,
             use_gpu: useGPU || undefined,
           }),
@@ -376,6 +382,8 @@ export default function NewJobPage() {
                         setTune("animation" as PipelineStep["tune"]);
                         setPixFmt("yuv420p10le" as PipelineStep["pix_fmt"]);
                         setFrameRate(1);
+                        setFrameRateMode("relative");
+                        setFrameRateAbsolute(undefined);
                       }
                     }}
                   >
@@ -520,19 +528,57 @@ export default function NewJobPage() {
                 )}
                 {!isStreamCopy && (
                   <Field label="Frame Rate">
-                    <Select
-                      value={String(frameRate)}
-                      onValueChange={(v) => setFrameRate(Number(v) as 1 | 2 | 4)}
-                    >
-                      <SelectTrigger className="h-8">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">Original</SelectItem>
-                        <SelectItem value="2">1/2</SelectItem>
-                        <SelectItem value="4">1/4</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex gap-2">
+                      <Select
+                        value={frameRateMode}
+                        onValueChange={(v) => {
+                          const next = v as "relative" | "absolute";
+                          setFrameRateMode(next);
+                          if (next === "absolute" && !frameRateAbsolute) {
+                            setFrameRateAbsolute(24);
+                          }
+                          if (next === "relative") {
+                            setFrameRateAbsolute(undefined);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-[110px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="relative">Relativo</SelectItem>
+                          <SelectItem value="absolute">Absoluto</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {frameRateMode === "relative" ? (
+                        <Select
+                          value={String(frameRate)}
+                          onValueChange={(v) => setFrameRate(Number(v) as 1 | 2 | 4)}
+                        >
+                          <SelectTrigger className="h-8 w-[110px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">Original</SelectItem>
+                            <SelectItem value="2">1/2</SelectItem>
+                            <SelectItem value="4">1/4</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={frameRateAbsolute ?? ""}
+                          placeholder="fps"
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setFrameRateAbsolute(raw === "" ? undefined : Math.max(1, parseFloat(raw)));
+                          }}
+                          className="h-8 w-[110px] rounded-md border bg-transparent px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      )}
+                    </div>
                   </Field>
                 )}
                 {!useGPU && (

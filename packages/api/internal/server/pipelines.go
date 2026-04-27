@@ -273,6 +273,15 @@ func validateSteps(steps []pipeline.PipelineStep) error {
 			if s.FrameRate != 0 && s.FrameRate != 1 && s.FrameRate != 2 && s.FrameRate != 4 {
 				return fmt.Errorf("step %d: frame_rate must be 1, 2, or 4", i+1)
 			}
+			if s.FrameRateMode != "" && s.FrameRateMode != "relative" && s.FrameRateMode != "absolute" {
+				return fmt.Errorf("step %d: frame_rate_mode must be \"relative\" or \"absolute\"", i+1)
+			}
+			if s.FrameRateMode == "absolute" && s.FrameRateAbsolute <= 0 {
+				return fmt.Errorf("step %d: frame_rate_absolute must be > 0 when frame_rate_mode is \"absolute\"", i+1)
+			}
+			if s.FrameRateAbsolute < 0 {
+				return fmt.Errorf("step %d: frame_rate_absolute must be >= 0", i+1)
+			}
 			if s.Threads < 0 {
 				return fmt.Errorf("step %d: threads must be >= 0", i+1)
 			}

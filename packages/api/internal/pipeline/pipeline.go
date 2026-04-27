@@ -20,9 +20,11 @@ type PipelineStep struct {
 	RifeModel   string  `json:"rife_model,omitempty"`
 	SceneThresh float64 `json:"scene_thresh,omitempty"`
 	Quality     string  `json:"quality,omitempty"`
-	Resolution  int     `json:"resolution,omitempty"`
-	FrameRate   int     `json:"frame_rate,omitempty"`
-	Threads     int     `json:"threads,omitempty"`
+	Resolution        int     `json:"resolution,omitempty"`
+	FrameRate         int     `json:"frame_rate,omitempty"`
+	FrameRateMode     string  `json:"frame_rate_mode,omitempty"`
+	FrameRateAbsolute float64 `json:"frame_rate_absolute,omitempty"`
+	Threads           int     `json:"threads,omitempty"`
 	Codec       string  `json:"codec,omitempty"`
 	Preset      string  `json:"preset,omitempty"`
 	Tune        string  `json:"tune,omitempty"`

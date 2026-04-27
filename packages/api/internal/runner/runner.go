@@ -320,7 +320,7 @@ func (o EncodeOptions) WithDefaults() EncodeOptions {
 
 // FFmpegEncode encodes a video with configurable codec and settings.
 // If onProgress is non-nil, stderr/stdout are intercepted to parse progress data.
-func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath string, crf int, threads int, opts EncodeOptions, processName string, copySubtitles bool, scaleDivisor int, frameRateDivisor int, onProgress func(Progress)) error {
+func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath string, crf int, threads int, opts EncodeOptions, processName string, copySubtitles bool, scaleDivisor int, frameRateDivisor int, frameRateAbsolute float64, onProgress func(Progress)) error {
 	f, err := os.OpenFile(r.cfg.BaseDir+"/ffmpeg.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("open ffmpeg log: %w", err)
@@ -357,7 +357,7 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	if copySubtitles {
 		args = append(args, "-map", "0")
 	}
-	if filter := buildVideoFilter(scaleDivisor, frameRateDivisor, opts.Codec); filter != "" {
+	if filter := buildVideoFilter(scaleDivisor, frameRateDivisor, frameRateAbsolute, opts.Codec); filter != "" {
 		args = append(args, "-vf", filter)
 	}
 
@@ -407,7 +407,7 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	return runError(cmd.Run(), tail)
 }
 
-func buildVideoFilter(scaleDivisor int, frameRateDivisor int, codec string) string {
+func buildVideoFilter(scaleDivisor int, frameRateDivisor int, frameRateAbsolute float64, codec string) string {
 	if codec == "copy" {
 		return ""
 	}
@@ -416,7 +416,11 @@ func buildVideoFilter(scaleDivisor int, frameRateDivisor int, codec string) stri
 	if scaleDivisor > 1 {
 		filters = append(filters, fmt.Sprintf("scale=iw/%d:ih/%d", scaleDivisor, scaleDivisor))
 	}
-	if frameRateDivisor > 1 {
+	if frameRateAbsolute > 0 {
+		// Cap at the source FPS so this never upsamples; comma inside the
+		// expression is escaped so it isn't read as a filter separator.
+		filters = append(filters, fmt.Sprintf("fps=fps=min(%g\\,source_fps)", frameRateAbsolute))
+	} else if frameRateDivisor > 1 {
 		filters = append(filters, fmt.Sprintf("fps=fps=source_fps/%d", frameRateDivisor))
 	}
 	return strings.Join(filters, ",")
@@ -562,6 +566,13 @@ func (r *Runner) ProbeFrameCount(ctx context.Context, absPath string) (int, erro
 	}
 
 	return 0, nil
+}
+
+// ProbeFrameRate returns the average frame rate of the first video stream,
+// or 0 when ffprobe yields nothing usable.
+func (r *Runner) ProbeFrameRate(ctx context.Context, absPath string) (float64, error) {
+	rate := probeFFprobe(ctx, r.cfg.FFprobeBin, absPath, []string{"-select_streams", "v:0"}, "stream=r_frame_rate")
+	return parseRational(rate), nil
 }
 
 // probeFFprobe runs ffprobe with the given selector + entries and returns

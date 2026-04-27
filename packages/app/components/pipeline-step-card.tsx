@@ -443,23 +443,69 @@ export function PipelineStepCard({
                   </Select>
                 </Field>
               )}
-              {!isStreamCopy && (
-                <Field label="Frame Rate">
-                  <Select
-                    value={String(step.frame_rate ?? 1)}
-                    onValueChange={(v) => updateField({ frame_rate: Number(v) as 1 | 2 | 4 })}
-                  >
-                    <SelectTrigger className="h-8">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">Original</SelectItem>
-                      <SelectItem value="2">1/2</SelectItem>
-                      <SelectItem value="4">1/4</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-              )}
+              {!isStreamCopy && (() => {
+                const mode = step.frame_rate_mode ?? "relative";
+                return (
+                  <Field label="Frame Rate">
+                    <div className="flex gap-2">
+                      <Select
+                        value={mode}
+                        onValueChange={(v) => {
+                          const next = v as "relative" | "absolute";
+                          if (next === "absolute") {
+                            updateField({
+                              frame_rate_mode: "absolute",
+                              frame_rate_absolute: step.frame_rate_absolute ?? 24,
+                            });
+                          } else {
+                            updateField({
+                              frame_rate_mode: "relative",
+                              frame_rate_absolute: undefined,
+                            });
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-[110px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="relative">Relativo</SelectItem>
+                          <SelectItem value="absolute">Absoluto</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {mode === "relative" ? (
+                        <Select
+                          value={String(step.frame_rate ?? 1)}
+                          onValueChange={(v) => updateField({ frame_rate: Number(v) as 1 | 2 | 4 })}
+                        >
+                          <SelectTrigger className="h-8 w-[110px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">Original</SelectItem>
+                            <SelectItem value="2">1/2</SelectItem>
+                            <SelectItem value="4">1/4</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={step.frame_rate_absolute ?? ""}
+                          placeholder="fps"
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            const n = raw === "" ? undefined : Math.max(1, parseFloat(raw));
+                            updateField({ frame_rate_absolute: n });
+                          }}
+                          className="h-8 w-[110px] rounded-md border bg-transparent px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      )}
+                    </div>
+                  </Field>
+                );
+              })()}
               {!useGPU && (
                 <Field label="Threads">
                   <Select

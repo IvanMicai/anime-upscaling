@@ -312,9 +312,11 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		Source      string   `json:"source"`
 		Path        string   `json:"path"`
 		Scale       int      `json:"scale"`
-		Resolution  int      `json:"resolution"`
-		FrameRate   int      `json:"frame_rate"`
-		Multiplier  int      `json:"multiplier"`
+		Resolution        int     `json:"resolution"`
+		FrameRate         int     `json:"frame_rate"`
+		FrameRateMode     string  `json:"frame_rate_mode"`
+		FrameRateAbsolute float64 `json:"frame_rate_absolute"`
+		Multiplier        int     `json:"multiplier"`
 		Threads     int      `json:"threads"`
 		RifeModel   string   `json:"rife_model"`
 		SceneThresh float64  `json:"scene_thresh"`
@@ -449,6 +451,20 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "frame_rate must be 1, 2, or 4"})
 		return
 	}
+	if req.Type == "optimize" {
+		if req.FrameRateMode != "" && req.FrameRateMode != "relative" && req.FrameRateMode != "absolute" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "frame_rate_mode must be \"relative\" or \"absolute\""})
+			return
+		}
+		if req.FrameRateMode == "absolute" && req.FrameRateAbsolute <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "frame_rate_absolute must be > 0 when frame_rate_mode is \"absolute\""})
+			return
+		}
+		if req.FrameRateAbsolute < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "frame_rate_absolute must be >= 0"})
+			return
+		}
+	}
 
 	if req.Source == "" {
 		req.Source = "input"
@@ -507,14 +523,16 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 	}
 
 	job := jm.StartJob(StartJobParams{
-		Type:        req.Type,
-		Files:       req.Files,
-		Source:      req.Source,
-		SourceDir:   sourceDir,
-		Scale:       req.Scale,
-		Resolution:  req.Resolution,
-		FrameRate:   req.FrameRate,
-		Multiplier:  req.Multiplier,
+		Type:              req.Type,
+		Files:             req.Files,
+		Source:            req.Source,
+		SourceDir:         sourceDir,
+		Scale:             req.Scale,
+		Resolution:        req.Resolution,
+		FrameRate:         req.FrameRate,
+		FrameRateMode:     req.FrameRateMode,
+		FrameRateAbsolute: req.FrameRateAbsolute,
+		Multiplier:        req.Multiplier,
 		Threads:     req.Threads,
 		RifeModel:   req.RifeModel,
 		SceneThresh: req.SceneThresh,

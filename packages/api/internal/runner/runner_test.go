@@ -101,6 +101,7 @@ func TestBuildVideoFilter(t *testing.T) {
 		name         string
 		scaleDivisor int
 		frameDivisor int
+		frameAbs     float64
 		codec        string
 		want         string
 	}{
@@ -109,10 +110,13 @@ func TestBuildVideoFilter(t *testing.T) {
 		{name: "fps", scaleDivisor: 1, frameDivisor: 4, codec: "libx265", want: "fps=fps=source_fps/4"},
 		{name: "scale and fps", scaleDivisor: 2, frameDivisor: 4, codec: "libx265", want: "scale=iw/2:ih/2,fps=fps=source_fps/4"},
 		{name: "copy ignores filters", scaleDivisor: 2, frameDivisor: 4, codec: "copy", want: ""},
+		{name: "absolute fps", scaleDivisor: 1, frameDivisor: 1, frameAbs: 24, codec: "libx265", want: "fps=fps=min(24\\,source_fps)"},
+		{name: "absolute overrides divisor", scaleDivisor: 1, frameDivisor: 4, frameAbs: 30, codec: "libx265", want: "fps=fps=min(30\\,source_fps)"},
+		{name: "scale and absolute", scaleDivisor: 2, frameDivisor: 1, frameAbs: 12.5, codec: "libx265", want: "scale=iw/2:ih/2,fps=fps=min(12.5\\,source_fps)"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := buildVideoFilter(c.scaleDivisor, c.frameDivisor, c.codec)
+			got := buildVideoFilter(c.scaleDivisor, c.frameDivisor, c.frameAbs, c.codec)
 			if got != c.want {
 				t.Errorf("buildVideoFilter() = %q, want %q", got, c.want)
 			}
