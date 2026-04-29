@@ -15,6 +15,7 @@ services:
       - "${API_PORT:-4751}"
     volumes:
       - ${HOST_PROCESS_DIR:-./data}:${PROCESS_DIR:-/data}
+    mem_limit: ${API_MEM_LIMIT:-16g}
     restart: unless-stopped
 
   app:
@@ -29,4 +30,5 @@ services:
       - "${APP_PORT:-4750}:${APP_PORT:-4750}"
     depends_on:
       - api
+    mem_limit: ${APP_MEM_LIMIT:-1g}
     restart: unless-stopped
