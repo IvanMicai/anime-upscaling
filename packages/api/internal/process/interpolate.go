@@ -85,8 +85,25 @@ func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, g
 
 	logFile := gpuLogPath(cfg, gpuID, streamIdx)
 	err := r.Video2xRife(ctx, gpuID, streamIdx, filename, logFile, multiplier, rifeOpts, inputDir, tempOutputDir, gpuProgress)
-
 	tempOutPath := filepath.Join(tempOutputDir, filename)
+
+	// See upscale.go: glslang PoolAlloc aborts can fire after the output is
+	// fully written (salvage) or during shader compilation (retry once).
+	if err != nil && ctx.Err() == nil {
+		if salvageSignaledRun(err, logFile, tempOutPath) {
+			onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Recuperando %s: video2x morreu em signal mas output foi escrito por completo", filename), Time: time.Now()})
+			err = nil
+		} else if sig, signaled := runner.SignalFromError(err); signaled {
+			onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Tentativa 1 morreu com signal %s; repetindo interpolação: %s", sig, filename), Time: time.Now()})
+			os.Remove(tempOutPath)
+			err = r.Video2xRife(ctx, gpuID, streamIdx, filename, logFile, multiplier, rifeOpts, inputDir, tempOutputDir, gpuProgress)
+			if err != nil && salvageSignaledRun(err, logFile, tempOutPath) {
+				onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Recuperando %s na 2ª tentativa: video2x morreu em signal mas output foi escrito por completo", filename), Time: time.Now()})
+				err = nil
+			}
+		}
+	}
+
 	if err != nil {
 		os.Remove(tempOutPath)
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao interpolar: %s (%v)", filename, err), Time: time.Now()})
