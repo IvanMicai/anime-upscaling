@@ -30,6 +30,19 @@ export interface FolderEntry {
   subtitles?: SubtitleTrack[];
 }
 
+export function computeColumnTotals(
+  files: VideoFile[],
+  dir: FolderKey,
+): Record<FolderKey, number> {
+  const totals: Record<FolderKey, number> = { input: 0, output: 0, optimized: 0, interpolated: 0 };
+  for (const f of files) {
+    for (const entry of getFolderData(f, dir)) {
+      if (entry.exists) totals[entry.key] += entry.size;
+    }
+  }
+  return totals;
+}
+
 export function getFolderData(file: VideoFile, dir: string): FolderEntry[] {
   const entries: FolderEntry[] = [
     {

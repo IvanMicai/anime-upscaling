@@ -9,6 +9,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -34,6 +35,7 @@ import {
   FOLDER_COLORS,
   FOLDER_FILTER_KEY,
   COLUMN_ORDER,
+  computeColumnTotals,
   getFolderData,
   formatBytes,
   formatBytesCompact,
@@ -230,6 +232,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
 
   const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
   const filtered = sorted.filter(matchesFilter);
+  const totals = computeColumnTotals(filtered, dir as FolderKey);
   // Selection identifiers are file paths relative to the source dir
   // (e.g. "season1/ep01.mkv") so picks survive subfolder navigation.
   const toRel = (name: string) => (path ? `${path}/${name}` : name);
@@ -345,10 +348,17 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-8" />
-                <TableHead>Filename</TableHead>
-                {COLUMN_ORDER.map((d) => (
-                  <TableHead key={d} className={cn("text-right hidden md:table-cell", FOLDER_COLORS[d].text)}>
+                <TableHead className="w-8 sticky top-0 z-10 bg-background" />
+                <TableHead className="sticky top-0 z-10 bg-background">Filename</TableHead>
+                {COLUMN_ORDER.map((d, i, arr) => (
+                  <TableHead
+                    key={d}
+                    className={cn(
+                      "text-right hidden md:table-cell sticky top-0 z-10 bg-background",
+                      FOLDER_COLORS[d].text,
+                      i === arr.length - 1 && "pr-5",
+                    )}
+                  >
                     {FOLDER_COLORS[d].label}
                   </TableHead>
                 ))}
@@ -404,7 +414,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
                     <TableCell className="font-mono text-sm truncate max-w-[180px] sm:max-w-[300px]">
                       {file.name}
                     </TableCell>
-                    {folders.map((entry) => {
+                    {folders.map((entry, i, arr) => {
                       const isMarked = fileDeleteFolders?.has(entry.key) ?? false;
                       const canClick = deleteMode && entry.exists;
                       return (
@@ -414,7 +424,8 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
                             "text-right text-sm hidden md:table-cell",
                             entry.exists ? FOLDER_COLORS[entry.key].text : "text-muted-foreground",
                             canClick && "cursor-pointer hover:bg-muted/50",
-                            isMarked && "ring-2 ring-inset ring-red-500 bg-red-500/10"
+                            isMarked && "ring-2 ring-inset ring-red-500 bg-red-500/10",
+                            i === arr.length - 1 && "pr-5",
                           )}
                           onClick={(e) => {
                             if (canClick) {
@@ -452,6 +463,28 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
                 );
               })}
             </TableBody>
+            {filtered.length > 0 && (
+              <TableFooter className="sticky bottom-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/80">
+                <TableRow>
+                  <TableCell className="w-8" />
+                  <TableCell className="font-medium text-sm">
+                    Total ({filtered.length} {filtered.length === 1 ? "file" : "files"})
+                  </TableCell>
+                  {COLUMN_ORDER.map((d, i, arr) => (
+                    <TableCell
+                      key={d}
+                      className={cn(
+                        "text-right font-medium text-sm hidden md:table-cell",
+                        FOLDER_COLORS[d].text,
+                        i === arr.length - 1 && "pr-5",
+                      )}
+                    >
+                      {totals[d] > 0 ? formatBytesCompact(totals[d]) : "—"}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableFooter>
+            )}
           </Table>
         </ScrollArea>
       </TooltipProvider>

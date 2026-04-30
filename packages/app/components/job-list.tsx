@@ -93,7 +93,9 @@ export function JobList({
                   {job.files?.length ?? 0} file{(job.files?.length ?? 0) !== 1 ? "s" : ""}
                 </TableCell>
                 <TableCell className="hidden md:table-cell font-mono text-sm text-muted-foreground">
-                  {done}/{p.total}
+                  {p.total > 0
+                    ? `${Math.round((done / p.total) * 100)}% (${done}/${p.total})`
+                    : "—"}
                 </TableCell>
                 <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                   {formatTime(job.created_at)}
