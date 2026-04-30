@@ -36,14 +36,25 @@ func RunCustomPipelineForFile(
 	}
 	currentInputDir := sourceDir
 
-	// Wrap onEvent so that step-level OK/SKIP/ERRO don't increment job counters.
-	// They become "STEP" level which cleans up containers but doesn't affect progress.
+	// Wrap onEvent so step-level ERRO is suppressed (handled by failRemaining
+	// below for accurate accounting). OK and SKIP pass through so each step
+	// increments Completed/Skipped exactly once.
 	stepOnEvent := func(e logger.JobLog) {
-		switch e.Level {
-		case "OK", "SKIP", "ERRO":
+		if e.Level == "ERRO" {
 			e.Level = "STEP"
 		}
 		onEvent(e)
+	}
+
+	// failRemaining emits one ERRO with the real failure message and N-1
+	// ERROs for the still-pending steps, so Failed accounts for every step
+	// that won't run. Keeps Completed + Failed + Skipped == Total.
+	failRemaining := func(stepIdx int, source, filename string) {
+		remaining := len(steps) - stepIdx
+		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: "Falha: " + filename, Time: time.Now()})
+		for i := 1; i < remaining; i++ {
+			onEvent(logger.JobLog{Source: "PIPELINE", Level: "ERRO", Index: index, Message: "Step ignorado (pipeline falhou): " + filename, Time: time.Now()})
+		}
 	}
 
 	for stepIdx, step := range steps {
@@ -82,7 +93,7 @@ func RunCustomPipelineForFile(
 			gpuQ.Release(gpuID, streamIdx)
 
 			if !ok {
-				onEvent(logger.JobLog{Source: "PIPELINE", Level: "ERRO", Index: index, Message: "Falha: " + filename, Time: time.Now()})
+				failRemaining(stepIdx, "PIPELINE", filename)
 				return false
 			}
 			currentInputDir = cfg.OutputDir
@@ -122,7 +133,7 @@ func RunCustomPipelineForFile(
 			gpuQ.Release(gpuID, streamIdx)
 
 			if !ok {
-				onEvent(logger.JobLog{Source: "PIPELINE", Level: "ERRO", Index: index, Message: "Falha: " + filename, Time: time.Now()})
+				failRemaining(stepIdx, "PIPELINE", filename)
 				return false
 			}
 			currentInputDir = cfg.InterpolatedDir
@@ -198,14 +209,16 @@ func RunCustomPipelineForFile(
 			}
 
 			if !optimizeOk {
-				onEvent(logger.JobLog{Source: "PIPELINE", Level: "ERRO", Index: index, Message: "Falha: " + filename, Time: time.Now()})
+				failRemaining(stepIdx, "PIPELINE", filename)
 				return false
 			}
 			currentInputDir = cfg.OptimizedDir
 		}
 	}
 
-	onEvent(logger.JobLog{Source: "PIPELINE", Level: "OK", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
+	// Each step's OK already incremented Completed; emit a STEP-level event
+	// here just so the log shows pipeline completion without double-counting.
+	onEvent(logger.JobLog{Source: "PIPELINE", Level: "STEP", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
 	return true
 }
 

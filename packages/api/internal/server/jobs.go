@@ -554,7 +554,7 @@ func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.Pipe
 		PipelineName:  pipelineName,
 		PipelineSteps: steps,
 		Files:         files,
-		Progress:      JobProgress{Total: len(files)},
+		Progress:      JobProgress{Total: len(files) * len(steps)},
 		CreatedAt:     time.Now().UTC(),
 		cancel:        cancel,
 		done:          make(chan struct{}),
