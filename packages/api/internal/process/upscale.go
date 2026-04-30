@@ -88,8 +88,27 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 
 	logFile := gpuLogPath(cfg, gpuID, streamIdx)
 	err := r.Video2x(ctx, gpuID, streamIdx, filename, logFile, scale, opts, inputDir, tempOutputDir, gpuProgress)
-
 	tempOutPath := filepath.Join(tempOutputDir, filename)
+
+	// glslang's PoolAlloc assertion (an upstream video2x/ncnn-vulkan bug) can
+	// abort the process during Vulkan teardown after the output is already
+	// written, or kill it mid-run during shader compilation. Salvage the
+	// first case; retry once for the second.
+	if err != nil && ctx.Err() == nil {
+		if salvageSignaledRun(err, logFile, tempOutPath) {
+			onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Recuperando %s: video2x morreu em signal mas output foi escrito por completo", filename), Time: time.Now()})
+			err = nil
+		} else if sig, signaled := runner.SignalFromError(err); signaled {
+			onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Tentativa 1 morreu com signal %s; repetindo upscale: %s", sig, filename), Time: time.Now()})
+			os.Remove(tempOutPath)
+			err = r.Video2x(ctx, gpuID, streamIdx, filename, logFile, scale, opts, inputDir, tempOutputDir, gpuProgress)
+			if err != nil && salvageSignaledRun(err, logFile, tempOutPath) {
+				onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Recuperando %s na 2ª tentativa: video2x morreu em signal mas output foi escrito por completo", filename), Time: time.Now()})
+				err = nil
+			}
+		}
+	}
+
 	if err != nil {
 		os.Remove(tempOutPath)
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao processar: %s (%v)", filename, err), Time: time.Now()})
