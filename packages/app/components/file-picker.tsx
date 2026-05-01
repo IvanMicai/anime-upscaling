@@ -3,10 +3,8 @@
 import { useEffect, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import {
-  Table,
   TableBody,
   TableCell,
   TableFooter,
@@ -47,7 +45,7 @@ import {
   type FolderEntry,
 } from "@/lib/file-utils";
 import { Breadcrumbs } from "@/components/breadcrumbs";
-import type { VideoFile } from "@/lib/types";
+import type { VideoFile, DirectorySizes } from "@/lib/types";
 
 function FileTooltipContent({ entry }: { entry: FolderEntry }) {
   return (
@@ -102,6 +100,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
 
   const [files, setFiles] = useState<VideoFile[]>([]);
   const [directories, setDirectories] = useState<string[]>([]);
+  const [directorySizes, setDirectorySizes] = useState<Record<string, DirectorySizes>>({});
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<Set<string>>(new Set());
   const [cachedAt, setCachedAt] = useState<string | null>(null);
@@ -132,11 +131,13 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
       .then((res) => {
         setFiles(res.files ?? []);
         setDirectories(res.directories ?? []);
+        setDirectorySizes(res.directory_sizes ?? {});
         setCachedAt(res.cached_at ?? null);
       })
       .catch(() => {
         setFiles([]);
         setDirectories([]);
+        setDirectorySizes({});
       })
       .finally(() => setLoading(false));
   }, [dir, path, resetLastClicked]);
@@ -147,6 +148,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
       .then((res) => {
         setFiles(res.files ?? []);
         setDirectories(res.directories ?? []);
+        setDirectorySizes(res.directory_sizes ?? {});
         setCachedAt(res.cached_at ?? null);
       })
       .catch(() => {})
@@ -222,6 +224,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
       const res = await getFiles(dir, path, true);
       setFiles(res.files ?? []);
       setDirectories(res.directories ?? []);
+      setDirectorySizes(res.directory_sizes ?? {});
       setCachedAt(res.cached_at ?? null);
     } catch {
       // keep dialog open on error
@@ -232,7 +235,14 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
 
   const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
   const filtered = sorted.filter(matchesFilter);
-  const totals = computeColumnTotals(filtered, dir as FolderKey);
+  const fileTotals = computeColumnTotals(filtered, dir as FolderKey);
+  const totals: Record<FolderKey, number> = { ...fileTotals };
+  for (const sizes of Object.values(directorySizes)) {
+    totals.input += sizes.input;
+    totals.output += sizes.output;
+    totals.optimized += sizes.optimized;
+    totals.interpolated += sizes.interpolated;
+  }
   // Selection identifiers are file paths relative to the source dir
   // (e.g. "season1/ep01.mkv") so picks survive subfolder navigation.
   const toRel = (name: string) => (path ? `${path}/${name}` : name);
@@ -280,7 +290,48 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
             </button>
           );
         })}
-        <div className="ml-auto">
+        <div className="ml-auto flex flex-nowrap items-center gap-2 min-h-[28px]">
+          <div
+            aria-hidden={!deleteMode}
+            className={cn(
+              "flex flex-nowrap items-center gap-2 rounded-md border px-2 py-1 text-xs transition-opacity",
+              deleteMode
+                ? "border-red-500/40 bg-red-500/5"
+                : "pointer-events-none invisible border-transparent",
+            )}
+          >
+            <span className="flex flex-nowrap items-center gap-x-2 whitespace-nowrap">
+              {deleteTotal > 0 ? (
+                COLUMN_ORDER.map((key) => {
+                  const count = deleteSummary[key];
+                  if (count <= 0) return null;
+                  return (
+                    <span key={key} className={FOLDER_COLORS[key].text}>
+                      {count} {FOLDER_COLORS[key].label}
+                    </span>
+                  );
+                })
+              ) : (
+                <span className="text-red-400">Select files to delete</span>
+              )}
+            </span>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={clearDeleteSelections}
+              className={cn(deleteTotal === 0 && "invisible pointer-events-none")}
+            >
+              Clear
+            </Button>
+            <Button
+              variant="destructive"
+              size="xs"
+              onClick={() => setConfirmOpen(true)}
+              className={cn(deleteTotal === 0 && "invisible pointer-events-none")}
+            >
+              Delete selected
+            </Button>
+          </div>
           <Button
             variant={deleteMode ? "destructive" : "outline"}
             size="xs"
@@ -317,44 +368,20 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
         )}
       </div>
 
-      {/* Delete summary bar */}
-      {deleteMode && (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm">
-          <span className="text-red-400">
-            {deleteTotal > 0
-              ? [
-                  deleteSummary.input > 0 && `${deleteSummary.input} input`,
-                  deleteSummary.output > 0 && `${deleteSummary.output} upscaled`,
-                  deleteSummary.optimized > 0 && `${deleteSummary.optimized} optimized`,
-                  deleteSummary.interpolated > 0 && `${deleteSummary.interpolated} interpolated`,
-                ].filter(Boolean).join(", ")
-              : "Select files to delete"}
-          </span>
-          {deleteTotal > 0 && (
-            <div className="ml-auto flex gap-1.5">
-              <Button variant="ghost" size="xs" onClick={clearDeleteSelections}>
-                Clear
-              </Button>
-              <Button variant="destructive" size="xs" onClick={() => setConfirmOpen(true)}>
-                Delete selected
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-
       <TooltipProvider>
-        <ScrollArea className="mb-3 flex-1 min-h-0 rounded-md border">
-          <Table>
+        <div className="scrollbar-dark mb-3 flex-1 min-h-0 overflow-auto rounded-md border">
+          <table className="w-full caption-bottom border-collapse text-sm">
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-8 sticky top-0 z-10 bg-background" />
-                <TableHead className="sticky top-0 z-10 bg-background">Filename</TableHead>
+              <TableRow className="border-b-0">
+                <TableHead className="sticky top-0 z-10 w-8 bg-[oklch(0.32_0_0)] shadow-[inset_0_-1px_0_var(--border)]" />
+                <TableHead className="sticky top-0 z-10 bg-[oklch(0.32_0_0)] shadow-[inset_0_-1px_0_var(--border)]">
+                  Filename
+                </TableHead>
                 {COLUMN_ORDER.map((d, i, arr) => (
                   <TableHead
                     key={d}
                     className={cn(
-                      "text-right hidden md:table-cell sticky top-0 z-10 bg-background",
+                      "sticky top-0 z-10 hidden bg-[oklch(0.32_0_0)] text-right shadow-[inset_0_-1px_0_var(--border)] md:table-cell",
                       FOLDER_COLORS[d].text,
                       i === arr.length - 1 && "pr-5",
                     )}
@@ -375,23 +402,41 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
                   </TableCell>
                 </TableRow>
               )}
-              {!loading && directories.map((name) => (
-                <TableRow
-                  key={`dir:${name}`}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => setPath(joinPath(path, name))}
-                >
-                  <TableCell className="w-8" />
-                  <TableCell className="font-mono text-sm" colSpan={1 + COLUMN_ORDER.length}>
-                    <span className="inline-flex items-center gap-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
-                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                      </svg>
-                      {name}/
-                    </span>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {!loading && directories.map((name) => {
+                const sizes = directorySizes[name];
+                return (
+                  <TableRow
+                    key={`dir:${name}`}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setPath(joinPath(path, name))}
+                  >
+                    <TableCell className="w-8" />
+                    <TableCell className="font-mono text-sm">
+                      <span className="inline-flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+                          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                        </svg>
+                        {name}/
+                      </span>
+                    </TableCell>
+                    {COLUMN_ORDER.map((d, i, arr) => {
+                      const value = sizes?.[d] ?? 0;
+                      return (
+                        <TableCell
+                          key={d}
+                          className={cn(
+                            "text-right text-sm hidden md:table-cell tabular-nums",
+                            value > 0 ? FOLDER_COLORS[d].text : "text-muted-foreground",
+                            i === arr.length - 1 && "pr-5",
+                          )}
+                        >
+                          {value > 0 ? formatBytesCompact(value) : "—"}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                );
+              })}
               {!loading && filtered.map((file, index) => {
                 const folders = getFolderData(file, dir);
                 const rel = toRel(file.name);
@@ -464,17 +509,17 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
               })}
             </TableBody>
             {filtered.length > 0 && (
-              <TableFooter className="sticky bottom-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/80">
+              <TableFooter>
                 <TableRow>
-                  <TableCell className="w-8" />
-                  <TableCell className="font-medium text-sm">
-                    Total ({filtered.length} {filtered.length === 1 ? "file" : "files"})
+                  <TableCell className="sticky bottom-[-1px] z-10 w-8 border-t bg-muted" />
+                  <TableCell className="sticky bottom-[-1px] z-10 border-t bg-muted font-medium text-sm">
+                    Total
                   </TableCell>
                   {COLUMN_ORDER.map((d, i, arr) => (
                     <TableCell
                       key={d}
                       className={cn(
-                        "text-right font-medium text-sm hidden md:table-cell",
+                        "sticky bottom-[-1px] z-10 hidden border-t bg-muted text-right font-medium text-sm md:table-cell",
                         FOLDER_COLORS[d].text,
                         i === arr.length - 1 && "pr-5",
                       )}
@@ -485,8 +530,8 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
                 </TableRow>
               </TableFooter>
             )}
-          </Table>
-        </ScrollArea>
+          </table>
+        </div>
       </TooltipProvider>
 
       {/* Delete confirmation dialog */}
@@ -499,23 +544,57 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-60 overflow-y-auto space-y-2 text-sm">
-            {COLUMN_ORDER.map((folder) => {
-              const names: string[] = [];
-              for (const [name, folders] of deleteSelections) {
-                if (folders.has(folder)) names.push(name);
-              }
-              if (names.length === 0) return null;
+            {(() => {
+              const filesByName = new Map(files.map((f) => [f.name, f]));
+              let grandTotalSize = 0;
+              const sections = COLUMN_ORDER.map((folder) => {
+                const items: { name: string; size: number }[] = [];
+                let folderTotal = 0;
+                for (const [name, folders] of deleteSelections) {
+                  if (!folders.has(folder)) continue;
+                  const file = filesByName.get(name);
+                  const entry = file
+                    ? getFolderData(file, dir).find((e) => e.key === folder)
+                    : undefined;
+                  const size = entry?.size ?? 0;
+                  items.push({ name, size });
+                  folderTotal += size;
+                }
+                if (items.length === 0) return null;
+                grandTotalSize += folderTotal;
+                return (
+                  <div key={folder}>
+                    <p className={cn("font-medium", FOLDER_COLORS[folder].text)}>
+                      {FOLDER_COLORS[folder].label} ({items.length} files,{" "}
+                      {formatBytesCompact(folderTotal)})
+                    </p>
+                    <ul className="ml-4 list-disc text-muted-foreground">
+                      {items.map(({ name, size }) => (
+                        <li key={name} className="font-mono text-xs">
+                          <span className="flex justify-between gap-2">
+                            <span className="truncate">{name}</span>
+                            <span className="shrink-0 tabular-nums">
+                              {size > 0 ? formatBytesCompact(size) : "—"}
+                            </span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              });
               return (
-                <div key={folder}>
-                  <p className={cn("font-medium", FOLDER_COLORS[folder].text)}>
-                    {FOLDER_COLORS[folder].label} ({names.length})
-                  </p>
-                  <ul className="ml-4 list-disc text-muted-foreground">
-                    {names.map((n) => <li key={n} className="font-mono text-xs">{n}</li>)}
-                  </ul>
-                </div>
+                <>
+                  {sections}
+                  <div className="border-t border-border pt-2 flex justify-between font-medium">
+                    <span>Total</span>
+                    <span className="tabular-nums">
+                      {deleteTotal} files · {formatBytesCompact(grandTotalSize)}
+                    </span>
+                  </div>
+                </>
               );
-            })}
+            })()}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={deleting}>

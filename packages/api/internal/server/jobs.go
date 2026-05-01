@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
 
 	"anime-upscaling/internal/config"
+	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/logger"
 	"anime-upscaling/internal/pipeline"
 	"anime-upscaling/internal/process"
@@ -68,7 +70,6 @@ type Job struct {
 	cancel        context.CancelFunc
 	done          chan struct{}
 	mu            sync.Mutex
-	listeners     []chan logEntry
 }
 
 // StartJobParams holds all parameters for creating and starting a job.
@@ -130,17 +131,7 @@ func (j *Job) addLog(e logEntry) {
 	case "INFO":
 		j.Progress.Current = e.Message
 	}
-	listeners := make([]chan logEntry, len(j.listeners))
-	copy(listeners, j.listeners)
 	j.mu.Unlock()
-
-	// Notify SSE listeners (non-blocking)
-	for _, ch := range listeners {
-		select {
-		case ch <- e:
-		default:
-		}
-	}
 }
 
 func (j *Job) finish(ctx context.Context) {
@@ -154,10 +145,6 @@ func (j *Job) finish(ctx context.Context) {
 	} else {
 		j.Status = "completed"
 	}
-	for _, ch := range j.listeners {
-		close(ch)
-	}
-	j.listeners = nil
 	done := j.done
 	j.mu.Unlock()
 	if done != nil {
@@ -176,34 +163,6 @@ func (j *Job) setRunningOnce() {
 		j.Status = "running"
 	}
 	j.mu.Unlock()
-}
-
-// subscribe returns a channel for real-time log events and whether the job is still active.
-// If the job already finished, the channel is returned closed.
-func (j *Job) subscribe() (chan logEntry, bool) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	ch := make(chan logEntry, 64)
-	if j.Status != "running" && j.Status != "queued" {
-		close(ch)
-		return ch, false
-	}
-	j.listeners = append(j.listeners, ch)
-	return ch, true
-}
-
-func (j *Job) unsubscribe(ch chan logEntry) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	for i, l := range j.listeners {
-		if l == ch {
-			j.listeners = append(j.listeners[:i], j.listeners[i+1:]...)
-			// Only close if we removed it (wasn't already closed by job finish)
-			close(ch)
-			return
-		}
-	}
-	// Not found means job already finished and closed all channels
 }
 
 func copyContainers(m map[string]*runner.Progress) map[string]*runner.Progress {
@@ -355,6 +314,22 @@ func (m *JobManager) generateID() string {
 	return fmt.Sprintf("j_%d_%04x", time.Now().Unix(), rand.Intn(0xFFFF))
 }
 
+// skipOutputDir returns the output directory whose presence indicates a file
+// can be skipped for the given job type. Returns "" for jobs that don't have
+// an output dir (e.g. "check") or that don't support pre-pass skip (e.g.
+// "custom_pipeline" — which has per-step skip handled inline).
+func skipOutputDir(jobType string, cfg config.Config) string {
+	switch jobType {
+	case "upscale":
+		return cfg.OutputDir
+	case "optimize":
+		return cfg.OptimizedDir
+	case "interpolate":
+		return cfg.InterpolatedDir
+	}
+	return ""
+}
+
 func (m *JobManager) StartJob(p StartJobParams) *Job {
 	sort.Strings(p.Files)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -408,6 +383,28 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 	go func() {
 		var wg sync.WaitGroup
 
+		// Pré-pass: identifica skips upfront, antes de lançar qualquer worker.
+		// Skipped files entram em Progress.Skipped via addLog imediatamente, e
+		// ficam fora da lista de dispatch para não gerar goroutines no-op nem
+		// SKIP duplicado pelas checagens inline em upscale/optimize/interpolate.
+		toProcess := p.Files
+		if outDir := skipOutputDir(p.Type, cfg); outDir != "" {
+			toProcess = nil
+			for i, f := range p.Files {
+				if files.FileExists(filepath.Join(outDir, f)) {
+					onEvent(logger.JobLog{
+						Source:  "PIPELINE",
+						Level:   "SKIP",
+						Index:   i + 1,
+						Message: "Pulando " + f + " (já existe)",
+						Time:    time.Now(),
+					})
+					continue
+				}
+				toProcess = append(toProcess, f)
+			}
+		}
+
 		switch p.Type {
 		case "upscale":
 			upOpts := runner.UpscaleOptions{
@@ -415,7 +412,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				Model:      job.Model,
 				NoiseLevel: job.NoiseLevel,
 			}
-			for i, f := range p.Files {
+			for i, f := range toProcess {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
@@ -454,7 +451,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 			}
 			jobThreads := job.Threads
 			useGPU := job.UseGPU && cfg.GPUVendor != "" && job.Codec != "copy" && job.Codec != "libvpx-vp9"
-			for i, f := range p.Files {
+			for i, f := range toProcess {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
@@ -509,7 +506,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				Model:       job.RifeModel,
 				SceneThresh: job.SceneThresh,
 			}
-			for i, f := range p.Files {
+			for i, f := range toProcess {
 				wg.Add(1)
 				idx := i + 1
 				filename := f

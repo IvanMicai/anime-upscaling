@@ -116,10 +116,18 @@ export interface VideoFile {
   interpolated_subtitles?: SubtitleTrack[];
 }
 
+export interface DirectorySizes {
+  input: number;
+  output: number;
+  optimized: number;
+  interpolated: number;
+}
+
 export interface FilesResponse {
   dir: string;
   path: string;
   directories: string[];
+  directory_sizes?: Record<string, DirectorySizes>;
   files: VideoFile[];
   cached_at?: string;
 }

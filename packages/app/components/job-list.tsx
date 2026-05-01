@@ -21,6 +21,24 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleString();
 }
 
+function formatEta(job: Job): string {
+  if (job.status !== "running") return "—";
+  const p = job.progress;
+  const processed = p.completed + p.failed;
+  const remaining = p.total - p.skipped - processed;
+  if (processed <= 0 || remaining <= 0) return "—";
+  const elapsedMs = Date.now() - new Date(job.created_at).getTime();
+  if (elapsedMs <= 0) return "—";
+  const seconds = Math.round((remaining * elapsedMs) / processed / 1000);
+  if (seconds <= 0) return "—";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `~${h}h ${m}m`;
+  if (m > 0) return `~${m}m ${s}s`;
+  return `~${s}s`;
+}
+
 export function JobList({
   jobs,
   onRemove,
@@ -71,6 +89,7 @@ export function JobList({
             <TableHead>Status</TableHead>
             <TableHead className="hidden md:table-cell">Files</TableHead>
             <TableHead className="hidden md:table-cell">Progress</TableHead>
+            <TableHead className="hidden lg:table-cell">ETA</TableHead>
             <TableHead className="hidden sm:table-cell">Created</TableHead>
             <TableHead />
           </TableRow>
@@ -96,6 +115,9 @@ export function JobList({
                   {p.total > 0
                     ? `${Math.round((done / p.total) * 100)}% (${done}/${p.total})`
                     : "—"}
+                </TableCell>
+                <TableCell className="hidden lg:table-cell font-mono text-sm text-muted-foreground tabular-nums">
+                  {formatEta(job)}
                 </TableCell>
                 <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                   {formatTime(job.created_at)}
