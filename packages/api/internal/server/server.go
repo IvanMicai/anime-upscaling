@@ -274,11 +274,61 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 			}
 		}
 
+		// Sum recursive sizes per subdirectory, per category (input/output/
+		// optimized/interpolated), using the cache.
+		type folderSizes struct {
+			Input        int64 `json:"input"`
+			Output       int64 `json:"output"`
+			Optimized    int64 `json:"optimized"`
+			Interpolated int64 `json:"interpolated"`
+		}
+		dirSizes := make(map[string]*folderSizes, len(directories))
+		if len(directories) > 0 {
+			dirSet := make(map[string]struct{}, len(directories))
+			for _, d := range directories {
+				dirSet[d] = struct{}{}
+				dirSizes[d] = &folderSizes{}
+			}
+			cached := cache.LoadCache(cachePath)
+			parent := subPath
+			if parent != "" {
+				parent += "/"
+			}
+			for key, status := range cached {
+				if !strings.HasPrefix(key, parent) {
+					continue
+				}
+				rest := key[len(parent):]
+				slash := strings.IndexByte(rest, '/')
+				if slash <= 0 {
+					continue
+				}
+				folder := rest[:slash]
+				if _, ok := dirSet[folder]; !ok {
+					continue
+				}
+				agg := dirSizes[folder]
+				if status.Input != nil {
+					agg.Input += status.Input.Size
+				}
+				if status.Output != nil {
+					agg.Output += status.Output.Size
+				}
+				if status.Optimize != nil {
+					agg.Optimized += status.Optimize.Size
+				}
+				if status.Interpolated != nil {
+					agg.Interpolated += status.Interpolated.Size
+				}
+			}
+		}
+
 		resp := map[string]interface{}{
-			"dir":         dir,
-			"path":        subPath,
-			"directories": directories,
-			"files":       videoFiles,
+			"dir":             dir,
+			"path":            subPath,
+			"directories":     directories,
+			"directory_sizes": dirSizes,
+			"files":           videoFiles,
 		}
 		if info, err := os.Stat(cachePath); err == nil {
 			resp["cached_at"] = info.ModTime().UTC()

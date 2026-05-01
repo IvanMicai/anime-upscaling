@@ -47,7 +47,7 @@ import {
   type FolderEntry,
 } from "@/lib/file-utils";
 import { Breadcrumbs } from "@/components/breadcrumbs";
-import type { VideoFile } from "@/lib/types";
+import type { VideoFile, DirectorySizes } from "@/lib/types";
 
 function FileTooltipContent({ entry }: { entry: FolderEntry }) {
   return (
@@ -102,6 +102,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
 
   const [files, setFiles] = useState<VideoFile[]>([]);
   const [directories, setDirectories] = useState<string[]>([]);
+  const [directorySizes, setDirectorySizes] = useState<Record<string, DirectorySizes>>({});
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<Set<string>>(new Set());
   const [cachedAt, setCachedAt] = useState<string | null>(null);
@@ -132,11 +133,13 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
       .then((res) => {
         setFiles(res.files ?? []);
         setDirectories(res.directories ?? []);
+        setDirectorySizes(res.directory_sizes ?? {});
         setCachedAt(res.cached_at ?? null);
       })
       .catch(() => {
         setFiles([]);
         setDirectories([]);
+        setDirectorySizes({});
       })
       .finally(() => setLoading(false));
   }, [dir, path, resetLastClicked]);
@@ -147,6 +150,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
       .then((res) => {
         setFiles(res.files ?? []);
         setDirectories(res.directories ?? []);
+        setDirectorySizes(res.directory_sizes ?? {});
         setCachedAt(res.cached_at ?? null);
       })
       .catch(() => {})
@@ -222,6 +226,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
       const res = await getFiles(dir, path, true);
       setFiles(res.files ?? []);
       setDirectories(res.directories ?? []);
+      setDirectorySizes(res.directory_sizes ?? {});
       setCachedAt(res.cached_at ?? null);
     } catch {
       // keep dialog open on error
@@ -232,7 +237,14 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
 
   const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
   const filtered = sorted.filter(matchesFilter);
-  const totals = computeColumnTotals(filtered, dir as FolderKey);
+  const fileTotals = computeColumnTotals(filtered, dir as FolderKey);
+  const totals: Record<FolderKey, number> = { ...fileTotals };
+  for (const sizes of Object.values(directorySizes)) {
+    totals.input += sizes.input;
+    totals.output += sizes.output;
+    totals.optimized += sizes.optimized;
+    totals.interpolated += sizes.interpolated;
+  }
   // Selection identifiers are file paths relative to the source dir
   // (e.g. "season1/ep01.mkv") so picks survive subfolder navigation.
   const toRel = (name: string) => (path ? `${path}/${name}` : name);
@@ -375,23 +387,41 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
                   </TableCell>
                 </TableRow>
               )}
-              {!loading && directories.map((name) => (
-                <TableRow
-                  key={`dir:${name}`}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => setPath(joinPath(path, name))}
-                >
-                  <TableCell className="w-8" />
-                  <TableCell className="font-mono text-sm" colSpan={1 + COLUMN_ORDER.length}>
-                    <span className="inline-flex items-center gap-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
-                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                      </svg>
-                      {name}/
-                    </span>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {!loading && directories.map((name) => {
+                const sizes = directorySizes[name];
+                return (
+                  <TableRow
+                    key={`dir:${name}`}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setPath(joinPath(path, name))}
+                  >
+                    <TableCell className="w-8" />
+                    <TableCell className="font-mono text-sm">
+                      <span className="inline-flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+                          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                        </svg>
+                        {name}/
+                      </span>
+                    </TableCell>
+                    {COLUMN_ORDER.map((d, i, arr) => {
+                      const value = sizes?.[d] ?? 0;
+                      return (
+                        <TableCell
+                          key={d}
+                          className={cn(
+                            "text-right text-sm hidden md:table-cell tabular-nums",
+                            value > 0 ? FOLDER_COLORS[d].text : "text-muted-foreground",
+                            i === arr.length - 1 && "pr-5",
+                          )}
+                        >
+                          {value > 0 ? formatBytesCompact(value) : "—"}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                );
+              })}
               {!loading && filtered.map((file, index) => {
                 const folders = getFolderData(file, dir);
                 const rel = toRel(file.name);
@@ -468,7 +498,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
                 <TableRow>
                   <TableCell className="w-8" />
                   <TableCell className="font-medium text-sm">
-                    Total ({filtered.length} {filtered.length === 1 ? "file" : "files"})
+                    Total
                   </TableCell>
                   {COLUMN_ORDER.map((d, i, arr) => (
                     <TableCell
