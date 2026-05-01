@@ -68,7 +68,6 @@ type Job struct {
 	cancel        context.CancelFunc
 	done          chan struct{}
 	mu            sync.Mutex
-	listeners     []chan logEntry
 }
 
 // StartJobParams holds all parameters for creating and starting a job.
@@ -130,17 +129,7 @@ func (j *Job) addLog(e logEntry) {
 	case "INFO":
 		j.Progress.Current = e.Message
 	}
-	listeners := make([]chan logEntry, len(j.listeners))
-	copy(listeners, j.listeners)
 	j.mu.Unlock()
-
-	// Notify SSE listeners (non-blocking)
-	for _, ch := range listeners {
-		select {
-		case ch <- e:
-		default:
-		}
-	}
 }
 
 func (j *Job) finish(ctx context.Context) {
@@ -154,10 +143,6 @@ func (j *Job) finish(ctx context.Context) {
 	} else {
 		j.Status = "completed"
 	}
-	for _, ch := range j.listeners {
-		close(ch)
-	}
-	j.listeners = nil
 	done := j.done
 	j.mu.Unlock()
 	if done != nil {
@@ -176,34 +161,6 @@ func (j *Job) setRunningOnce() {
 		j.Status = "running"
 	}
 	j.mu.Unlock()
-}
-
-// subscribe returns a channel for real-time log events and whether the job is still active.
-// If the job already finished, the channel is returned closed.
-func (j *Job) subscribe() (chan logEntry, bool) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	ch := make(chan logEntry, 64)
-	if j.Status != "running" && j.Status != "queued" {
-		close(ch)
-		return ch, false
-	}
-	j.listeners = append(j.listeners, ch)
-	return ch, true
-}
-
-func (j *Job) unsubscribe(ch chan logEntry) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	for i, l := range j.listeners {
-		if l == ch {
-			j.listeners = append(j.listeners[:i], j.listeners[i+1:]...)
-			// Only close if we removed it (wasn't already closed by job finish)
-			close(ch)
-			return
-		}
-	}
-	// Not found means job already finished and closed all channels
 }
 
 func copyContainers(m map[string]*runner.Progress) map[string]*runner.Progress {

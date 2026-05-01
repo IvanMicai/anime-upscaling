@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -652,6 +653,10 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 	})
 }
 
+// handleJobLogs returns a snapshot of a job's logs as JSON. Clients poll this
+// endpoint and pass ?since=<n> to get only entries with array index >= n.
+// Response shape: { entries, total, running }. `total` is the cursor the client
+// should send back on the next poll.
 func handleJobLogs(jm *JobManager, id string, w http.ResponseWriter, r *http.Request) {
 	job := jm.GetJob(id)
 	if job == nil {
@@ -659,52 +664,30 @@ func handleJobLogs(jm *JobManager, id string, w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	// Subscribe first, then send history to avoid missing events in between
-	ch, running := job.subscribe()
-	if running {
-		defer job.unsubscribe(ch)
+	since := 0
+	if s := r.URL.Query().Get("since"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n >= 0 {
+			since = n
+		}
 	}
 
 	job.mu.Lock()
-	history := make([]logEntry, len(job.Logs))
-	copy(history, job.Logs)
+	total := len(job.Logs)
+	var entries []logEntry
+	if since < total {
+		entries = make([]logEntry, total-since)
+		copy(entries, job.Logs[since:])
+	} else {
+		entries = []logEntry{}
+	}
+	running := job.Status == "running" || job.Status == "queued"
 	job.mu.Unlock()
 
-	for _, e := range history {
-		data, _ := json.Marshal(e)
-		fmt.Fprintf(w, "data: %s\n\n", data)
-	}
-	flusher.Flush()
-
-	if !running {
-		return
-	}
-
-	ctx := r.Context()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case e, ok := <-ch:
-			if !ok {
-				// Job finished, channel closed
-				return
-			}
-			data, _ := json.Marshal(e)
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
-		}
-	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"entries": entries,
+		"total":   total,
+		"running": running,
+	})
 }
 
 func handleCancelJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Request) {
