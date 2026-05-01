@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
 
 	"anime-upscaling/internal/config"
+	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/logger"
 	"anime-upscaling/internal/pipeline"
 	"anime-upscaling/internal/process"
@@ -312,6 +314,22 @@ func (m *JobManager) generateID() string {
 	return fmt.Sprintf("j_%d_%04x", time.Now().Unix(), rand.Intn(0xFFFF))
 }
 
+// skipOutputDir returns the output directory whose presence indicates a file
+// can be skipped for the given job type. Returns "" for jobs that don't have
+// an output dir (e.g. "check") or that don't support pre-pass skip (e.g.
+// "custom_pipeline" — which has per-step skip handled inline).
+func skipOutputDir(jobType string, cfg config.Config) string {
+	switch jobType {
+	case "upscale":
+		return cfg.OutputDir
+	case "optimize":
+		return cfg.OptimizedDir
+	case "interpolate":
+		return cfg.InterpolatedDir
+	}
+	return ""
+}
+
 func (m *JobManager) StartJob(p StartJobParams) *Job {
 	sort.Strings(p.Files)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -365,6 +383,28 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 	go func() {
 		var wg sync.WaitGroup
 
+		// Pré-pass: identifica skips upfront, antes de lançar qualquer worker.
+		// Skipped files entram em Progress.Skipped via addLog imediatamente, e
+		// ficam fora da lista de dispatch para não gerar goroutines no-op nem
+		// SKIP duplicado pelas checagens inline em upscale/optimize/interpolate.
+		toProcess := p.Files
+		if outDir := skipOutputDir(p.Type, cfg); outDir != "" {
+			toProcess = nil
+			for i, f := range p.Files {
+				if files.FileExists(filepath.Join(outDir, f)) {
+					onEvent(logger.JobLog{
+						Source:  "PIPELINE",
+						Level:   "SKIP",
+						Index:   i + 1,
+						Message: "Pulando " + f + " (já existe)",
+						Time:    time.Now(),
+					})
+					continue
+				}
+				toProcess = append(toProcess, f)
+			}
+		}
+
 		switch p.Type {
 		case "upscale":
 			upOpts := runner.UpscaleOptions{
@@ -372,7 +412,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				Model:      job.Model,
 				NoiseLevel: job.NoiseLevel,
 			}
-			for i, f := range p.Files {
+			for i, f := range toProcess {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
@@ -411,7 +451,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 			}
 			jobThreads := job.Threads
 			useGPU := job.UseGPU && cfg.GPUVendor != "" && job.Codec != "copy" && job.Codec != "libvpx-vp9"
-			for i, f := range p.Files {
+			for i, f := range toProcess {
 				wg.Add(1)
 				idx := i + 1
 				filename := f
@@ -466,7 +506,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				Model:       job.RifeModel,
 				SceneThresh: job.SceneThresh,
 			}
-			for i, f := range p.Files {
+			for i, f := range toProcess {
 				wg.Add(1)
 				idx := i + 1
 				filename := f

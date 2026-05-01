@@ -24,15 +24,16 @@ function formatTime(iso: string) {
 function formatEta(job: Job): string {
   if (job.status !== "running") return "—";
   const p = job.progress;
-  const done = p.completed + p.failed + p.skipped;
-  if (p.total <= 0 || done <= 0 || done >= p.total) return "—";
+  const processed = p.completed + p.failed;
+  const remaining = p.total - p.skipped - processed;
+  if (processed <= 0 || remaining <= 0) return "—";
   const elapsedMs = Date.now() - new Date(job.created_at).getTime();
   if (elapsedMs <= 0) return "—";
-  const remaining = Math.round(((p.total - done) * elapsedMs) / done / 1000);
-  if (remaining <= 0) return "—";
-  const h = Math.floor(remaining / 3600);
-  const m = Math.floor((remaining % 3600) / 60);
-  const s = remaining % 60;
+  const seconds = Math.round((remaining * elapsedMs) / processed / 1000);
+  if (seconds <= 0) return "—";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
   if (h > 0) return `~${h}h ${m}m`;
   if (m > 0) return `~${m}m ${s}s`;
   return `~${s}s`;
