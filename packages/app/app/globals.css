@@ -126,3 +126,28 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .scrollbar-dark {
+    scrollbar-color: #27272a #000;
+  }
+  .scrollbar-dark::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    background: #000;
+  }
+  .scrollbar-dark::-webkit-scrollbar-track {
+    background: #000;
+  }
+  .scrollbar-dark::-webkit-scrollbar-thumb {
+    background: #27272a;
+    border-radius: 4px;
+    border: 2px solid #000;
+  }
+  .scrollbar-dark::-webkit-scrollbar-thumb:hover {
+    background: #3f3f46;
+  }
+  .scrollbar-dark::-webkit-scrollbar-corner {
+    background: #000;
+  }
+}
