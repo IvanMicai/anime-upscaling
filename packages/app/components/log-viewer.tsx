@@ -20,6 +20,14 @@ function formatTimestamp(iso: string) {
   return new Date(iso).toLocaleTimeString();
 }
 
+const STEP_PREFIX = /^\[(\d+)\/(\d+)\]\s+/;
+
+function parseStep(message: string): { step: string | null; text: string } {
+  const m = message.match(STEP_PREFIX);
+  if (!m) return { step: null, text: message };
+  return { step: `${m[1]}/${m[2]}`, text: message.slice(m[0].length) };
+}
+
 const ALL_FILTER = "ALL";
 type Filter = typeof ALL_FILTER | LogSource;
 
@@ -39,6 +47,12 @@ export function LogViewer({
 
   // Determine which sources exist for tabs
   const sources = Array.from(new Set(logs.map((l) => l.source)));
+
+  // Only show the step column when at least one entry carries a [N/M] prefix.
+  const hasAnyStep = filtered.some((e) => STEP_PREFIX.test(e.message));
+  const gridCols = hasAnyStep
+    ? "grid-cols-[96px_44px_44px_minmax(0,1fr)] sm:grid-cols-[88px_104px_44px_44px_minmax(0,1fr)]"
+    : "grid-cols-[96px_44px_minmax(0,1fr)] sm:grid-cols-[88px_104px_44px_minmax(0,1fr)]";
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -67,26 +81,37 @@ export function LogViewer({
       </div>
 
       <ScrollArea className="h-[300px] sm:h-[500px] rounded-md border bg-black/40 p-2 sm:p-3" ref={scrollRef}>
-        <div className="space-y-0.5 font-mono text-xs">
-          {filtered.map((entry, i) => (
-            <div key={i} className="flex flex-wrap items-start gap-x-2 gap-y-0.5">
-              <span className="shrink-0 text-muted-foreground/60 hidden sm:inline">
-                {formatTimestamp(entry.time)}
-              </span>
-              <Badge
-                variant="outline"
-                className={`shrink-0 px-1.5 py-0 text-[10px] ${sourceColorSet(entry.source).badge}`}
+        <div className="font-mono text-xs">
+          {filtered.map((entry, i) => {
+            const { step, text } = parseStep(entry.message);
+            return (
+              <div
+                key={i}
+                className={`grid items-start gap-x-2 gap-y-0.5 px-1 py-0.5 hover:bg-white/5 ${gridCols}`}
               >
-                {entry.source}
-              </Badge>
-              <span
-                className={`shrink-0 w-8 text-center ${levelColor[entry.level] ?? ""}`}
-              >
-                {entry.level}
-              </span>
-              <span className="break-all">{entry.message}</span>
-            </div>
-          ))}
+                <span className="hidden sm:block whitespace-nowrap text-muted-foreground/60 tabular-nums">
+                  {formatTimestamp(entry.time)}
+                </span>
+                <Badge
+                  variant="outline"
+                  className={`justify-start px-1.5 py-0 text-[10px] truncate ${sourceColorSet(entry.source).badge}`}
+                >
+                  {entry.source}
+                </Badge>
+                <span
+                  className={`text-center ${levelColor[entry.level] ?? ""}`}
+                >
+                  {entry.level}
+                </span>
+                {hasAnyStep && (
+                  <span className="text-center text-muted-foreground/70 tabular-nums">
+                    {step ?? ""}
+                  </span>
+                )}
+                <span className="break-all">{text}</span>
+              </div>
+            );
+          })}
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
