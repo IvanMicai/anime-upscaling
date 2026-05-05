@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"anime-upscaling/internal/cache"
 	"anime-upscaling/internal/config"
 	"anime-upscaling/internal/files"
+	"anime-upscaling/internal/gpu"
 	"anime-upscaling/internal/pipeline"
 )
 
@@ -31,6 +33,15 @@ func CmdServe(cfg config.Config) error {
 	jm := NewJobManager(cfg)
 	ps := pipeline.NewStore(filepath.Join(cfg.BaseDir, "pipelines.json"))
 
+	// GPU health monitor — gates job dispatch when the driver is wedged so we
+	// stop piling allocations on a broken GSP. Probing only runs when an
+	// NVIDIA GPU is configured; for other vendors / CPU-only the monitor is a
+	// no-op that always reports healthy. Host-side recovery (PCI remove+rescan,
+	// container bounce) is external to this process.
+	monitor := gpu.NewMonitor(cfg.GPUVendor == "nvidia", 30*time.Second, 8*time.Second, 2)
+	jm.SetGPUGate(monitor.WaitHealthy)
+	go monitor.Watch(context.Background())
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/files/download", corsMiddleware(handleFileDownload(cfg)))
 	mux.HandleFunc("/api/files", corsMiddleware(handleFiles(cfg)))
@@ -39,6 +50,7 @@ func CmdServe(cfg config.Config) error {
 	mux.HandleFunc("/api/pipelines", corsMiddleware(handlePipelines(ps)))
 	mux.HandleFunc("/api/pipelines/", corsMiddleware(handlePipelineRoutes(ps, jm, cfg)))
 	mux.HandleFunc("/api/settings", corsMiddleware(handleSettings(jm)))
+	mux.HandleFunc("/api/health/gpu", corsMiddleware(handleGPUHealth(monitor)))
 
 	addr := ":" + cfg.Port
 	fmt.Printf("Server listening on %s\n", addr)
@@ -775,6 +787,17 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+// GET /api/health/gpu — current health snapshot of the GPU monitor.
+func handleGPUHealth(m *gpu.Monitor) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		writeJSON(w, http.StatusOK, m.Status())
+	}
 }
 
 // resolveFolder maps a logical folder name (input/output/interpolated/optimized)

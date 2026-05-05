@@ -253,6 +253,37 @@ curl -N http://localhost:4751/api/jobs/j_1708540800_1a2b/logs
 
 ---
 
+### GET /api/health/gpu
+
+Snapshot of the GPU health monitor. Probes `nvidia-smi -L` every 30s with an
+8-second timeout; after 2 consecutive failures the GPU is marked unhealthy and
+new GPU job dispatch is paused until the probe succeeds again. For non-NVIDIA
+deployments the monitor stays disabled and always reports healthy.
+
+**Response 200:**
+
+```json
+{
+  "enabled": true,
+  "healthy": true,
+  "last_check": "2026-05-04T20:30:00Z",
+  "last_healthy": "2026-05-04T20:30:00Z",
+  "consecutive_failures": 0
+}
+```
+
+When unhealthy, `last_error` carries the probe error and queued GPU jobs block
+on `Acquire` until recovery. Pair with `scripts/gpu-watchdog.sh` in the
+server-management repo, which performs host-side recovery (PCI remove+rescan).
+
+**Example:**
+
+```bash
+curl http://localhost:4751/api/health/gpu
+```
+
+---
+
 ### POST /api/jobs/{id}/cancel
 
 Cancel a running job.

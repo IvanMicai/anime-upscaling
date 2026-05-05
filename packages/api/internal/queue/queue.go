@@ -51,6 +51,12 @@ type gpuWaiter struct {
 	ch       chan gpuSlot
 }
 
+// GateFunc is an optional pre-acquisition hook. If set on a GPUQueue, every
+// Acquire calls it before consuming a slot; a non-nil return aborts the
+// acquisition and is propagated to the caller. Used to block dispatch while
+// the GPU driver is wedged.
+type GateFunc func(ctx context.Context) error
+
 // GPUQueue is a priority-aware worker pool where each slot is associated with a
 // (gpuID, streamIdx) pair. Multiple streams per GPU mean the same gpuID can be
 // acquired multiple times concurrently, with distinct streamIdx values so callers
@@ -59,6 +65,20 @@ type GPUQueue struct {
 	mu      sync.Mutex
 	slots   []gpuSlot
 	waiters []gpuWaiter
+	gate    GateFunc
+}
+
+// SetGate installs a pre-acquisition gate. Pass nil to clear.
+func (q *GPUQueue) SetGate(g GateFunc) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.gate = g
+}
+
+func (q *GPUQueue) currentGate() GateFunc {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.gate
 }
 
 // NewGPUQueue creates a GPUQueue with gpuCount GPUs and streamsPerGPU slots each.
@@ -83,7 +103,13 @@ func NewGPUQueue(gpuCount, streamsPerGPU int) *GPUQueue {
 
 // Acquire blocks until a GPU slot is available or ctx is cancelled.
 // Higher priority values are served first when multiple callers are waiting.
+// If a gate is installed, it runs first; a non-nil return aborts acquisition.
 func (q *GPUQueue) Acquire(ctx context.Context, priority int) (int, int, error) {
+	if gate := q.currentGate(); gate != nil {
+		if err := gate(ctx); err != nil {
+			return 0, 0, err
+		}
+	}
 	q.mu.Lock()
 	if len(q.slots) > 0 {
 		s := q.slots[len(q.slots)-1]
