@@ -263,6 +263,7 @@ type JobManager struct {
 	runner  *runner.Runner
 	gpuQ    *queue.GPUQueue
 	ffmpegQ *queue.Queue
+	gpuGate queue.GateFunc
 }
 
 func NewJobManager(cfg config.Config) *JobManager {
@@ -300,7 +301,17 @@ func (m *JobManager) ApplySettings(streamsPerGPU, ffmpegStreams int, gpuVendor s
 	m.cfg.FFmpegStreams = ffmpegStreams
 	m.cfg.GPUVendor = gpuVendor
 	m.gpuQ = queue.NewGPUQueue(m.cfg.GPUCount, streamsPerGPU)
+	m.gpuQ.SetGate(m.gpuGate)
 	m.ffmpegQ = queue.New(ffmpegStreams)
+}
+
+// SetGPUGate installs a pre-acquisition gate on the GPU queue. The gate is
+// preserved across ApplySettings (which rebuilds the queue).
+func (m *JobManager) SetGPUGate(gate queue.GateFunc) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.gpuGate = gate
+	m.gpuQ.SetGate(gate)
 }
 
 // Config returns a copy of the current configuration (including runtime-mutable fields).
