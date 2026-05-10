@@ -1,3 +1,5 @@
+<img src="packages/app/public/favicon/favicon.svg" alt="AnimeUp logo" width="64" align="left" />
+
 # Anime Upscaling
 
 Self-hosted web UI and HTTP API for managing anime video processing jobs with
