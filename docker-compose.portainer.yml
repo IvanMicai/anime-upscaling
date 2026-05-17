@@ -34,10 +34,13 @@ services:
     environment:
       - PORT=${APP_PORT:-4750}
       - API_URL=http://api:${API_PORT:-4751}
+      - PROCESS_DIR=${PROCESS_DIR:-/mnt/SSD2/process}
       - AUTH_PASSWORD=${AUTH_PASSWORD:?Set AUTH_PASSWORD}
       - AUTH_SECRET=${AUTH_SECRET:?Set AUTH_SECRET}
     ports:
       - "${APP_PORT:-4750}:${APP_PORT:-4750}"
+    volumes:
+      - ${HOST_PROCESS_DIR:-/mnt/SSD2/process}:${PROCESS_DIR:-/mnt/SSD2/process}:ro
     depends_on:
       - api
     mem_limit: ${APP_MEM_LIMIT:-1g}
