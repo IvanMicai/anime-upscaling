@@ -26,8 +26,11 @@ services:
     environment:
       - PORT=${APP_PORT:-4750}
       - API_URL=http://api:${API_PORT:-4751}
+      - PROCESS_DIR=${PROCESS_DIR:-/data}
     ports:
       - "${APP_PORT:-4750}:${APP_PORT:-4750}"
+    volumes:
+      - ${HOST_PROCESS_DIR:-./data}:${PROCESS_DIR:-/data}:ro
     depends_on:
       - api
     mem_limit: ${APP_MEM_LIMIT:-1g}

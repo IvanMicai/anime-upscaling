@@ -118,7 +118,9 @@ func handleFileDownload(cfg config.Config) http.HandlerFunc {
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
-		io.Copy(w, f)
+		if _, err := io.Copy(w, f); err != nil {
+			fmt.Fprintf(os.Stderr, "download stream error for %s: %v\n", fullPath, err)
+		}
 	}
 }
 
