@@ -23,6 +23,7 @@ services:
     image: anime-upscaling-app
     container_name: anime-upscaling-app
     env_file: .env
+    user: "0:0"
     environment:
       - PORT=${APP_PORT:-4750}
       - API_URL=http://api:${API_PORT:-4751}
