@@ -14,6 +14,24 @@ import (
 	"anime-upscaling/internal/runner"
 )
 
+// pipelineStepWeight ensures that step priority always dominates episode
+// index in the composite priority. Assumes a single job has < 1M episodes,
+// which is comfortably above any realistic batch.
+const pipelineStepWeight = 1_000_000
+
+// pipelinePriority composes step index and episode index into a single GPU
+// queue priority so that:
+//   - episodes further along in the pipeline always win over episodes still
+//     on earlier steps (finish what's already started before opening new fronts);
+//   - within the same step, the lower-indexed episode (earlier in the
+//     natural-sorted file list) wins the tiebreak.
+//
+// Note: this is global across all custom-pipeline jobs sharing the GPU queue.
+// A new job's step-0 acquires lose to any older job's later steps — intentional.
+func pipelinePriority(stepIdx, index int) int {
+	return stepIdx*pipelineStepWeight - index
+}
+
 // RunCustomPipelineForFile executes all pipeline steps sequentially for a single file.
 // It acquires/releases GPU and FFmpeg queue slots as needed per step.
 // sourceDir is the directory the first step reads from; each step writes to its
@@ -77,7 +95,7 @@ func RunCustomPipelineForFile(
 				NoiseLevel: step.NoiseLevel,
 			}
 
-			gpuID, streamIdx, err := gpuQ.Acquire(ctx, stepIdx)
+			gpuID, streamIdx, err := gpuQ.Acquire(ctx, pipelinePriority(stepIdx, index))
 			if err != nil {
 				return false
 			}
@@ -117,7 +135,7 @@ func RunCustomPipelineForFile(
 				SceneThresh: sceneThresh,
 			}
 
-			gpuID, streamIdx, err := gpuQ.Acquire(ctx, stepIdx)
+			gpuID, streamIdx, err := gpuQ.Acquire(ctx, pipelinePriority(stepIdx, index))
 			if err != nil {
 				return false
 			}
@@ -176,7 +194,7 @@ func RunCustomPipelineForFile(
 			var optimizeOk bool
 
 			if useGPU {
-				gpuID, streamIdx, err := gpuQ.Acquire(ctx, stepIdx)
+				gpuID, streamIdx, err := gpuQ.Acquire(ctx, pipelinePriority(stepIdx, index))
 				if err != nil {
 					return false
 				}

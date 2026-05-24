@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"anime-upscaling/internal/config"
@@ -193,7 +192,7 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 			}
 			req.Files = append(req.Files, rel)
 		}
-		sort.Strings(req.Files)
+		files.SortNatural(req.Files)
 	} else {
 		for i, f := range req.Files {
 			if req.Path != "" && !strings.Contains(f, "/") {

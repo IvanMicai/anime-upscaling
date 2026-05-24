@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -567,7 +566,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 			}
 			req.Files = append(req.Files, rel)
 		}
-		sort.Strings(req.Files)
+		files.SortNatural(req.Files)
 	} else {
 		// Validate each file. Files come as paths relative to sourceDir; allow
 		// a bare filename when path is set (legacy frontends), prefixing it.
