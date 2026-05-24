@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/rand"
 	"path/filepath"
-	"sort"
 	"sync"
 	"time"
 
@@ -342,7 +341,7 @@ func skipOutputDir(jobType string, cfg config.Config) string {
 }
 
 func (m *JobManager) StartJob(p StartJobParams) *Job {
-	sort.Strings(p.Files)
+	files.SortNatural(p.Files)
 	ctx, cancel := context.WithCancel(context.Background())
 	jobID := m.generateID()
 	ctx = runner.WithJobID(ctx, jobID)
@@ -543,8 +542,8 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 	return job
 }
 
-func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.PipelineStep, files []string, sourceDir string) *Job {
-	sort.Strings(files)
+func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.PipelineStep, fileList []string, sourceDir string) *Job {
+	files.SortNatural(fileList)
 	ctx, cancel := context.WithCancel(context.Background())
 	jobID := m.generateID()
 	ctx = runner.WithJobID(ctx, jobID)
@@ -561,8 +560,8 @@ func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.Pipe
 		Source:        source,
 		PipelineName:  pipelineName,
 		PipelineSteps: steps,
-		Files:         files,
-		Progress:      JobProgress{Total: len(files) * len(steps)},
+		Files:         fileList,
+		Progress:      JobProgress{Total: len(fileList) * len(steps)},
 		CreatedAt:     time.Now().UTC(),
 		cancel:        cancel,
 		done:          make(chan struct{}),
@@ -586,7 +585,7 @@ func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.Pipe
 	go func() {
 		var wg sync.WaitGroup
 
-		for i, f := range files {
+		for i, f := range fileList {
 			wg.Add(1)
 			idx := i + 1
 			filename := f

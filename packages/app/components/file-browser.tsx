@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { compareNatural } from "@/lib/sort";
 import { getFiles, deleteFiles, downloadFile } from "@/lib/api";
 import {
   FOLDER_COLORS,
@@ -209,7 +210,7 @@ export function FileBrowser() {
     }
   }
 
-  const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = [...files].sort((a, b) => compareNatural(a.name, b.name));
   const filtered = sorted.filter(matchesFilter);
   const totals = computeColumnTotals(filtered, dir);
 

@@ -216,13 +216,13 @@ func ListAllWithStatus(primary string, baseDirs map[string]string, subPath strin
 	for d := range dirSet {
 		dirs = append(dirs, d)
 	}
-	sort.Strings(dirs)
+	SortNatural(dirs)
 
 	vfiles := make([]VideoFile, 0, len(fileMap))
 	for _, vf := range fileMap {
 		vfiles = append(vfiles, *vf)
 	}
-	sort.Slice(vfiles, func(i, j int) bool { return vfiles[i].Name < vfiles[j].Name })
+	sort.Slice(vfiles, func(i, j int) bool { return NaturalLess(vfiles[i].Name, vfiles[j].Name) })
 
 	return vfiles, dirs, nil
 }

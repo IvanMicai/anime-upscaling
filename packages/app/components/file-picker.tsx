@@ -27,6 +27,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { compareNatural } from "@/lib/sort";
 import { getFiles, deleteFiles } from "@/lib/api";
 import { useShiftSelect } from "@/lib/use-shift-select";
 import {
@@ -233,7 +234,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
     }
   }
 
-  const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = [...files].sort((a, b) => compareNatural(a.name, b.name));
   const filtered = sorted.filter(matchesFilter);
   const fileTotals = computeColumnTotals(filtered, dir as FolderKey);
   const totals: Record<FolderKey, number> = { ...fileTotals };
