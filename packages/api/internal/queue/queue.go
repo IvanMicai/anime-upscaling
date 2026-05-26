@@ -5,12 +5,21 @@ import (
 	"sync"
 )
 
-// Queue is a simple worker pool with N concurrent slots.
-// Work is processed FIFO as slots become available.
-// The function receives its slot index (0..slots-1) so callers can disambiguate
-// concurrent invocations for logging/progress labeling.
+// Queue is a priority-aware worker pool with N concurrent slots.
+// Each slot has an index (0..slots-1) so callers can disambiguate concurrent
+// invocations for logging/progress labeling. When slots are busy, waiters are
+// served highest-priority-first (mirrors GPUQueue), so callers that launch all
+// their work goroutines up front — e.g. custom pipelines — still dispatch items
+// in a deterministic order via Acquire's priority argument.
 type Queue struct {
-	sem chan int
+	mu      sync.Mutex
+	free    []int
+	waiters []queueWaiter
+}
+
+type queueWaiter struct {
+	priority int
+	ch       chan int
 }
 
 // New creates a Queue with the given number of concurrent slots.
@@ -18,24 +27,79 @@ func New(slots int) *Queue {
 	if slots < 1 {
 		slots = 1
 	}
-	q := &Queue{sem: make(chan int, slots)}
-	for i := 0; i < slots; i++ {
-		q.sem <- i
+	free := make([]int, slots)
+	for i := range free {
+		free[i] = i
 	}
-	return q
+	return &Queue{free: free}
 }
 
-// Submit enqueues fn for execution. Blocks until a slot is free or ctx is cancelled.
-// fn receives the slot index it is running in.
-func (q *Queue) Submit(ctx context.Context, fn func(slot int)) error {
-	var slot int
+// Acquire blocks until a slot is available or ctx is cancelled, returning the
+// slot index. Higher priority values are served first when multiple callers are
+// waiting. The caller must call Release with the returned slot when done.
+func (q *Queue) Acquire(ctx context.Context, priority int) (int, error) {
+	q.mu.Lock()
+	if len(q.free) > 0 {
+		slot := q.free[len(q.free)-1]
+		q.free = q.free[:len(q.free)-1]
+		q.mu.Unlock()
+		return slot, nil
+	}
+	w := queueWaiter{priority: priority, ch: make(chan int, 1)}
+	q.waiters = append(q.waiters, w)
+	q.mu.Unlock()
+
 	select {
-	case slot = <-q.sem:
+	case slot := <-w.ch:
+		return slot, nil
 	case <-ctx.Done():
-		return ctx.Err()
+		q.mu.Lock()
+		for i, ww := range q.waiters {
+			if ww.ch == w.ch {
+				q.waiters = append(q.waiters[:i], q.waiters[i+1:]...)
+				q.mu.Unlock()
+				return 0, ctx.Err()
+			}
+		}
+		// Waiter was already fulfilled between ctx cancel and lock — return the slot.
+		q.mu.Unlock()
+		slot := <-w.ch
+		q.Release(slot)
+		return 0, ctx.Err()
+	}
+}
+
+// Release returns a slot back to the pool, waking the highest-priority waiter if any.
+func (q *Queue) Release(slot int) {
+	q.mu.Lock()
+	if len(q.waiters) == 0 {
+		q.free = append(q.free, slot)
+		q.mu.Unlock()
+		return
+	}
+	best := 0
+	for i := 1; i < len(q.waiters); i++ {
+		if q.waiters[i].priority > q.waiters[best].priority {
+			best = i
+		}
+	}
+	w := q.waiters[best]
+	q.waiters = append(q.waiters[:best], q.waiters[best+1:]...)
+	q.mu.Unlock()
+	w.ch <- slot
+}
+
+// Submit enqueues fn for execution. Blocks until a slot is free or ctx is cancelled,
+// then runs fn in a goroutine and releases the slot when it returns. fn receives the
+// slot index it is running in. Equivalent to an Acquire(priority 0)/Release pair, kept
+// for callers that dispatch sequentially (where slot order is already deterministic).
+func (q *Queue) Submit(ctx context.Context, fn func(slot int)) error {
+	slot, err := q.Acquire(ctx, 0)
+	if err != nil {
+		return err
 	}
 	go func() {
-		defer func() { q.sem <- slot }()
+		defer q.Release(slot)
 		fn(slot)
 	}()
 	return nil
