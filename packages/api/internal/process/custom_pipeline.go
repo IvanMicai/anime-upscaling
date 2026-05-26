@@ -210,20 +210,18 @@ func RunCustomPipelineForFile(
 				optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, src, resolution, frameRate, frameRateAbsolute, crf, threads, stepOpts, stepOnEvent, onProgress)
 				gpuQ.Release(gpuID, streamIdx)
 			} else {
-				done := make(chan struct{})
-				if err := ffmpegQ.Submit(ctx, func(slot int) {
-					defer close(done)
-					ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
-					onEvent(logger.JobLog{
-						Source: ffSrc, Level: "INFO", Index: index,
-						Message: stepLabel + "Optimize (" + quality + "): " + filename,
-						Time:    time.Now(),
-					})
-					optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, ffSrc, resolution, frameRate, frameRateAbsolute, crf, threads, encOpts, stepOnEvent, onProgress)
-				}); err != nil {
+				slot, err := ffmpegQ.Acquire(ctx, pipelinePriority(stepIdx, index))
+				if err != nil {
 					return false
 				}
-				<-done
+				ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
+				onEvent(logger.JobLog{
+					Source: ffSrc, Level: "INFO", Index: index,
+					Message: stepLabel + "Optimize (" + quality + "): " + filename,
+					Time:    time.Now(),
+				})
+				optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, ffSrc, resolution, frameRate, frameRateAbsolute, crf, threads, encOpts, stepOnEvent, onProgress)
+				ffmpegQ.Release(slot)
 			}
 
 			if !optimizeOk {
