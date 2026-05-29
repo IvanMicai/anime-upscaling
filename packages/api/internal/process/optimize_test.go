@@ -10,7 +10,7 @@ import (
 	"anime-upscaling/internal/runner"
 )
 
-func TestFallbackEncodeOptions_SwitchesToConservativeDefaults(t *testing.T) {
+func TestStableEncodeOptions_KeepsCodecProfileAndAddsPoolsNone(t *testing.T) {
 	orig := runner.EncodeOptions{
 		Codec:      "libx265",
 		Preset:     "fast",
@@ -18,29 +18,52 @@ func TestFallbackEncodeOptions_SwitchesToConservativeDefaults(t *testing.T) {
 		PixFmt:     "yuv420p10le",
 		AudioCodec: "copy",
 	}
-	fb := fallbackEncodeOptions(orig)
+	st := stableEncodeOptions(orig)
 
-	if fb.Codec != "libx264" {
-		t.Errorf("expected fallback codec libx264, got %q", fb.Codec)
+	if st.Codec != "libx265" {
+		t.Errorf("expected codec preserved as libx265, got %q", st.Codec)
 	}
-	if fb.PixFmt != "yuv420p" {
-		t.Errorf("expected fallback pixfmt yuv420p (8-bit), got %q", fb.PixFmt)
+	if st.PixFmt != "yuv420p10le" {
+		t.Errorf("expected pixfmt preserved as yuv420p10le (10-bit), got %q", st.PixFmt)
 	}
-	if fb.Preset != "medium" {
-		t.Errorf("expected fallback preset medium, got %q", fb.Preset)
+	if st.Preset != "fast" {
+		t.Errorf("expected preset preserved as fast, got %q", st.Preset)
 	}
-	if fb.AudioCodec != "copy" {
-		t.Errorf("expected AudioCodec preserved, got %q", fb.AudioCodec)
+	if len(st.ExtraArgs) != 2 || st.ExtraArgs[0] != "-x265-params" || st.ExtraArgs[1] != "pools=none" {
+		t.Errorf("expected -x265-params pools=none appended, got %v", st.ExtraArgs)
 	}
 }
 
-func TestFallbackEncodeOptions_PreservesExtraArgs(t *testing.T) {
+func TestStableEncodeOptions_DoesNotMutateOriginalExtraArgs(t *testing.T) {
 	orig := runner.EncodeOptions{
-		ExtraArgs: []string{"-x265-params", "pools=none"},
+		ExtraArgs: []string{"-foo", "bar"},
 	}
-	fb := fallbackEncodeOptions(orig)
-	if len(fb.ExtraArgs) != 2 || fb.ExtraArgs[0] != "-x265-params" {
-		t.Errorf("expected ExtraArgs preserved, got %v", fb.ExtraArgs)
+	_ = stableEncodeOptions(orig)
+	if len(orig.ExtraArgs) != 2 {
+		t.Errorf("expected original ExtraArgs untouched, got %v", orig.ExtraArgs)
+	}
+}
+
+func TestStableEncodeOptions_MergesIntoExistingX265Params(t *testing.T) {
+	orig := runner.EncodeOptions{
+		ExtraArgs: []string{"-x265-params", "wpp=1"},
+	}
+	st := stableEncodeOptions(orig)
+	if len(st.ExtraArgs) != 2 {
+		t.Fatalf("expected merge into existing -x265-params (2 args), got %v", st.ExtraArgs)
+	}
+	if st.ExtraArgs[1] != "wpp=1:pools=none" {
+		t.Errorf("expected pools=none merged, got %q", st.ExtraArgs[1])
+	}
+}
+
+func TestStableEncodeOptions_DoesNotDuplicatePools(t *testing.T) {
+	orig := runner.EncodeOptions{
+		ExtraArgs: []string{"-x265-params", "pools=4"},
+	}
+	st := stableEncodeOptions(orig)
+	if st.ExtraArgs[1] != "pools=4" {
+		t.Errorf("expected existing pools= left untouched, got %q", st.ExtraArgs[1])
 	}
 }
 
