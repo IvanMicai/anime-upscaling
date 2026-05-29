@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"anime-upscaling/internal/config"
@@ -147,18 +148,38 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 		)
 	}
 
-	err := attempt(opts)
-	if err != nil && ctx.Err() == nil {
-		if sig, signaled := runner.SignalFromError(err); signaled {
-			fallback := fallbackEncodeOptions(opts)
-			onEvent(logger.JobLog{
-				Source: logSource, Level: "INFO", Index: index,
-				Message: fmt.Sprintf("Tentativa 1 morreu com signal %s; repetindo %s com codec=%s preset=%s pixfmt=%s",
-					sig, filename, fallback.Codec, fallback.Preset, fallback.PixFmt),
-				Time: time.Now(),
-			})
-			err = attempt(fallback)
+	// Tiered retry on encoder signal death (e.g. SIGSEGV in libx265): keep the
+	// exact same codec profile so the output stays consistent with the rest of
+	// the batch (HEVC 10-bit). First retry repeats the identical command — these
+	// crashes are intermittent and fail early, so an identical re-run often
+	// succeeds. If it dies again we add an x265 thread-pool mitigation
+	// (pools=none) that sidesteps the crash without changing codec/preset/pixfmt.
+	attempts := []struct {
+		opts  runner.EncodeOptions
+		label string
+	}{
+		{opts, "primária"},
+		{opts, "retry idêntico"},
+		{stableEncodeOptions(opts), "x265 estável (pools=none)"},
+	}
+
+	var err error
+	for i, a := range attempts {
+		err = attempt(a.opts)
+		if err == nil || ctx.Err() != nil {
+			break
 		}
+		sig, signaled := runner.SignalFromError(err)
+		if !signaled || i == len(attempts)-1 {
+			break
+		}
+		next := attempts[i+1]
+		onEvent(logger.JobLog{
+			Source: logSource, Level: "INFO", Index: index,
+			Message: fmt.Sprintf("Tentativa %d morreu com signal %s; repetindo %s (%s) com codec=%s preset=%s pixfmt=%s",
+				i+1, sig, filename, next.label, next.opts.Codec, next.opts.Preset, next.opts.PixFmt),
+			Time: time.Now(),
+		})
 	}
 
 	if err != nil {
@@ -188,20 +209,33 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 	return true
 }
 
-// fallbackEncodeOptions returns a conservative set of encode options for the
-// retry attempt when the primary encoder died by signal. Switches to libx264,
-// 8-bit pixel format and a medium preset to sidestep libx265/10-bit crashes.
-// Preserves the original AudioCodec and any caller-provided ExtraArgs.
-func fallbackEncodeOptions(orig runner.EncodeOptions) runner.EncodeOptions {
-	fb := runner.EncodeOptions{
-		Codec:      "libx264",
-		Preset:     "medium",
-		Tune:       "animation",
-		PixFmt:     "yuv420p",
-		AudioCodec: orig.AudioCodec,
-		ExtraArgs:  orig.ExtraArgs,
+// stableEncodeOptions returns a copy of orig with an x265 thread-pool
+// mitigation appended. Disabling the x265 worker pool (pools=none) sidesteps
+// the intermittent SIGSEGV some inputs trigger in libx265's threaded encoder,
+// while keeping the exact same codec, preset, pixel format and CRF so the
+// output stays consistent with the rest of the batch (HEVC 10-bit). The
+// original ExtraArgs slice is never mutated; if a -x265-params is already
+// present, pools=none is merged into it instead of being duplicated.
+func stableEncodeOptions(orig runner.EncodeOptions) runner.EncodeOptions {
+	out := orig.WithDefaults()
+	extra := append([]string(nil), out.ExtraArgs...)
+
+	merged := false
+	for i := 0; i+1 < len(extra); i++ {
+		if extra[i] == "-x265-params" {
+			if !strings.Contains(extra[i+1], "pools=") {
+				extra[i+1] = extra[i+1] + ":pools=none"
+			}
+			merged = true
+			break
+		}
 	}
-	return fb.WithDefaults()
+	if !merged {
+		extra = append(extra, "-x265-params", "pools=none")
+	}
+
+	out.ExtraArgs = extra
+	return out
 }
 
 // inputFileMeta returns a "size=N mtime=..." string for error logs, or an
