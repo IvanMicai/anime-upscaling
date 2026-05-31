@@ -5,8 +5,9 @@
 .env.*
 !.env.example
 
-# Local agent/editor state
-.claude/
+# Local agent/editor state (but keep committed skills under .claude/skills/)
+.claude/*
+!.claude/skills/
 .audiosync_temp/
 
 # Build and runtime artifacts
