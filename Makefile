@@ -6,20 +6,44 @@ API_PORT ?= 4751
 APP_PORT ?= 4750
 HOST_PROCESS_DIR ?= ./data
 
-.PHONY: all init build build-api build-app run run-gpu stop logs dev dev-api dev-app clean deploy
+.PHONY: all init gen-secrets quickstart build build-api build-app run run-gpu stop logs dev dev-api dev-app clean deploy
 
 # --- Build ---
 
 all: build
 
-init:
-	@test -f .env || cp .env.example .env
+init: gen-secrets
 	@mkdir -p "$(HOST_PROCESS_DIR)/input" \
 		"$(HOST_PROCESS_DIR)/output" \
 		"$(HOST_PROCESS_DIR)/optimized" \
 		"$(HOST_PROCESS_DIR)/interpolated" \
 		"$(HOST_PROCESS_DIR)/temp"
 	@echo "Initialized .env and media folders under $(HOST_PROCESS_DIR)."
+
+# Generate a strong AUTH_SECRET and a random AUTH_PASSWORD into .env. Idempotent:
+# only rewrites lines that still hold the change-me placeholder, so re-running
+# never clobbers a password you already set. Works on both BSD/macOS and GNU sed.
+gen-secrets:
+	@test -f .env || cp .env.example .env
+	@if grep -q '^AUTH_SECRET=change-me' .env; then \
+		s=$$(openssl rand -hex 32); \
+		sed -i.bak "s|^AUTH_SECRET=.*|AUTH_SECRET=$$s|" .env && rm -f .env.bak; \
+		echo "Generated AUTH_SECRET."; \
+	fi
+	@if grep -q '^AUTH_PASSWORD=change-me' .env; then \
+		p=$$(openssl rand -hex 12); \
+		sed -i.bak "s|^AUTH_PASSWORD=.*|AUTH_PASSWORD=$$p|" .env && rm -f .env.bak; \
+		echo "Generated AUTH_PASSWORD: $$p  (also saved in .env)"; \
+	fi
+
+# --- Quickstart (fastest trial: prebuilt images, no local build) ---
+
+quickstart: init
+	docker compose -f docker-compose.hub.yml up -d
+	@echo ""
+	@echo "App: http://localhost:$(APP_PORT)"
+	@echo "Log in with the AUTH_PASSWORD from .env:"
+	@grep '^AUTH_PASSWORD=' .env
 
 build: build-api build-app
 
