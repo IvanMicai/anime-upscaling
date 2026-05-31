@@ -42,12 +42,16 @@ GPU, build locally instead: `make run-gpu`.
 # API (Go): formatting, vet, race-enabled tests
 cd packages/api && gofmt -l . && go vet ./... && go test -race ./...
 
-# App (Next.js): lint, build, component tests
-cd packages/app && pnpm install && pnpm lint && pnpm build && pnpm test-storybook
+# App (Next.js): lint + build
+cd packages/app && pnpm install && pnpm lint && pnpm build
+
+# Optional: Storybook component tests (local-only, not a CI gate — needs a browser)
+cd packages/app && pnpm test-storybook
 ```
 
-CI runs all of the above plus `golangci-lint` and `govulncheck` — match it
-before pushing. The golangci config is `packages/api/.golangci.yml`.
+CI runs the Go checks (gofmt, vet, race) plus `golangci-lint` and
+`govulncheck`, and the app `lint` + `build`. Match it before pushing. The
+golangci config is `packages/api/.golangci.yml`.
 
 ## Logs / stop
 
