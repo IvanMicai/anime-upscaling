@@ -132,7 +132,7 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 	tempOutPath := filepath.Join(tempOptDir, filename)
 
 	attempt := func(attemptOpts runner.EncodeOptions) error {
-		os.Remove(tempOutPath)
+		_ = os.Remove(tempOutPath)
 		return r.FFmpegEncode(ctx,
 			source+"/"+filename,
 			"temp/optimized/"+filename,
@@ -183,7 +183,7 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 	}
 
 	if err != nil {
-		os.Remove(tempOutPath)
+		_ = os.Remove(tempOutPath)
 		onEvent(logger.JobLog{
 			Source: logSource, Level: "ERRO", Index: index,
 			Message: fmt.Sprintf("Falha ao processar: %s (%s) — input %s %s (ver ffmpeg.log)",
@@ -199,12 +199,12 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 	}
 
 	if err := os.Rename(tempOutPath, outPath); err != nil {
-		os.Remove(tempOutPath)
+		_ = os.Remove(tempOutPath)
 		onEvent(logger.JobLog{Source: logSource, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao mover output: %s (%v)", filename, err), Time: time.Now()})
 		return false
 	}
 
-	r.Chown(ctx, cfg.OptimizedDir, filename)
+	_ = r.Chown(ctx, cfg.OptimizedDir, filename)
 	onEvent(logger.JobLog{Source: logSource, Level: "OK", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
 	return true
 }

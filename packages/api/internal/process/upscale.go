@@ -100,7 +100,7 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 			err = nil
 		} else if sig, signaled := runner.SignalFromError(err); signaled {
 			onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Tentativa 1 morreu com signal %s; repetindo upscale: %s", sig, filename), Time: time.Now()})
-			os.Remove(tempOutPath)
+			_ = os.Remove(tempOutPath)
 			err = r.Video2x(ctx, gpuID, streamIdx, filename, logFile, scale, opts, inputDir, tempOutputDir, gpuProgress)
 			if err != nil && salvageSignaledRun(err, logFile, tempOutPath) {
 				onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Recuperando %s na 2ª tentativa: video2x morreu em signal mas output foi escrito por completo", filename), Time: time.Now()})
@@ -110,7 +110,7 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 	}
 
 	if err != nil {
-		os.Remove(tempOutPath)
+		_ = os.Remove(tempOutPath)
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao processar: %s (%v)", filename, err), Time: time.Now()})
 		return false
 	}
@@ -121,12 +121,12 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 	}
 
 	if err := os.Rename(tempOutPath, outPath); err != nil {
-		os.Remove(tempOutPath)
+		_ = os.Remove(tempOutPath)
 		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao mover output: %s (%v)", filename, err), Time: time.Now()})
 		return false
 	}
 
-	r.Chown(ctx, outputDir, filename)
+	_ = r.Chown(ctx, outputDir, filename)
 	onEvent(logger.JobLog{Source: source, Level: "OK", Index: index, Message: "Concluído: " + filename, Time: time.Now()})
 	return true
 }

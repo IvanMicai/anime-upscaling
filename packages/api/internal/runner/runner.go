@@ -53,11 +53,11 @@ func setupSanitizedPaths(filename, inputDir, outputDir string) (cmdInputPath, cm
 	// Create hard link so video2x sees a clean name with no reference to the original path.
 	// Hard links are preferred over symlinks because some tools resolve symlinks
 	// and may still fail on the original path containing spaces.
-	os.Link(originalInputPath, linkPath)
+	_ = os.Link(originalInputPath, linkPath)
 
 	sanitized = true
 	cleanup = func() {
-		os.Remove(linkPath)
+		_ = os.Remove(linkPath)
 	}
 	return
 }
@@ -66,10 +66,10 @@ func setupSanitizedPaths(filename, inputDir, outputDir string) (cmdInputPath, cm
 // original name after successful processing. On failure, cleans up partial output.
 func finalizeSanitizedOutput(cmdOutputPath, originalOutputPath string, err error) {
 	if err != nil {
-		os.Remove(cmdOutputPath)
+		_ = os.Remove(cmdOutputPath)
 		return
 	}
-	os.Rename(cmdOutputPath, originalOutputPath)
+	_ = os.Rename(cmdOutputPath, originalOutputPath)
 }
 
 // runError wraps an exec error with the last lines of process output for context.
@@ -208,7 +208,7 @@ func (r *Runner) Video2x(ctx context.Context, gpuID, streamIdx int, filename, lo
 	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin, args...)
 
 	tail := newTailWriter(20)
-	var out io.Writer = io.MultiWriter(f, tail)
+	out := io.MultiWriter(f, tail)
 	if onProgress != nil {
 		out = io.MultiWriter(newProgressWriter(f, onProgress), tail)
 	}
@@ -263,7 +263,7 @@ func (r *Runner) Video2xRife(ctx context.Context, gpuID, streamIdx int, filename
 	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin, args...)
 
 	tail := newTailWriter(20)
-	var out io.Writer = io.MultiWriter(f, tail)
+	out := io.MultiWriter(f, tail)
 	if onProgress != nil {
 		out = io.MultiWriter(newProgressWriter(f, onProgress), tail)
 	}
@@ -390,7 +390,7 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	cmd := exec.CommandContext(ctx, r.cfg.FFmpegBin, args...)
 
 	tail := newTailWriter(20)
-	var out io.Writer = io.MultiWriter(f, tail)
+	out := io.MultiWriter(f, tail)
 	if onProgress != nil {
 		out = io.MultiWriter(newFFmpegProgressWriter(f, onProgress, "Encode"), tail)
 	}

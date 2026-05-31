@@ -1,0 +1,29 @@
+# golangci-lint configuration (v2 schema).
+#
+# Curated, low-noise set. gofmt and `go vet` are also enforced directly in the
+# CI "API" job; golangci-lint is the stricter static-analysis layer on top.
+#
+# misspell is intentionally NOT enabled: parts of this codebase carry deliberate
+# Portuguese strings (log messages, quality presets) that misspell flags as typos
+# of English words. Those artifacts are grandfathered — see CONTRIBUTING.md.
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+  settings:
+    errcheck:
+      # Idiomatic fire-and-forget calls whose error returns are conventionally
+      # ignored. Meaningful filesystem ops (Rename, Link, Chown, etc.) are kept
+      # under errcheck and handled explicitly at the call site instead.
+      exclude-functions:
+        - (*os.File).Close
+        - (*os.File).Seek
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*encoding/json.Encoder).Encode

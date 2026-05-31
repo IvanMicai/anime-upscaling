@@ -36,39 +36,39 @@ type JobProgress struct {
 }
 
 type Job struct {
-	ID            string                  `json:"id"`
-	Type          string                  `json:"type"`
-	Status        string                  `json:"status"`
-	Source        string                  `json:"source"`
-	Scale             int                 `json:"scale"`
-	Resolution        int                 `json:"resolution"`
-	FrameRate         int                 `json:"frame_rate"`
-	FrameRateMode     string              `json:"frame_rate_mode,omitempty"`
-	FrameRateAbsolute float64             `json:"frame_rate_absolute,omitempty"`
-	Multiplier        int                 `json:"multiplier,omitempty"`
-	RifeModel     string                  `json:"rife_model,omitempty"`
-	SceneThresh   float64                 `json:"scene_thresh,omitempty"`
-	Threads       int                     `json:"threads,omitempty"`
-	Processor     string                  `json:"processor,omitempty"`
-	Model         string                  `json:"model,omitempty"`
-	NoiseLevel    int                     `json:"noise_level,omitempty"`
-	Quality       string                  `json:"quality,omitempty"`
-	Codec         string                  `json:"codec,omitempty"`
-	Preset        string                  `json:"preset,omitempty"`
-	Tune          string                  `json:"tune,omitempty"`
-	PixFmt        string                  `json:"pix_fmt,omitempty"`
-	AudioCodec    string                  `json:"audio_codec,omitempty"`
-	UseGPU        bool                    `json:"use_gpu,omitempty"`
-	PipelineName  string                  `json:"pipeline_name,omitempty"`
-	PipelineSteps []pipeline.PipelineStep `json:"pipeline_steps,omitempty"`
-	Files         []string                `json:"files"`
-	Progress      JobProgress             `json:"progress"`
-	Logs          []logEntry              `json:"-"`
-	CreatedAt     time.Time               `json:"created_at"`
-	FinishedAt    *time.Time              `json:"finished_at,omitempty"`
-	cancel        context.CancelFunc
-	done          chan struct{}
-	mu            sync.Mutex
+	ID                string                  `json:"id"`
+	Type              string                  `json:"type"`
+	Status            string                  `json:"status"`
+	Source            string                  `json:"source"`
+	Scale             int                     `json:"scale"`
+	Resolution        int                     `json:"resolution"`
+	FrameRate         int                     `json:"frame_rate"`
+	FrameRateMode     string                  `json:"frame_rate_mode,omitempty"`
+	FrameRateAbsolute float64                 `json:"frame_rate_absolute,omitempty"`
+	Multiplier        int                     `json:"multiplier,omitempty"`
+	RifeModel         string                  `json:"rife_model,omitempty"`
+	SceneThresh       float64                 `json:"scene_thresh,omitempty"`
+	Threads           int                     `json:"threads,omitempty"`
+	Processor         string                  `json:"processor,omitempty"`
+	Model             string                  `json:"model,omitempty"`
+	NoiseLevel        int                     `json:"noise_level,omitempty"`
+	Quality           string                  `json:"quality,omitempty"`
+	Codec             string                  `json:"codec,omitempty"`
+	Preset            string                  `json:"preset,omitempty"`
+	Tune              string                  `json:"tune,omitempty"`
+	PixFmt            string                  `json:"pix_fmt,omitempty"`
+	AudioCodec        string                  `json:"audio_codec,omitempty"`
+	UseGPU            bool                    `json:"use_gpu,omitempty"`
+	PipelineName      string                  `json:"pipeline_name,omitempty"`
+	PipelineSteps     []pipeline.PipelineStep `json:"pipeline_steps,omitempty"`
+	Files             []string                `json:"files"`
+	Progress          JobProgress             `json:"progress"`
+	Logs              []logEntry              `json:"-"`
+	CreatedAt         time.Time               `json:"created_at"`
+	FinishedAt        *time.Time              `json:"finished_at,omitempty"`
+	cancel            context.CancelFunc
+	done              chan struct{}
+	mu                sync.Mutex
 }
 
 // StartJobParams holds all parameters for creating and starting a job.
@@ -357,24 +357,24 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 		FrameRateMode:     p.FrameRateMode,
 		FrameRateAbsolute: p.FrameRateAbsolute,
 		Multiplier:        p.Multiplier,
-		RifeModel:   p.RifeModel,
-		SceneThresh: p.SceneThresh,
-		Threads:     p.Threads,
-		Processor:   p.Processor,
-		Model:       p.Model,
-		NoiseLevel:  p.NoiseLevel,
-		Quality:     p.Quality,
-		Codec:       p.Codec,
-		Preset:      p.Preset,
-		Tune:        p.Tune,
-		PixFmt:      p.PixFmt,
-		AudioCodec:  p.AudioCodec,
-		UseGPU:      p.UseGPU,
-		Files:       p.Files,
-		Progress:    JobProgress{Total: len(p.Files)},
-		CreatedAt:   time.Now().UTC(),
-		cancel:      cancel,
-		done:        make(chan struct{}),
+		RifeModel:         p.RifeModel,
+		SceneThresh:       p.SceneThresh,
+		Threads:           p.Threads,
+		Processor:         p.Processor,
+		Model:             p.Model,
+		NoiseLevel:        p.NoiseLevel,
+		Quality:           p.Quality,
+		Codec:             p.Codec,
+		Preset:            p.Preset,
+		Tune:              p.Tune,
+		PixFmt:            p.PixFmt,
+		AudioCodec:        p.AudioCodec,
+		UseGPU:            p.UseGPU,
+		Files:             p.Files,
+		Progress:          JobProgress{Total: len(p.Files)},
+		CreatedAt:         time.Now().UTC(),
+		cancel:            cancel,
+		done:              make(chan struct{}),
 	}
 
 	m.mu.Lock()
