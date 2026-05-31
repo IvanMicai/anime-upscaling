@@ -2,8 +2,13 @@
 
 Releases are created automatically from commits merged into `main`. The release
 workflow uses semantic-release and Conventional Commits to decide the next
-SemVer version, creates a GitHub release, then pushes the API and app images to
-Docker Hub with matching tags.
+SemVer version, updates [`CHANGELOG.md`](../CHANGELOG.md), creates a GitHub
+release, then pushes the API and app images to Docker Hub with matching tags.
+
+> **Branch protection:** the workflow commits the updated `CHANGELOG.md` back to
+> `main` (via `@semantic-release/git`, with `[skip ci]`). If `main` is
+> protected, allow the GitHub Actions bot to bypass the push restriction, or the
+> release step will fail when it tries to push the changelog commit.
 
 ## Docker Hub Setup
 
