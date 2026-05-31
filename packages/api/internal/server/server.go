@@ -22,8 +22,8 @@ import (
 
 func CmdServe(cfg config.Config) error {
 	// Clean temp dir from any stale files left by previous crashes
-	os.RemoveAll(cfg.TempDir)
-	os.MkdirAll(cfg.TempDir, 0755)
+	_ = os.RemoveAll(cfg.TempDir)
+	_ = os.MkdirAll(cfg.TempDir, 0755)
 
 	if err := cache.BuildFileStatusCache(cfg); err != nil {
 		fmt.Printf("Warning: cache build failed: %v\n", err)
@@ -371,29 +371,29 @@ func handleListJobs(jm *JobManager, w http.ResponseWriter, r *http.Request) {
 
 func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Type        string   `json:"type"`
-		Files       []string `json:"files"`
-		Source      string   `json:"source"`
-		Path        string   `json:"path"`
-		Scale       int      `json:"scale"`
-		Resolution        int     `json:"resolution"`
-		FrameRate         int     `json:"frame_rate"`
-		FrameRateMode     string  `json:"frame_rate_mode"`
-		FrameRateAbsolute float64 `json:"frame_rate_absolute"`
-		Multiplier        int     `json:"multiplier"`
-		Threads     int      `json:"threads"`
-		RifeModel   string   `json:"rife_model"`
-		SceneThresh float64  `json:"scene_thresh"`
-		Processor   string   `json:"processor"`
-		Model       string   `json:"model"`
-		NoiseLevel  int      `json:"noise_level"`
-		Quality     string   `json:"quality"`
-		Codec       string   `json:"codec"`
-		Preset      string   `json:"preset"`
-		Tune        string   `json:"tune"`
-		PixFmt      string   `json:"pix_fmt"`
-		AudioCodec  string   `json:"audio_codec"`
-		UseGPU      bool     `json:"use_gpu"`
+		Type              string   `json:"type"`
+		Files             []string `json:"files"`
+		Source            string   `json:"source"`
+		Path              string   `json:"path"`
+		Scale             int      `json:"scale"`
+		Resolution        int      `json:"resolution"`
+		FrameRate         int      `json:"frame_rate"`
+		FrameRateMode     string   `json:"frame_rate_mode"`
+		FrameRateAbsolute float64  `json:"frame_rate_absolute"`
+		Multiplier        int      `json:"multiplier"`
+		Threads           int      `json:"threads"`
+		RifeModel         string   `json:"rife_model"`
+		SceneThresh       float64  `json:"scene_thresh"`
+		Processor         string   `json:"processor"`
+		Model             string   `json:"model"`
+		NoiseLevel        int      `json:"noise_level"`
+		Quality           string   `json:"quality"`
+		Codec             string   `json:"codec"`
+		Preset            string   `json:"preset"`
+		Tune              string   `json:"tune"`
+		PixFmt            string   `json:"pix_fmt"`
+		AudioCodec        string   `json:"audio_codec"`
+		UseGPU            bool     `json:"use_gpu"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -597,19 +597,19 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		FrameRateMode:     req.FrameRateMode,
 		FrameRateAbsolute: req.FrameRateAbsolute,
 		Multiplier:        req.Multiplier,
-		Threads:     req.Threads,
-		RifeModel:   req.RifeModel,
-		SceneThresh: req.SceneThresh,
-		Processor:   req.Processor,
-		Model:       req.Model,
-		NoiseLevel:  req.NoiseLevel,
-		Quality:     req.Quality,
-		Codec:       req.Codec,
-		Preset:      req.Preset,
-		Tune:        req.Tune,
-		PixFmt:      req.PixFmt,
-		AudioCodec:  req.AudioCodec,
-		UseGPU:      req.UseGPU,
+		Threads:           req.Threads,
+		RifeModel:         req.RifeModel,
+		SceneThresh:       req.SceneThresh,
+		Processor:         req.Processor,
+		Model:             req.Model,
+		NoiseLevel:        req.NoiseLevel,
+		Quality:           req.Quality,
+		Codec:             req.Codec,
+		Preset:            req.Preset,
+		Tune:              req.Tune,
+		PixFmt:            req.PixFmt,
+		AudioCodec:        req.AudioCodec,
+		UseGPU:            req.UseGPU,
 	})
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{

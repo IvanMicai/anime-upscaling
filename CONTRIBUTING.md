@@ -3,6 +3,12 @@
 Thanks for considering a contribution. This project aims to stay practical,
 self-hostable, and easy to operate on a personal media server.
 
+## Architecture
+
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before changing job
+orchestration, the queues, the GPU monitor, or the app↔API boundary — it
+explains the design decisions and trust model the code relies on.
+
 ## Development Setup
 
 API:
@@ -49,6 +55,19 @@ Please include:
 - Actual behavior.
 - Relevant logs from `docker compose logs` or the job log view.
 - Host OS, Docker version, GPU vendor, and whether the NVIDIA overlay is used.
+
+## A note on naming
+
+Some option values and log strings in this project are in Portuguese — most
+visibly the quality preset names (`ultra`, `alta`, `media`, `baixa`) and worker
+log words (`Iniciando`, `Concluído`, …). These are a **stable part of the public
+API and of saved-pipeline JSON**, so they are intentionally *not* renamed:
+changing them would break request validation (`POST /api/jobs`) and every
+`pipelines.json` already on a user's disk.
+
+New user-facing copy should be in English (per the rule above); the existing
+Portuguese artifacts are grandfathered. When in doubt, document rather than
+rename.
 
 ## Commit Messages
 

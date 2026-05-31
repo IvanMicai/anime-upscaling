@@ -1,0 +1,41 @@
+version: 2
+updates:
+  # Go API module (go.mod lives in packages/api).
+  - package-ecosystem: gomod
+    directory: /packages/api
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+    open-pull-requests-limit: 5
+
+  # Next.js app (package.json + pnpm-lock.yaml live in packages/app, not root).
+  - package-ecosystem: npm
+    directory: /packages/app
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+    open-pull-requests-limit: 5
+
+  # Dockerfiles.
+  - package-ecosystem: docker
+    directory: /packages/api
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+  - package-ecosystem: docker
+    directory: /packages/app
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+
+  # GitHub Actions used by the CI and release workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci

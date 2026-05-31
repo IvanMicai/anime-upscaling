@@ -7,10 +7,10 @@
 // or the caller's context is cancelled.
 //
 // Host-side recovery (PCI remove+rescan, container bounce) lives outside this
-// process — see scripts/gpu-watchdog.sh in the server-management repo. This
-// monitor's job is only to stop feeding the wedged driver with new
-// allocations, which previously piled up uninterruptible nvidia-container-cli
-// processes and made manual recovery harder.
+// process and is the operator's responsibility — pair this with your own host
+// watchdog. This monitor's job is only to stop feeding the wedged driver with
+// new allocations, which previously piled up uninterruptible
+// nvidia-container-cli processes and made manual recovery harder.
 package gpu
 
 import (

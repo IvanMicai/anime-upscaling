@@ -41,7 +41,6 @@ func TestQueue_ReleaseWakesHighestPriority(t *testing.T) {
 	// Park three waiters with distinct priorities.
 	type result struct {
 		priority int
-		order    int
 	}
 	results := make(chan result, 3)
 	var started sync.WaitGroup

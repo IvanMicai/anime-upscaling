@@ -3,6 +3,9 @@
 Go HTTP API for managing video upscaling and optimization jobs with video2x
 and FFmpeg.
 
+See [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) for the system design
+(trust boundary, queues, job lifecycle, GPU monitor).
+
 **Base URL:** `http://localhost:4751` when running the API directly. In the
 default Docker Compose stack, the API is private to the Compose network and the
 web app proxies browser requests to it.
@@ -201,7 +204,9 @@ curl http://localhost:4751/api/jobs/j_1708540800_1a2b
 
 ### GET /api/jobs/{id}/logs
 
-Stream job logs via Server-Sent Events. Sends the full log history on connect, then streams new entries in real-time. The connection closes automatically when the job finishes.
+Return a snapshot of a job's logs. Clients **poll** this endpoint (the web app
+polls every ~1.5s) and pass `?since=<cursor>` to fetch only entries newer than
+the cursor. It is plain JSON, not Server-Sent Events.
 
 **Path Parameters:**
 
@@ -209,31 +214,41 @@ Stream job logs via Server-Sent Events. Sends the full log history on connect, t
 |-------|------|-------------|
 | `id` | string | Job ID |
 
-**Response Headers:**
+**Query Parameters:**
 
-```
-Content-Type: text/event-stream
-Cache-Control: no-cache
-Connection: keep-alive
-```
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `since` | int | `0` | Return only log entries with array index >= this value |
 
-**SSE Event Format:**
-
-Each `data:` line is a JSON log entry:
+**Response 200:**
 
 ```json
 {
-  "source": "GPU 0",
-  "level": "INFO",
-  "index": 1,
-  "message": "Iniciando: video1.mkv",
-  "time": "2024-02-21T12:00:05Z"
+  "entries": [
+    {
+      "source": "GPU 0",
+      "level": "INFO",
+      "index": 1,
+      "message": "Iniciando: video1.mkv",
+      "time": "2024-02-21T12:00:05Z"
+    }
+  ],
+  "total": 1,
+  "running": true
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `source` | string | Worker identifier (`"GPU 0"`, `"GPU 1"`, `"FFMPEG"`) |
+| `entries` | array | Log entries with array index >= `since` |
+| `total` | int | Current log length — send this back as the next `since` cursor |
+| `running` | bool | `true` while the job is `queued` or `running`; clients stop polling when `false` |
+
+Each entry has these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `source` | string | Worker identifier (`"GPU 0"`, `"GPU 1"`, `"FFMPEG"`, `"PIPELINE"`) |
 | `level` | string | Log level (see table below) |
 | `index` | int | File index in the job |
 | `message` | string | Log message |
@@ -248,7 +263,8 @@ Each `data:` line is a JSON log entry:
 **Example:**
 
 ```bash
-curl -N http://localhost:4751/api/jobs/j_1708540800_1a2b/logs
+# Fetch all logs, then poll for new ones past the returned `total`.
+curl 'http://localhost:4751/api/jobs/j_1708540800_1a2b/logs?since=0'
 ```
 
 ---
@@ -273,8 +289,9 @@ deployments the monitor stays disabled and always reports healthy.
 ```
 
 When unhealthy, `last_error` carries the probe error and queued GPU jobs block
-on `Acquire` until recovery. Pair with `scripts/gpu-watchdog.sh` in the
-server-management repo, which performs host-side recovery (PCI remove+rescan).
+on `Acquire` until recovery. The monitor only stops dispatch; host-side recovery
+(PCI remove+rescan, restarting the container) is out of scope for this process
+and should be handled by your own host watchdog.
 
 **Example:**
 

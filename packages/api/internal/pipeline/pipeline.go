@@ -11,26 +11,26 @@ import (
 
 // PipelineStep defines a single operation in a pipeline.
 type PipelineStep struct {
-	Operation   string  `json:"operation"`
-	Scale       int     `json:"scale,omitempty"`
-	Processor   string  `json:"processor,omitempty"`
-	Model       string  `json:"model,omitempty"`
-	NoiseLevel  int     `json:"noise_level,omitempty"`
-	Multiplier  int     `json:"multiplier,omitempty"`
-	RifeModel   string  `json:"rife_model,omitempty"`
-	SceneThresh float64 `json:"scene_thresh,omitempty"`
-	Quality     string  `json:"quality,omitempty"`
+	Operation         string  `json:"operation"`
+	Scale             int     `json:"scale,omitempty"`
+	Processor         string  `json:"processor,omitempty"`
+	Model             string  `json:"model,omitempty"`
+	NoiseLevel        int     `json:"noise_level,omitempty"`
+	Multiplier        int     `json:"multiplier,omitempty"`
+	RifeModel         string  `json:"rife_model,omitempty"`
+	SceneThresh       float64 `json:"scene_thresh,omitempty"`
+	Quality           string  `json:"quality,omitempty"`
 	Resolution        int     `json:"resolution,omitempty"`
 	FrameRate         int     `json:"frame_rate,omitempty"`
 	FrameRateMode     string  `json:"frame_rate_mode,omitempty"`
 	FrameRateAbsolute float64 `json:"frame_rate_absolute,omitempty"`
 	Threads           int     `json:"threads,omitempty"`
-	Codec       string  `json:"codec,omitempty"`
-	Preset      string  `json:"preset,omitempty"`
-	Tune        string  `json:"tune,omitempty"`
-	PixFmt      string  `json:"pix_fmt,omitempty"`
-	AudioCodec  string  `json:"audio_codec,omitempty"`
-	UseGPU      bool    `json:"use_gpu,omitempty"`
+	Codec             string  `json:"codec,omitempty"`
+	Preset            string  `json:"preset,omitempty"`
+	Tune              string  `json:"tune,omitempty"`
+	PixFmt            string  `json:"pix_fmt,omitempty"`
+	AudioCodec        string  `json:"audio_codec,omitempty"`
+	UseGPU            bool    `json:"use_gpu,omitempty"`
 }
 
 // Pipeline is a named, ordered sequence of processing steps.

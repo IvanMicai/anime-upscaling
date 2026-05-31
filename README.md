@@ -6,10 +6,11 @@
   <p>Self-hosted web UI and HTTP API for managing anime video processing jobs — upscaling, frame interpolation, optimization, and integrity checks — powered by video2x and FFmpeg.</p>
 
   <p>
+    <a href="https://github.com/IvanMicai/anime-upscaling/actions/workflows/ci.yml"><img src="https://github.com/IvanMicai/anime-upscaling/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
     <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white" alt="Go 1.26+" />
     <img src="https://img.shields.io/badge/Node-24%20LTS-339933?logo=node.js&logoColor=white" alt="Node 24 LTS" />
-    <img src="https://img.shields.io/badge/Next.js-15-black?logo=next.js&logoColor=white" alt="Next.js 15" />
+    <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white" alt="Next.js 16" />
     <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose" />
     <img src="https://img.shields.io/badge/GPU-NVIDIA%20%7C%20AMD%20%7C%20Intel-76B900" alt="GPU support" />
   </p>
@@ -144,6 +145,25 @@ Each job — and each step inside a pipeline — has an operation type:
 
 ## Quick Start
 
+### Try it in one command (CPU, prebuilt images)
+
+```bash
+make quickstart
+```
+
+This generates a strong `AUTH_SECRET` and a random `AUTH_PASSWORD` into `.env`,
+creates the media folders, and starts the stack from prebuilt Docker Hub images
+(no local build). It prints the generated password at the end; open the web app
+at [http://localhost:4750](http://localhost:4750) and log in with it.
+
+Re-running `make quickstart` is safe — it never overwrites a password you have
+already set.
+
+### Build from source
+
+To build the images locally instead of pulling them — for development, or to
+run on a GPU:
+
 ```bash
 cp .env.example .env
 mkdir -p data/input data/output data/optimized data/interpolated data/temp
@@ -173,17 +193,16 @@ For a fast Portainer setup, paste `docker-compose.portainer.yml` into a new
 stack and set the required environment variables. See
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#portainer-stack) for details.
 
-Open the web app at [http://localhost:4750](http://localhost:4750).
-
 Put source videos in `data/input`. Outputs are written to `data/output`,
 `data/optimized`, or `data/interpolated`, depending on the job or pipeline.
 
 You can also use the Makefile helpers:
 
 ```bash
-make init
-make run
-make run-gpu
+make quickstart   # secrets + folders + start from prebuilt images (CPU)
+make init         # generate secrets + create media folders only
+make run          # build locally and start (CPU)
+make run-gpu      # build locally and start with the NVIDIA overlay
 make logs
 make stop
 ```
@@ -257,6 +276,7 @@ make dev
 
 ## Documentation
 
+- [Architecture](docs/ARCHITECTURE.md)
 - [Deployment guide](docs/DEPLOYMENT.md)
 - [Releasing guide](docs/RELEASING.md)
 - [API reference](packages/api/README.md)
