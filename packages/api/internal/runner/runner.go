@@ -385,6 +385,15 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	if len(opts.ExtraArgs) > 0 {
 		args = append(args, opts.ExtraArgs...)
 	}
+	// Força o interleaver a nunca desistir. O startup do libx265 (lookahead +
+	// fila de B-frames) atrasa o primeiro pacote de vídeo enquanto o áudio
+	// (-c:a copy) entra instantaneamente; se esse atraso passar do
+	// max_interleave_delta padrão (10s), o ffmpeg grava o áudio fora de ordem,
+	// amontoado no início do arquivo. O resultado decoda bem em reprodução
+	// linear, mas o seek nos players (web/mpv) pula para a posição do vídeo e
+	// não alcança o áudio (centenas de MB atrás) → áudio "para". 0 = buffer
+	// ilimitado, sempre interleava corretamente.
+	args = append(args, "-max_interleave_delta", "0")
 	args = append(args, outputPath)
 
 	cmd := exec.CommandContext(ctx, r.cfg.FFmpegBin, args...)
