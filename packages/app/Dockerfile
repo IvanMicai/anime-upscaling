@@ -1,12 +1,12 @@
 # --- deps ---
-FROM node:24-alpine AS deps
+FROM node:26-alpine AS deps
 RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # --- builder ---
-FROM node:24-alpine AS builder
+FROM node:26-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -14,7 +14,7 @@ COPY . .
 RUN pnpm run build
 
 # --- runner ---
-FROM node:24-alpine AS runner
+FROM node:26-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && \
