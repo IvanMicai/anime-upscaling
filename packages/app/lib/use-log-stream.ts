@@ -18,14 +18,22 @@ export function useLogStream(jobId: string) {
   const cursorRef = useRef(0);
   const lastSuccessRef = useRef(0);
 
+  // Reset stream state when the job changes, during render (not in the effect)
+  // to avoid an extra commit. See react.dev "Adjusting some state when a prop
+  // changes".
+  const [prevJobId, setPrevJobId] = useState(jobId);
+  if (prevJobId !== jobId) {
+    setPrevJobId(jobId);
+    setLogs([]);
+    setConnected(false);
+  }
+
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     cursorRef.current = 0;
     lastSuccessRef.current = 0;
-    setLogs([]);
-    setConnected(false);
 
     async function poll() {
       try {

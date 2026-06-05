@@ -115,19 +115,30 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
   const [deleting, setDeleting] = useState(false);
 
   // Reset selection only when the source dir changes (not on path navigation).
+  // Uses parent callbacks (onChange/onPathChange) that set state in the parent,
+  // so this must run in an effect rather than during render.
   useEffect(() => {
     onChange([]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setInternalPath("");
     if (onPathChange) onPathChange("");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dir]);
 
-  useEffect(() => {
+  // Reset view state when the source dir/path changes, during render (not in
+  // the effect) to avoid an extra commit. See react.dev "Adjusting some state
+  // when a prop changes".
+  const [prevLoad, setPrevLoad] = useState({ dir, path });
+  if (prevLoad.dir !== dir || prevLoad.path !== path) {
+    setPrevLoad({ dir, path });
     setLoading(true);
-    resetLastClicked();
     setFilters(new Set());
     setDeleteMode(false);
     setDeleteSelections(new Map());
+  }
+
+  useEffect(() => {
+    resetLastClicked();
     getFiles(dir, path)
       .then((res) => {
         setFiles(res.files ?? []);
@@ -547,7 +558,6 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
           <div className="max-h-60 overflow-y-auto space-y-2 text-sm">
             {(() => {
               const filesByName = new Map(files.map((f) => [f.name, f]));
-              let grandTotalSize = 0;
               const sections = COLUMN_ORDER.map((folder) => {
                 const items: { name: string; size: number }[] = [];
                 let folderTotal = 0;
@@ -561,32 +571,34 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
                   items.push({ name, size });
                   folderTotal += size;
                 }
-                if (items.length === 0) return null;
-                grandTotalSize += folderTotal;
-                return (
-                  <div key={folder}>
-                    <p className={cn("font-medium", FOLDER_COLORS[folder].text)}>
-                      {FOLDER_COLORS[folder].label} ({items.length} files,{" "}
-                      {formatBytesCompact(folderTotal)})
-                    </p>
-                    <ul className="ml-4 list-disc text-muted-foreground">
-                      {items.map(({ name, size }) => (
-                        <li key={name} className="font-mono text-xs">
-                          <span className="flex justify-between gap-2">
-                            <span className="truncate">{name}</span>
-                            <span className="shrink-0 tabular-nums">
-                              {size > 0 ? formatBytesCompact(size) : "—"}
-                            </span>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                );
-              });
+                return { folder, items, folderTotal };
+              }).filter((section) => section.items.length > 0);
+              const grandTotalSize = sections.reduce(
+                (sum, section) => sum + section.folderTotal,
+                0,
+              );
               return (
                 <>
-                  {sections}
+                  {sections.map(({ folder, items, folderTotal }) => (
+                    <div key={folder}>
+                      <p className={cn("font-medium", FOLDER_COLORS[folder].text)}>
+                        {FOLDER_COLORS[folder].label} ({items.length} files,{" "}
+                        {formatBytesCompact(folderTotal)})
+                      </p>
+                      <ul className="ml-4 list-disc text-muted-foreground">
+                        {items.map(({ name, size }) => (
+                          <li key={name} className="font-mono text-xs">
+                            <span className="flex justify-between gap-2">
+                              <span className="truncate">{name}</span>
+                              <span className="shrink-0 tabular-nums">
+                                {size > 0 ? formatBytesCompact(size) : "—"}
+                              </span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
                   <div className="border-t border-border pt-2 flex justify-between font-medium">
                     <span>Total</span>
                     <span className="tabular-nums">

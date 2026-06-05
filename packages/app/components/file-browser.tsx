@@ -101,11 +101,19 @@ export function FileBrowser() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
+  // Reset view state when the source dir/path changes, during render (not in
+  // the effect) to avoid an extra commit. See react.dev "Adjusting some state
+  // when a prop changes".
+  const [prevLoad, setPrevLoad] = useState({ dir, path });
+  if (prevLoad.dir !== dir || prevLoad.path !== path) {
+    setPrevLoad({ dir, path });
     setLoading(true);
     setFilters(new Set());
     setDeleteMode(false);
     setDeleteSelections(new Map());
+  }
+
+  useEffect(() => {
     getFiles(dir, path)
       .then((res) => {
         setFiles(res.files ?? []);
