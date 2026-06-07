@@ -1,13 +1,15 @@
 # --- deps ---
 FROM node:26-alpine AS deps
-RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
+# corepack não vem mais embutido no Node >= 25; instala o pnpm direto
+RUN npm install -g pnpm@10.22.0
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # --- builder ---
 FROM node:26-alpine AS builder
-RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
+# corepack não vem mais embutido no Node >= 25; instala o pnpm direto
+RUN npm install -g pnpm@10.22.0
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
