@@ -155,11 +155,20 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 
 	tempOutPath := filepath.Join(tempOptDir, filename)
 
+	// Encode em duas fases: (1) vídeo+áudio num intermediário sem legendas —
+	// faixas de legenda esparsas quebram o interleave do muxer durante encodes
+	// lentos (áudio adiantado ou buffer ilimitado → OOM, ver FFmpegEncode);
+	// (2) remux -c copy rápido devolvendo as legendas do arquivo original.
+	avRelPath := "temp/optimized/" + filename + ".av.mkv"
+	tempAVPath := tempOutPath + ".av.mkv"
+
 	attempt := func(attemptOpts runner.EncodeOptions) error {
 		_ = os.Remove(tempOutPath)
-		return r.FFmpegEncode(ctx,
+		_ = os.Remove(tempAVPath)
+		defer os.Remove(tempAVPath)
+		if err := r.FFmpegEncode(ctx,
 			source+"/"+filename,
-			"temp/optimized/"+filename,
+			avRelPath,
 			crf,
 			t,
 			attemptOpts,
@@ -169,7 +178,10 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 			frameRate,
 			frameRateAbsolute,
 			ffmpegProgress,
-		)
+		); err != nil {
+			return err
+		}
+		return r.FFmpegRemuxSubtitles(ctx, avRelPath, source+"/"+filename, "temp/optimized/"+filename, ffmpegProgress)
 	}
 
 	// Tiered retry on encoder signal death (e.g. SIGSEGV in libx265): keep the

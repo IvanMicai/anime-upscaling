@@ -355,7 +355,15 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	args = append(args, "-i", inputPath)
 
 	if copySubtitles {
-		args = append(args, "-map", "0")
+		// Mapeia tudo MENOS legendas (-0:s). Faixas de legenda em anime são
+		// esparsas (às vezes um único pacote em t=0): durante um encode lento
+		// elas quebram o interleaver do muxer — ou ele força flush e escreve o
+		// áudio adiantado (bug de seek), ou com -max_interleave_delta 0 espera
+		// um pacote de legenda que nunca chega e bufferiza o episódio inteiro
+		// na RAM (OOM, SIGKILL pelo memcg do container). As legendas voltam num
+		// remux -c copy rápido depois (FFmpegRemuxSubtitles), onde o vídeo
+		// chega na velocidade de I/O e o interleave funciona normalmente.
+		args = append(args, "-map", "0", "-map", "-0:s")
 	}
 	if filter := buildVideoFilter(scaleDivisor, frameRateDivisor, frameRateAbsolute, opts.Codec); filter != "" {
 		args = append(args, "-vf", filter)
@@ -379,21 +387,14 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	}
 	args = append(args, "-c:a", opts.AudioCodec)
 
-	if copySubtitles {
-		args = append(args, "-c:s", "copy")
-	}
 	if len(opts.ExtraArgs) > 0 {
 		args = append(args, opts.ExtraArgs...)
 	}
-	// Força o interleaver a nunca desistir. O startup do libx265 (lookahead +
-	// fila de B-frames) atrasa o primeiro pacote de vídeo enquanto o áudio
-	// (-c:a copy) entra instantaneamente; se esse atraso passar do
-	// max_interleave_delta padrão (10s), o ffmpeg grava o áudio fora de ordem,
-	// amontoado no início do arquivo. O resultado decoda bem em reprodução
-	// linear, mas o seek nos players (web/mpv) pula para a posição do vídeo e
-	// não alcança o áudio (centenas de MB atrás) → áudio "para". 0 = buffer
-	// ilimitado, sempre interleava corretamente.
-	args = append(args, "-max_interleave_delta", "0")
+	// Sem legendas no mux (ver -map acima), o interleave default (10s) é
+	// seguro: o muxer só espera vídeo+áudio, e o atraso de DTS entre eles é
+	// limitado pela latência do encoder (~1-2s), nunca perto do limiar. O
+	// antigo -max_interleave_delta 0 daqui bufferizava o arquivo inteiro na
+	// RAM quando a faixa de legenda secava (commit 10c9962) — não reintroduzir.
 	args = append(args, outputPath)
 
 	cmd := exec.CommandContext(ctx, r.cfg.FFmpegBin, args...)
@@ -410,6 +411,46 @@ func (r *Runner) FFmpegEncode(ctx context.Context, inputRelPath, outputRelPath s
 	if processName != "" {
 		label = ProcessPrefix + processName + "-" + ephemeralSuffix()
 	}
+	registerForCtx(ctx, label, cmd)
+	defer tracker.unregister(label)
+
+	return runError(cmd.Run(), tail)
+}
+
+// FFmpegRemuxSubtitles copia o A/V já encodado e devolve as faixas de legenda
+// do arquivo original num remux -c copy. Como aqui todas as streams chegam na
+// velocidade de I/O (nenhum encoder atrasando o vídeo), o interleave default
+// do muxer lida bem com faixas de legenda esparsas: quando a fila de legenda
+// seca, o flush por max_interleave_delta escreve os pacotes em ordem de DTS —
+// sem áudio adiantado e sem buffer ilimitado.
+func (r *Runner) FFmpegRemuxSubtitles(ctx context.Context, encodedRelPath, sourceRelPath, outputRelPath string, onProgress func(Progress)) error {
+	f, err := os.OpenFile(r.cfg.BaseDir+"/ffmpeg.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("open ffmpeg log: %w", err)
+	}
+	defer f.Close()
+
+	args := []string{
+		"-progress", "pipe:2", "-nostats",
+		"-i", r.cfg.BaseDir + "/" + encodedRelPath,
+		"-i", r.cfg.BaseDir + "/" + sourceRelPath,
+		// Tudo do encodado + legendas (se existirem) do original.
+		"-map", "0", "-map", "1:s?",
+		"-c", "copy",
+		r.cfg.BaseDir + "/" + outputRelPath,
+	}
+
+	cmd := exec.CommandContext(ctx, r.cfg.FFmpegBin, args...)
+
+	tail := newTailWriter(20)
+	out := io.MultiWriter(f, tail)
+	if onProgress != nil {
+		out = io.MultiWriter(newFFmpegProgressWriter(f, onProgress, "Remux"), tail)
+	}
+	cmd.Stdout = out
+	cmd.Stderr = out
+
+	label := ProcessPrefix + "ffmpeg-remux-" + ephemeralSuffix()
 	registerForCtx(ctx, label, cmd)
 	defer tracker.unregister(label)
 
