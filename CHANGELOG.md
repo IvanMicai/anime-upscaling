@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.10.5](https://github.com/IvanMicai/anime-upscaling/compare/v1.10.4...v1.10.5) (2026-06-07)
+
+### Bug Fixes
+
+* **docker:** install pnpm via npm — corepack removed from node >= 25 ([5a26f00](https://github.com/IvanMicai/anime-upscaling/commit/5a26f00b81431f8c605382319dc97d9d46ca64ca)), closes [#27](https://github.com/IvanMicai/anime-upscaling/issues/27)
+
 ## [1.10.4](https://github.com/IvanMicai/anime-upscaling/compare/v1.10.3...v1.10.4) (2026-06-07)
 
 ### Bug Fixes
