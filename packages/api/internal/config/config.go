@@ -17,6 +17,7 @@ type Config struct {
 	LogFile         string
 	UserID          int
 	GroupID         int
+	NumCPUs         int
 	HalfCPUs        int
 	VideoExts       []string
 	Video2xBin      string
@@ -34,7 +35,8 @@ func NewConfig() Config {
 	if baseDir == "" {
 		baseDir = "/data"
 	}
-	halfCPUs := runtime.NumCPU() / 2
+	numCPUs := runtime.NumCPU()
+	halfCPUs := numCPUs / 2
 	if halfCPUs < 1 {
 		halfCPUs = 1
 	}
@@ -55,6 +57,7 @@ func NewConfig() Config {
 		LogFile:         baseDir + "/process.log",
 		UserID:          os.Getuid(),
 		GroupID:         os.Getgid(),
+		NumCPUs:         numCPUs,
 		HalfCPUs:        halfCPUs,
 		VideoExts:       []string{".mkv", ".mp4", ".avi"},
 		Video2xBin:      "video2x",

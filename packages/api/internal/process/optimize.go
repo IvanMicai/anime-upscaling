@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -85,7 +86,35 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 	}
 	onEvent(logger.JobLog{Source: logSource, Level: "INFO", Index: index, Message: fmt.Sprintf("Pre-check completed in %s: %s", runner.FormatDuration(time.Since(precheckStarted)), filename), Time: time.Now()})
 
-	onEvent(logger.JobLog{Source: logSource, Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
+	// Orçamento de threads por encode: explícito do job, ou a fatia justa da
+	// máquina (CPUs / streams paralelos) para que N encodes simultâneos não
+	// disputem os mesmos cores.
+	t := threads
+	if t == 0 {
+		t = cfg.NumCPUs / max(cfg.FFmpegStreams, 1)
+		if t < 1 {
+			t = 1
+		}
+	}
+
+	// O -threads do ffmpeg só controla os frame threads do libx265; o worker
+	// pool interno (pools) é dimensionado por padrão para TODOS os cores da
+	// máquina, em cada instância. Com vários encodes paralelos isso gera
+	// oversubscription massiva de CPU e multiplica o uso de RAM (pool +
+	// lookahead), a ponto de o OOM killer derrubar os processos (SIGKILL).
+	// pools=<t> confina cada encode ao seu orçamento de threads.
+	opts = opts.WithDefaults()
+	startMsg := "Iniciando: " + filename
+	if opts.Codec == "libx265" && !opts.UseGPU {
+		pools := strconv.Itoa(t)
+		if t == 1 {
+			pools = "none"
+		}
+		opts.ExtraArgs = setX265Pools(opts.ExtraArgs, pools)
+		startMsg = fmt.Sprintf("Iniciando: %s (threads=%d pools=%s)", filename, t, pools)
+	}
+
+	onEvent(logger.JobLog{Source: logSource, Level: "INFO", Index: index, Message: startMsg, Time: time.Now()})
 
 	// Probe total frame count for ETA calculation. ProbeFrameCount tries cheap
 	// metadata-based strategies; when they all fail (some MKVs lack usable
@@ -122,11 +151,6 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 			}
 		}
 		onProgress(p)
-	}
-
-	t := threads
-	if t == 0 {
-		t = cfg.HalfCPUs
 	}
 
 	tempOutPath := filepath.Join(tempOptDir, filename)
@@ -210,32 +234,43 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 }
 
 // stableEncodeOptions returns a copy of orig with an x265 thread-pool
-// mitigation appended. Disabling the x265 worker pool (pools=none) sidesteps
+// mitigation applied. Disabling the x265 worker pool (pools=none) sidesteps
 // the intermittent SIGSEGV some inputs trigger in libx265's threaded encoder,
 // while keeping the exact same codec, preset, pixel format and CRF so the
-// output stays consistent with the rest of the batch (HEVC 10-bit). The
-// original ExtraArgs slice is never mutated; if a -x265-params is already
-// present, pools=none is merged into it instead of being duplicated.
+// output stays consistent with the rest of the batch (HEVC 10-bit). Any
+// pools=N already present (the per-stream budget set by OptimizeFile) is
+// overridden — the whole point of this tier is removing the pool.
 func stableEncodeOptions(orig runner.EncodeOptions) runner.EncodeOptions {
 	out := orig.WithDefaults()
-	extra := append([]string(nil), out.ExtraArgs...)
-
-	merged := false
-	for i := 0; i+1 < len(extra); i++ {
-		if extra[i] == "-x265-params" {
-			if !strings.Contains(extra[i+1], "pools=") {
-				extra[i+1] = extra[i+1] + ":pools=none"
-			}
-			merged = true
-			break
-		}
-	}
-	if !merged {
-		extra = append(extra, "-x265-params", "pools=none")
-	}
-
-	out.ExtraArgs = extra
+	out.ExtraArgs = setX265Pools(out.ExtraArgs, "none")
 	return out
+}
+
+// setX265Pools returns a copy of extra with the x265 pools option forced to
+// the given value. If a -x265-params arg already exists, its pools= token is
+// replaced (or appended when absent); otherwise a new -x265-params arg is
+// added. The input slice is never mutated.
+func setX265Pools(extra []string, pools string) []string {
+	out := append([]string(nil), extra...)
+	for i := 0; i+1 < len(out); i++ {
+		if out[i] != "-x265-params" {
+			continue
+		}
+		params := strings.Split(out[i+1], ":")
+		replaced := false
+		for j, p := range params {
+			if strings.HasPrefix(p, "pools=") {
+				params[j] = "pools=" + pools
+				replaced = true
+			}
+		}
+		if !replaced {
+			params = append(params, "pools="+pools)
+		}
+		out[i+1] = strings.Join(params, ":")
+		return out
+	}
+	return append(out, "-x265-params", "pools="+pools)
 }
 
 // inputFileMeta returns a "size=N mtime=..." string for error logs, or an

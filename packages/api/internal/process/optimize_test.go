@@ -57,13 +57,37 @@ func TestStableEncodeOptions_MergesIntoExistingX265Params(t *testing.T) {
 	}
 }
 
-func TestStableEncodeOptions_DoesNotDuplicatePools(t *testing.T) {
+func TestStableEncodeOptions_OverridesExistingPools(t *testing.T) {
+	// OptimizeFile sets pools=<budget> on every primary attempt; the stable
+	// tier exists to remove the pool, so it must override — not skip.
 	orig := runner.EncodeOptions{
 		ExtraArgs: []string{"-x265-params", "pools=4"},
 	}
 	st := stableEncodeOptions(orig)
-	if st.ExtraArgs[1] != "pools=4" {
-		t.Errorf("expected existing pools= left untouched, got %q", st.ExtraArgs[1])
+	if len(st.ExtraArgs) != 2 || st.ExtraArgs[1] != "pools=none" {
+		t.Errorf("expected pools=4 overridden to pools=none, got %v", st.ExtraArgs)
+	}
+}
+
+func TestSetX265Pools_AppendsWhenAbsent(t *testing.T) {
+	got := setX265Pools(nil, "4")
+	if len(got) != 2 || got[0] != "-x265-params" || got[1] != "pools=4" {
+		t.Errorf("expected -x265-params pools=4 appended, got %v", got)
+	}
+}
+
+func TestSetX265Pools_ReplacesExistingPoolsToken(t *testing.T) {
+	got := setX265Pools([]string{"-x265-params", "wpp=1:pools=8:rd=4"}, "none")
+	if len(got) != 2 || got[1] != "wpp=1:pools=none:rd=4" {
+		t.Errorf("expected pools token replaced in place, got %v", got)
+	}
+}
+
+func TestSetX265Pools_DoesNotMutateInput(t *testing.T) {
+	in := []string{"-x265-params", "pools=8"}
+	_ = setX265Pools(in, "none")
+	if in[1] != "pools=8" {
+		t.Errorf("expected input slice untouched, got %v", in)
 	}
 }
 

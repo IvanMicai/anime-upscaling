@@ -496,7 +496,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		}
 	}
 
-	// threads: 0 means auto (will use HalfCPUs at process level)
+	// threads: 0 means auto (process level derives NumCPUs/FFmpegStreams)
 	if req.Threads < 0 {
 		req.Threads = 0
 	}
