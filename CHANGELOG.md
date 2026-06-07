@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.10.6](https://github.com/IvanMicai/anime-upscaling/compare/v1.10.5...v1.10.6) (2026-06-07)
+
+### Bug Fixes
+
+* two-phase optimize encode — keep sparse subtitle tracks out of the slow mux ([769a3d2](https://github.com/IvanMicai/anime-upscaling/commit/769a3d2d0267a592eedf282ee1be9a95dd74dd04))
+
 ## [1.10.5](https://github.com/IvanMicai/anime-upscaling/compare/v1.10.4...v1.10.5) (2026-06-07)
 
 ### Bug Fixes
