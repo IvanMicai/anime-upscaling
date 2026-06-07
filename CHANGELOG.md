@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.10.4](https://github.com/IvanMicai/anime-upscaling/compare/v1.10.3...v1.10.4) (2026-06-07)
+
+### Bug Fixes
+
+* confine libx265 worker pool to per-stream thread budget ([b1bb339](https://github.com/IvanMicai/anime-upscaling/commit/b1bb339ebda2f1477670c0b98cb1e76045d57420))
+
 ## [1.10.3](https://github.com/IvanMicai/anime-upscaling/compare/v1.10.2...v1.10.3) (2026-06-04)
 
 ### Bug Fixes
