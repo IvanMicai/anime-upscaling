@@ -20,7 +20,7 @@
     "radix-ui": "^1.4.3",
     "react": "19.2.7",
     "react-dom": "19.2.7",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
     "@storybook/addon-themes": "^10.3.6",
