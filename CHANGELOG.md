@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.10.7](https://github.com/IvanMicai/anime-upscaling/compare/v1.10.6...v1.10.7) (2026-06-09)
+
+### Bug Fixes
+
+* **api:** check os.Remove error in optimize cleanup defer ([#40](https://github.com/IvanMicai/anime-upscaling/issues/40)) ([abb8462](https://github.com/IvanMicai/anime-upscaling/commit/abb8462a168ab13419503d94dcd7f2fee479bb9e))
+
 ## [1.10.6](https://github.com/IvanMicai/anime-upscaling/compare/v1.10.5...v1.10.6) (2026-06-07)
 
 ### Bug Fixes
