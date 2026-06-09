@@ -165,7 +165,7 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 	attempt := func(attemptOpts runner.EncodeOptions) error {
 		_ = os.Remove(tempOutPath)
 		_ = os.Remove(tempAVPath)
-		defer os.Remove(tempAVPath)
+		defer func() { _ = os.Remove(tempAVPath) }()
 		if err := r.FFmpegEncode(ctx,
 			source+"/"+filename,
 			avRelPath,
