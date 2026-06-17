@@ -119,6 +119,9 @@ jobs:
   app-test:
     name: App test
     runs-on: ubuntu-latest
+    # Browser-mode vitest can occasionally hang waiting on the browser; fail fast
+    # instead of letting a stuck run hold a runner until the 6h default limit.
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: packages/app
