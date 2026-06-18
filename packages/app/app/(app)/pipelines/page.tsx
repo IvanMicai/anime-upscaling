@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FilePicker } from "@/components/file-picker";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { usePoll } from "@/lib/use-poll";
 import { getPipelines, deletePipeline, runPipeline } from "@/lib/api";
 import { FOLDER_OPTIONS, type FolderKey } from "@/lib/file-utils";
@@ -39,13 +40,20 @@ export default function PipelinesPage() {
   const [browsePath, setBrowsePath] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Pipeline | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  async function handleDelete(id: string) {
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await deletePipeline(id);
+      await deletePipeline(deleteTarget.id);
+      setDeleteTarget(null);
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao deletar");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -136,7 +144,7 @@ export default function PipelinesPage() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-destructive hover:text-destructive"
-                      onClick={() => handleDelete(p.id)}
+                      onClick={() => setDeleteTarget(p)}
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>
@@ -192,6 +200,21 @@ export default function PipelinesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Excluir pipeline?"
+        description={
+          deleteTarget
+            ? `O pipeline "${deleteTarget.name}" será removido permanentemente.`
+            : undefined
+        }
+        confirmLabel="Excluir"
+        destructive
+        loading={deleting}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

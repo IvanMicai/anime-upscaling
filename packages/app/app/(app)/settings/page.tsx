@@ -1,22 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CheckCircle2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { OptionButtons } from "@/components/option-buttons";
 import { getSettings, updateSettings } from "@/lib/api";
 import { GPU_VENDOR_OPTIONS, type GPUVendor, type Settings } from "@/lib/types";
-
-const NONE_VENDOR = "none";
-const toVendorUI = (v: GPUVendor): string => (v === "" ? NONE_VENDOR : v);
-const fromVendorUI = (v: string): GPUVendor => (v === NONE_VENDOR ? "" : (v as GPUVendor));
 
 export default function SettingsPage() {
   const [loaded, setLoaded] = useState(false);
@@ -59,7 +51,8 @@ export default function SettingsPage() {
     }
   }
 
-  if (!loaded) return <p className="text-sm text-muted-foreground">Carregando...</p>;
+  if (!loaded)
+    return <p className="text-sm text-muted-foreground">Carregando...</p>;
 
   const dirty =
     settings &&
@@ -68,75 +61,74 @@ export default function SettingsPage() {
       gpuVendor !== (settings.gpu_vendor ?? ""));
 
   return (
-    <div className="space-y-4 max-w-xl">
+    <div className="max-w-xl space-y-4">
+      <h2 className="text-xl font-bold">Settings</h2>
       <Card>
         <CardHeader>
           <CardTitle>Concorrência</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Ajuste quantos streams rodam em paralelo. Mudanças só aplicam quando
-            não houver jobs em execução. GPUs detectadas:{" "}
-            <strong>{settings?.gpu_count ?? "?"}</strong>.
-          </p>
+        <CardContent className="space-y-6">
+          <div className="flex items-start gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-muted-foreground">
+            <Info className="mt-0.5 size-4 shrink-0 text-blue-400" />
+            <span>
+              Mudanças só aplicam quando não há jobs em execução. GPUs
+              detectadas: <strong>{settings?.gpu_count ?? "?"}</strong>.
+            </span>
+          </div>
 
           <div className="space-y-2">
-            <Label htmlFor="streams_per_gpu">Streams por GPU</Label>
-            <input
+            <div className="flex items-center justify-between">
+              <Label htmlFor="streams_per_gpu">Streams por GPU</Label>
+              <span className="font-mono text-sm tabular-nums">
+                {streamsPerGPU}
+              </span>
+            </div>
+            <Slider
               id="streams_per_gpu"
-              type="number"
               min={1}
               max={8}
-              value={streamsPerGPU}
-              onChange={(e) =>
-                setStreamsPerGPU(Math.max(1, parseInt(e.target.value || "1", 10)))
-              }
-              className="w-full rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              step={1}
+              value={[streamsPerGPU]}
+              onValueChange={([v]) => setStreamsPerGPU(v)}
             />
             <p className="text-xs text-muted-foreground">
-              Quantos processos video2x rodam simultaneamente em cada GPU. Útil
-              quando a GPU não está saturada (aumenta uso útil preenchendo gaps
-              de I/O e CPU encode).
+              Quantos processos video2x rodam simultaneamente em cada GPU (1–8).
+              Útil quando a GPU não está saturada.
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="gpu_vendor">GPU vendor (encode ffmpeg)</Label>
-            <Select
-              value={toVendorUI(gpuVendor)}
-              onValueChange={(v) => setGpuVendor(fromVendorUI(v))}
-            >
-              <SelectTrigger id="gpu_vendor" className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {GPU_VENDOR_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value || NONE_VENDOR} value={opt.value || NONE_VENDOR}>
-                    {opt.label} — {opt.desc}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>GPU vendor (encode ffmpeg)</Label>
+            <OptionButtons
+              columns={2}
+              value={gpuVendor}
+              onChange={setGpuVendor}
+              options={GPU_VENDOR_OPTIONS.map((o) => ({
+                value: o.value as GPUVendor,
+                label: o.label,
+              }))}
+            />
             <p className="text-xs text-muted-foreground">
-              Habilita o toggle <em>Usar GPU</em> em jobs de optimize, que roda
-              o ffmpeg no encoder de hardware correspondente (NVENC/AMF/QSV).
-              Cada optimize-GPU consome um slot do mesmo pool que o upscale,
-              então com 2 GPUs × 2 streams são 4 slots compartilhados.
+              Habilita o toggle <em>Usar GPU</em> em jobs de optimize (encoder de
+              hardware NVENC/AMF/QSV). Cada optimize-GPU consome um slot do mesmo
+              pool que o upscale.
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="ffmpeg_streams">Streams de FFmpeg</Label>
-            <input
+            <div className="flex items-center justify-between">
+              <Label htmlFor="ffmpeg_streams">Streams de FFmpeg</Label>
+              <span className="font-mono text-sm tabular-nums">
+                {ffmpegStreams}
+              </span>
+            </div>
+            <Slider
               id="ffmpeg_streams"
-              type="number"
               min={1}
               max={8}
-              value={ffmpegStreams}
-              onChange={(e) =>
-                setFfmpegStreams(Math.max(1, parseInt(e.target.value || "1", 10)))
-              }
-              className="w-full rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              step={1}
+              value={[ffmpegStreams]}
+              onValueChange={([v]) => setFfmpegStreams(v)}
             />
             <p className="text-xs text-muted-foreground">
               Quantos encodes FFmpeg rodam em paralelo (optimize/check/pipeline).
@@ -145,7 +137,12 @@ export default function SettingsPage() {
           </div>
 
           {error && <p className="text-sm text-red-400">{error}</p>}
-          {notice && <p className="text-sm text-green-400">{notice}</p>}
+          {notice && (
+            <p className="flex items-center gap-1.5 text-sm text-green-400">
+              <CheckCircle2 className="size-4" />
+              {notice}
+            </p>
+          )}
 
           <Button onClick={save} disabled={!dirty || saving}>
             {saving ? "Salvando..." : "Salvar"}

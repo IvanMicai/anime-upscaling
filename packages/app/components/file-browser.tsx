@@ -26,13 +26,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { compareNatural } from "@/lib/sort";
 import { getFiles, deleteFiles, downloadFile } from "@/lib/api";
 import {
   FOLDER_COLORS,
-  FOLDER_FILTER_KEY,
   COLUMN_ORDER,
   computeColumnTotals,
   getFolderData,
@@ -49,6 +47,15 @@ import { Breadcrumbs } from "@/components/breadcrumbs";
 import type { VideoFile } from "@/lib/types";
 
 const TAB_ORDER: FolderKey[] = ["input", "output", "optimized", "interpolated"];
+
+// The API returns the union of files across every stage, so the selected
+// directory pill filters the rows down to files that actually have that stage.
+const DIR_HAS: Record<FolderKey, (f: VideoFile) => boolean> = {
+  input: (f) => !!f.has_input,
+  output: (f) => !!f.has_upscaled,
+  optimized: (f) => !!f.has_optimized,
+  interpolated: (f) => !!f.has_interpolated,
+};
 
 function FileTooltipContent({ entry }: { entry: FolderEntry }) {
   return (
@@ -91,7 +98,6 @@ export function FileBrowser() {
   const [files, setFiles] = useState<VideoFile[]>([]);
   const [directories, setDirectories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<Set<string>>(new Set());
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -108,7 +114,6 @@ export function FileBrowser() {
   if (prevLoad.dir !== dir || prevLoad.path !== path) {
     setPrevLoad({ dir, path });
     setLoading(true);
-    setFilters(new Set());
     setDeleteMode(false);
     setDeleteSelections(new Map());
   }
@@ -142,24 +147,6 @@ export function FileBrowser() {
       })
       .catch(() => {})
       .finally(() => setRefreshing(false));
-  }
-
-  function toggleFilter(key: string) {
-    setFilters((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
-  function matchesFilter(file: VideoFile): boolean {
-    if (filters.size === 0) return true;
-    if (filters.has("upscaled") && file.has_upscaled) return true;
-    if (filters.has("optimized") && file.has_optimized) return true;
-    if (filters.has("input") && (dir === "input" || file.has_input)) return true;
-    if (filters.has("interpolated") && file.has_interpolated) return true;
-    return false;
   }
 
   // Delete helpers
@@ -218,8 +205,9 @@ export function FileBrowser() {
     }
   }
 
-  const sorted = [...files].sort((a, b) => compareNatural(a.name, b.name));
-  const filtered = sorted.filter(matchesFilter);
+  const filtered = [...files]
+    .filter((f) => DIR_HAS[dir](f))
+    .sort((a, b) => compareNatural(a.name, b.name));
   const totals = computeColumnTotals(filtered, dir);
 
   const deleteSummary = getDeleteSummary();
@@ -227,34 +215,20 @@ export function FileBrowser() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-3">
-      {/* Directory tabs */}
-      <Tabs value={dir} onValueChange={(v) => handleDirChange(v as FolderKey)}>
-        <TabsList>
-          {TAB_ORDER.map((d) => (
-            <TabsTrigger key={d} value={d} className={FOLDER_COLORS[d].text}>
-              {FOLDER_COLORS[d].label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-
-      <Breadcrumbs path={path} onNavigate={setPath} />
-
-      {/* Legend + delete mode toggle */}
+      {/* Directory selector (colored pills) + delete mode toggle */}
       <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-        <span className="text-xs text-muted-foreground">Filter:</span>
-        {(Object.keys(FOLDER_COLORS) as FolderKey[]).map((key) => {
-          const filterKey = FOLDER_FILTER_KEY[key];
-          const active = filters.has(filterKey);
+        {TAB_ORDER.map((key) => {
+          const active = dir === key;
           return (
             <button
               key={key}
               type="button"
-              onClick={() => toggleFilter(filterKey)}
+              onClick={() => handleDirChange(key)}
+              aria-pressed={active}
               className={cn(
                 "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
                 FOLDER_COLORS[key].badge,
-                active && "ring-2 ring-white/30"
+                active ? "ring-2 ring-white/30" : "opacity-50 hover:opacity-100",
               )}
             >
               {FOLDER_COLORS[key].label}
@@ -288,6 +262,8 @@ export function FileBrowser() {
         </div>
       </div>
 
+      <Breadcrumbs path={path} onNavigate={setPath} />
+
       {/* Delete summary bar */}
       {deleteMode && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm">
@@ -317,8 +293,10 @@ export function FileBrowser() {
       {/* File table */}
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading files...</p>
-      ) : files.length === 0 && directories.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No files found in {dir}/{path}.</p>
+      ) : filtered.length === 0 && directories.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No {FOLDER_COLORS[dir].label} files found in /{path}.
+        </p>
       ) : (
         <TooltipProvider>
           <ScrollArea className="rounded-md border flex-1 min-h-0">
@@ -452,6 +430,13 @@ export function FileBrowser() {
             </Table>
           </ScrollArea>
         </TooltipProvider>
+      )}
+
+      {!loading && filtered.length > 0 && !deleteMode && (
+        <p className="text-xs text-muted-foreground">
+          Hover a cell for exact size, resolution, framerate, audio &amp;
+          subtitle tracks.
+        </p>
       )}
 
       {/* Delete confirmation dialog */}

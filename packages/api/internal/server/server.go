@@ -41,6 +41,9 @@ func CmdServe(cfg config.Config) error {
 	jm.SetGPUGate(monitor.WaitHealthy)
 	go monitor.Watch(context.Background())
 
+	startedAt := time.Now()
+	hostname, _ := os.Hostname()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/files/download", corsMiddleware(handleFileDownload(cfg)))
 	mux.HandleFunc("/api/files", corsMiddleware(handleFiles(cfg)))
@@ -50,6 +53,7 @@ func CmdServe(cfg config.Config) error {
 	mux.HandleFunc("/api/pipelines/", corsMiddleware(handlePipelineRoutes(ps, jm, cfg)))
 	mux.HandleFunc("/api/settings", corsMiddleware(handleSettings(jm)))
 	mux.HandleFunc("/api/health/gpu", corsMiddleware(handleGPUHealth(monitor)))
+	mux.HandleFunc("/api/system", corsMiddleware(handleSystem(jm, monitor, hostname, startedAt)))
 
 	addr := ":" + cfg.Port
 	fmt.Printf("Server listening on %s\n", addr)
@@ -798,6 +802,54 @@ func handleGPUHealth(m *gpu.Monitor) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, m.Status())
+	}
+}
+
+// GET /api/system — aggregate snapshot for the global status bar: host/uptime,
+// per-GPU telemetry, queue depth and combined throughput. Designed to be polled
+// every few seconds by the dashboard shell.
+func handleSystem(jm *JobManager, m *gpu.Monitor, hostname string, startedAt time.Time) http.HandlerFunc {
+	type gpuMetric struct {
+		Index       int `json:"index"`
+		Utilization int `json:"utilization"`
+		Temperature int `json:"temperature"`
+		MemoryUsed  int `json:"memory_used"`
+		MemoryTotal int `json:"memory_total"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		cfg := jm.Config()
+		stats := jm.JobStats()
+		metrics := m.Metrics()
+		gpus := make([]gpuMetric, 0, len(metrics))
+		for _, mm := range metrics {
+			gpus = append(gpus, gpuMetric{
+				Index:       mm.Index,
+				Utilization: mm.Utilization,
+				Temperature: mm.Temperature,
+				MemoryUsed:  mm.MemoryUsed,
+				MemoryTotal: mm.MemoryTotal,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"hostname":       hostname,
+			"uptime_seconds": int64(time.Since(startedAt).Seconds()),
+			"online":         true,
+			"gpu_healthy":    m.IsHealthy(),
+			"gpu_vendor":     cfg.GPUVendor,
+			"gpu_count":      cfg.GPUCount,
+			"gpus":           gpus,
+			"queue": map[string]int{
+				"queued":  stats.Queued,
+				"running": stats.Running,
+			},
+			"throughput": map[string]float64{
+				"fps": stats.TotalFPS,
+			},
+		})
 	}
 }
 
