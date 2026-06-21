@@ -21,6 +21,8 @@ import {
 import { FilePicker } from "@/components/file-picker";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { usePoll } from "@/lib/use-poll";
+import { cn } from "@/lib/utils";
+import { sectionCardPlain } from "@/lib/section";
 import { getPipelines, deletePipeline, runPipeline } from "@/lib/api";
 import { FOLDER_OPTIONS, type FolderKey } from "@/lib/file-utils";
 import type { Pipeline } from "@/lib/types";
@@ -99,12 +101,12 @@ export default function PipelinesPage() {
           </Link>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="divide-y divide-border sm:space-y-3 sm:divide-y-0">
           {pipelines.map((p) => {
             const final_ = computePreview(p.steps);
             const sizeEst = formatSizeEstimate(final_);
             return (
-              <div key={p.id} className="rounded-lg border border-border bg-card p-4">
+              <div key={p.id} className={cn("py-4", sectionCardPlain, "sm:bg-card")}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-sm">{p.name}</h3>

@@ -53,7 +53,7 @@ export default function JobDetailPage() {
       <JobHeader job={job} onCancelled={refresh} />
       <ProgressBar progress={job.progress} />
       {workers.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="divide-y divide-border sm:grid sm:grid-cols-2 sm:gap-3 sm:divide-y-0">
           {workers.map(([source, c]) => (
             <WorkerGauge key={source} source={source} c={c!} />
           ))}

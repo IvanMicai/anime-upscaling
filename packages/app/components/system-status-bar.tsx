@@ -60,7 +60,7 @@ export function SystemStatusBar() {
   const gpus = data?.gpus ?? [];
 
   return (
-    <div className="mb-3 overflow-x-auto rounded-xl border bg-card/50 px-3 py-2 text-sm">
+    <div className="mb-3 overflow-x-auto border-b border-border pb-2 text-sm sm:rounded-xl sm:border sm:border-border sm:bg-card/50 sm:px-3 sm:py-2 sm:pb-2">
       {/* Desktop / tablet */}
       <div className="hidden items-center gap-4 sm:flex">
         <div className="flex items-center gap-2">

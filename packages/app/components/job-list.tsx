@@ -229,8 +229,8 @@ export function JobList({
             </Table>
           </div>
 
-          {/* Mobile cards */}
-          <div className="grid gap-3 md:hidden">
+          {/* Mobile list — borderless rows split by a divider */}
+          <div className="divide-y divide-border md:hidden">
             {filtered.map((job) => (
               <JobCard
                 key={job.id}

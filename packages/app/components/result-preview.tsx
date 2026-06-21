@@ -7,6 +7,8 @@ import {
   formatResolution,
 } from "@/components/pipeline-preview";
 import { formatBytes } from "@/lib/file-utils";
+import { cn } from "@/lib/utils";
+import { sectionCardPlain } from "@/lib/section";
 import { PROCESSOR_OPTIONS } from "@/lib/types";
 import type { PipelineOperationType, PipelineStep } from "@/lib/types";
 
@@ -42,7 +44,7 @@ export function ResultPreview({
 }) {
   if (isCheck) {
     return (
-      <div className="rounded-xl border bg-card/50 p-4">
+      <div className={cn(sectionCardPlain, "sm:rounded-xl")}>
         <div className="mb-3 flex items-center gap-2 text-sm font-medium text-blue-400">
           <Sparkles className="size-4" />
           RESULTADO ESTIMADO

@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cancelJob, deleteJob } from "@/lib/api";
 import { formatRelativeTime, jobTypeLabel } from "@/lib/format";
+import { sectionCard } from "@/lib/section";
 import type { Job } from "@/lib/types";
 
 interface JobHeaderProps {
@@ -49,7 +50,7 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
   }
 
   return (
-    <div className="rounded-lg border bg-card/50 p-4">
+    <div className={sectionCard}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-semibold">{job.id}</span>

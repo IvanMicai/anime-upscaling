@@ -11,7 +11,7 @@ export default function AppLayout({
 }>) {
   return (
     <div className="mx-auto max-w-6xl px-4 py-4 sm:py-8">
-      <header className="mb-3 flex flex-col gap-3 rounded-xl border bg-card/50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+      <header className="mb-3 flex flex-col gap-3 border-b border-border pb-3 sm:flex-row sm:items-center sm:justify-between sm:rounded-xl sm:border sm:border-border sm:bg-card/50 sm:px-3 sm:py-2.5 sm:pb-2.5">
         <Link href="/" className="flex items-center gap-3">
           <Image
             src="/logo.png"

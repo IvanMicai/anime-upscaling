@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { OperationFields } from "@/components/operation-fields";
 import { cn } from "@/lib/utils";
+import { sectionCardPlain } from "@/lib/section";
 import {
   PROCESSOR_OPTIONS,
   QUALITY_PRESETS,
@@ -100,7 +101,7 @@ export function PipelineStepCard({
   const opStyle = OP_STYLES[step.operation];
 
   return (
-    <div className={cn("rounded-lg border bg-card p-4", opStyle.border)}>
+    <div className={cn("py-4", sectionCardPlain, "sm:bg-card", opStyle.border)}>
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span

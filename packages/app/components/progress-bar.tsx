@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils";
+import { sectionCard } from "@/lib/section";
 import type { JobProgress } from "@/lib/types";
 
 export function ProgressBar({ progress }: { progress: JobProgress }) {
@@ -8,7 +10,7 @@ export function ProgressBar({ progress }: { progress: JobProgress }) {
   const done = completed + failed + skipped;
 
   return (
-    <div className="space-y-2 rounded-lg border bg-card/50 p-4">
+    <div className={cn("space-y-2", sectionCard)}>
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Overall progress</span>
         <span className="font-mono text-xs text-muted-foreground tabular-nums">

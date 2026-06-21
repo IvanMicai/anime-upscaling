@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { OptionButtons } from "@/components/option-buttons";
+import { cn } from "@/lib/utils";
+import { sectionCardPlain } from "@/lib/section";
 import { getSettings, updateSettings } from "@/lib/api";
 import { GPU_VENDOR_OPTIONS, type GPUVendor, type Settings } from "@/lib/types";
 
@@ -63,11 +64,8 @@ export default function SettingsPage() {
   return (
     <div className="max-w-xl space-y-4">
       <h2 className="text-xl font-bold">Settings</h2>
-      <Card>
-        <CardHeader>
-          <CardTitle>Concorrência</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      <section className={cn(sectionCardPlain, "space-y-6")}>
+        <h3 className="font-semibold leading-none">Concorrência</h3>
           <div className="flex items-start gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-muted-foreground">
             <Info className="mt-0.5 size-4 shrink-0 text-blue-400" />
             <span>
@@ -147,8 +145,7 @@ export default function SettingsPage() {
           <Button onClick={save} disabled={!dirty || saving}>
             {saving ? "Salvando..." : "Salvar"}
           </Button>
-        </CardContent>
-      </Card>
+      </section>
     </div>
   );
 }

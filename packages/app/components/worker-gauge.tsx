@@ -2,6 +2,7 @@ import { Cpu } from "lucide-react";
 import { sourceColorSet } from "@/lib/source-color";
 import { formatEtaSeconds } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { sectionCardPlain } from "@/lib/section";
 import { MiddleTruncate } from "@/components/middle-truncate";
 import type { ContainerProgress } from "@/lib/types";
 
@@ -26,7 +27,7 @@ export function WorkerGauge({
       : null;
 
   return (
-    <div className="min-w-0 rounded-lg border bg-card/50 p-3">
+    <div className={cn("min-w-0 py-3", sectionCardPlain, "sm:p-3")}>
       <div className="flex items-center justify-between gap-2">
         <span
           className={cn(
