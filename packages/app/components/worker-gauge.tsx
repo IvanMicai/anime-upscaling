@@ -2,19 +2,8 @@ import { Cpu } from "lucide-react";
 import { sourceColorSet } from "@/lib/source-color";
 import { formatEtaSeconds } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { MiddleTruncate } from "@/components/middle-truncate";
 import type { ContainerProgress } from "@/lib/types";
-
-// Solid fill color per worker, mirroring the source-color families (GPU 0 blue,
-// GPU 1 purple, …) so a gauge matches its log badge.
-function barColor(source: string): string {
-  const g = source.match(/^GPU (\d+)/);
-  if (g) {
-    const colors = ["bg-blue-500", "bg-purple-500", "bg-emerald-500", "bg-amber-500"];
-    return colors[parseInt(g[1], 10) % colors.length];
-  }
-  if (source.startsWith("FFMPEG")) return "bg-cyan-500";
-  return "bg-primary";
-}
 
 /**
  * Live per-worker gauge card for the job detail page: filename, a colored
@@ -37,7 +26,7 @@ export function WorkerGauge({
       : null;
 
   return (
-    <div className="rounded-lg border bg-card/50 p-3">
+    <div className="min-w-0 rounded-lg border bg-card/50 p-3">
       <div className="flex items-center justify-between gap-2">
         <span
           className={cn(
@@ -54,12 +43,18 @@ export function WorkerGauge({
       </div>
 
       {c.filename && (
-        <div className="mt-1 truncate font-mono text-sm">{c.filename}</div>
+        <MiddleTruncate
+          text={c.filename}
+          className="mt-1 font-mono text-sm"
+        />
       )}
 
       <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
         <div
-          className={cn("h-full rounded-full transition-all", barColor(source))}
+          className={cn(
+            "h-full rounded-full transition-all",
+            sourceColorSet(source).bar,
+          )}
           style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
         />
       </div>
