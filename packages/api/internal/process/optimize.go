@@ -58,34 +58,6 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 
 	inputPath := cfg.BaseDir + "/" + source + "/" + filename
 
-	// Pre-check: verify the input decodes end-to-end before we commit to a long encode.
-	// Catches corrupted outputs from upstream steps (e.g. truncated interpolation writes)
-	// that would otherwise surface as a mid-encode SIGSEGV in the ffmpeg encoder.
-	precheckStarted := time.Now()
-	precheckProgress := func(p runner.Progress) {
-		p.Source = logSource
-		p.Filename = filename
-		if p.Phase == "" {
-			p.Phase = "Pre-check"
-		}
-		onProgress(p)
-	}
-	onEvent(logger.JobLog{Source: logSource, Level: "INFO", Index: index, Message: "Pre-checking input: " + filename, Time: time.Now()})
-	decodeOut, decodeErr := r.FFmpegDecode(ctx, source+"/"+filename, "precheck-optimize", precheckProgress)
-	if decodeErr != nil {
-		if ctx.Err() != nil {
-			return false
-		}
-		onEvent(logger.JobLog{
-			Source: logSource, Level: "ERRO", Index: index,
-			Message: fmt.Sprintf("PRE-CHECK FALHOU: %s (%v) — input %s %s (ver ffmpeg.log)",
-				filename, decodeErr, inputPath, inputFileMeta(inputPath)),
-			Time: time.Now(),
-		})
-		return false
-	}
-	onEvent(logger.JobLog{Source: logSource, Level: "INFO", Index: index, Message: fmt.Sprintf("Pre-check completed in %s: %s", runner.FormatDuration(time.Since(precheckStarted)), filename), Time: time.Now()})
-
 	// Orçamento de threads por encode: explícito do job, ou a fatia justa da
 	// máquina (CPUs / streams paralelos) para que N encodes simultâneos não
 	// disputem os mesmos cores.
@@ -118,14 +90,11 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 
 	// Probe total frame count for ETA calculation. ProbeFrameCount tries cheap
 	// metadata-based strategies; when they all fail (some MKVs lack usable
-	// duration/frame tags) fall back to the exact count from the precheck
-	// decode we already ran above.
+	// duration/frame tags) totalFrames stays 0 and the encode reports live
+	// frame counts without a percentage/ETA for that file.
 	totalFrames := 0
 	if count, err := r.ProbeFrameCount(ctx, inputPath); err == nil {
 		totalFrames = count
-	}
-	if totalFrames == 0 {
-		totalFrames = runner.ExtractFinalFrameCount(decodeOut)
 	}
 	if frameRateAbsolute > 0 && totalFrames > 0 {
 		// fps filter caps at source_fps, so the output frame count is

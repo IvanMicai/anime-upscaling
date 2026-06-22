@@ -694,9 +694,6 @@ func (r *Runner) FFprobe(ctx context.Context, relPath string) (string, error) {
 func (r *Runner) FFmpegDecode(ctx context.Context, relPath string, processName string, onProgress func(Progress)) (string, error) {
 	absPath := r.cfg.BaseDir + "/" + relPath
 	phase := "Check"
-	if processName == "precheck-optimize" {
-		phase = "Pre-check"
-	}
 
 	cmd := exec.CommandContext(ctx, r.cfg.FFmpegBin,
 		"-progress", "pipe:2", "-nostats", "-v", "error",
