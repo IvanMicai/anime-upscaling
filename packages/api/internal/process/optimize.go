@@ -69,12 +69,19 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 		}
 	}
 
-	// O -threads do ffmpeg só controla os frame threads do libx265; o worker
-	// pool interno (pools) é dimensionado por padrão para TODOS os cores da
-	// máquina, em cada instância. Com vários encodes paralelos isso gera
-	// oversubscription massiva de CPU e multiplica o uso de RAM (pool +
-	// lookahead), a ponto de o OOM killer derrubar os processos (SIGKILL).
-	// pools=<t> confina cada encode ao seu orçamento de threads.
+	// libx265 tem dois eixos de paralelismo com custos de RAM bem diferentes:
+	//   - pools: o worker pool (WPP) que paraleliza DENTRO de um frame. Por
+	//     padrão é dimensionado para TODOS os cores, em cada instância — com
+	//     vários encodes paralelos isso gera oversubscription massiva de CPU.
+	//     pools=<t> confina cada encode ao seu orçamento de threads.
+	//   - frame-threads: quantos frames são processados EM PARALELO. O -threads
+	//     do ffmpeg seta frameNumThreads=t; cada frame em voo segura um frame
+	//     inteiro (refs + lookahead) e, no vídeo já upscalado (4K/8K 10-bit,
+	//     dezenas/centenas de MB por frame), isso multiplica a RAM e estoura o
+	//     OOM killer (SIGKILL). Limitamos frame-threads a no máx. 2: o WPP
+	//     continua usando todo o pool (a velocidade quase não cai), mas só 1-2
+	//     frames ficam em voo. frame-threads em x265-params é aplicado depois
+	//     do -threads, então sobrescreve o frameNumThreads vindo dele.
 	opts = opts.WithDefaults()
 	startMsg := "Iniciando: " + filename
 	if opts.Codec == "libx265" && !opts.UseGPU {
@@ -82,8 +89,13 @@ func OptimizeFile(ctx context.Context, cfg config.Config, r *runner.Runner, file
 		if t == 1 {
 			pools = "none"
 		}
-		opts.ExtraArgs = setX265Pools(opts.ExtraArgs, pools)
-		startMsg = fmt.Sprintf("Iniciando: %s (threads=%d pools=%s)", filename, t, pools)
+		ft := t
+		if ft > 2 {
+			ft = 2
+		}
+		opts.ExtraArgs = setX265Param(opts.ExtraArgs, "pools", pools)
+		opts.ExtraArgs = setX265Param(opts.ExtraArgs, "frame-threads", strconv.Itoa(ft))
+		startMsg = fmt.Sprintf("Iniciando: %s (threads=%d pools=%s frame-threads=%d)", filename, t, pools, ft)
 	}
 
 	onEvent(logger.JobLog{Source: logSource, Level: "INFO", Index: index, Message: startMsg, Time: time.Now()})
@@ -227,11 +239,14 @@ func stableEncodeOptions(orig runner.EncodeOptions) runner.EncodeOptions {
 	return out
 }
 
-// setX265Pools returns a copy of extra with the x265 pools option forced to
-// the given value. If a -x265-params arg already exists, its pools= token is
-// replaced (or appended when absent); otherwise a new -x265-params arg is
-// added. The input slice is never mutated.
-func setX265Pools(extra []string, pools string) []string {
+// setX265Param returns a copy of extra with the x265 option key=value forced.
+// If a -x265-params arg already exists, its key= token is replaced (or appended
+// when absent); otherwise a new -x265-params arg is added. Calling it more than
+// once merges every key into the same -x265-params token. The input slice is
+// never mutated.
+func setX265Param(extra []string, key, value string) []string {
+	prefix := key + "="
+	kv := key + "=" + value
 	out := append([]string(nil), extra...)
 	for i := 0; i+1 < len(out); i++ {
 		if out[i] != "-x265-params" {
@@ -240,18 +255,24 @@ func setX265Pools(extra []string, pools string) []string {
 		params := strings.Split(out[i+1], ":")
 		replaced := false
 		for j, p := range params {
-			if strings.HasPrefix(p, "pools=") {
-				params[j] = "pools=" + pools
+			if strings.HasPrefix(p, prefix) {
+				params[j] = kv
 				replaced = true
 			}
 		}
 		if !replaced {
-			params = append(params, "pools="+pools)
+			params = append(params, kv)
 		}
 		out[i+1] = strings.Join(params, ":")
 		return out
 	}
-	return append(out, "-x265-params", "pools="+pools)
+	return append(out, "-x265-params", kv)
+}
+
+// setX265Pools forces the x265 worker-pool size (pools=value). Thin wrapper over
+// setX265Param for the call sites that only touch the pool.
+func setX265Pools(extra []string, pools string) []string {
+	return setX265Param(extra, "pools", pools)
 }
 
 // inputFileMeta returns a "size=N mtime=..." string for error logs, or an
