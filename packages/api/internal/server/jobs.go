@@ -290,6 +290,39 @@ func (m *JobManager) HasActiveJobs() bool {
 	return false
 }
 
+// SystemJobStats aggregates live job activity for the global status bar:
+// how many jobs are waiting vs running, and the combined frame rate across all
+// active workers.
+type SystemJobStats struct {
+	Queued   int
+	Running  int
+	TotalFPS float64
+}
+
+// JobStats summarizes queue depth and throughput across all jobs. Locking
+// mirrors HasActiveJobs: manager read lock, then per-job lock.
+func (m *JobManager) JobStats() SystemJobStats {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var s SystemJobStats
+	for _, j := range m.jobs {
+		j.mu.Lock()
+		switch j.Status {
+		case "queued":
+			s.Queued++
+		case "running":
+			s.Running++
+			for _, c := range j.Progress.Containers {
+				if c != nil {
+					s.TotalFPS += c.FPS
+				}
+			}
+		}
+		j.mu.Unlock()
+	}
+	return s
+}
+
 // ApplySettings reconstructs the GPU and FFmpeg queues with new concurrency settings.
 // Only safe when there are no active jobs — callers must check HasActiveJobs first
 // to avoid discarding queues that still hold acquired slots.

@@ -14,6 +14,7 @@
 bin/
 logs/
 data/
+files/
 sources.json
 packages/api/animeup
 packages/app/node_modules/

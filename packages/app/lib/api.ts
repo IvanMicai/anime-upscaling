@@ -11,6 +11,7 @@ import type {
   UpdatePipelineRequest,
   RunPipelineRequest,
   Settings,
+  SystemStatus,
 } from "./types";
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -106,6 +107,10 @@ export function runPipeline(id: string, req: RunPipelineRequest): Promise<Create
 
 export function getSettings(): Promise<Settings> {
   return fetchJSON<Settings>("/api/settings");
+}
+
+export function getSystemStatus(): Promise<SystemStatus> {
+  return fetchJSON<SystemStatus>("/api/system");
 }
 
 export function updateSettings(req: { streams_per_gpu: number; ffmpeg_streams: number; gpu_vendor?: string }): Promise<Settings> {

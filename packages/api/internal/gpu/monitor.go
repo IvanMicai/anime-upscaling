@@ -17,6 +17,8 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -31,6 +33,16 @@ type Status struct {
 	LastError           string    `json:"last_error,omitempty"`
 }
 
+// Metric is a per-GPU utilization/temperature/memory sample. Values are the
+// raw integers reported by nvidia-smi (percent, °C, MiB).
+type Metric struct {
+	Index       int `json:"index"`
+	Utilization int `json:"utilization"`
+	Temperature int `json:"temperature"`
+	MemoryUsed  int `json:"memory_used"`
+	MemoryTotal int `json:"memory_total"`
+}
+
 // ProbeFunc returns nil if the GPU is responsive, a non-nil error otherwise.
 type ProbeFunc func(ctx context.Context) error
 
@@ -40,11 +52,13 @@ type Monitor struct {
 	interval         time.Duration
 	probeTimeout     time.Duration
 	failureThreshold int
+	metricsInterval  time.Duration
 
 	mu        sync.RWMutex
 	probe     ProbeFunc
 	status    Status
 	healthyCh chan struct{} // closed iff status.Healthy
+	metrics   []Metric      // most recent per-GPU telemetry snapshot
 }
 
 // NewMonitor returns a monitor with the given probe cadence. When enabled is
@@ -64,6 +78,7 @@ func NewMonitor(enabled bool, interval, probeTimeout time.Duration, failureThres
 		interval:         interval,
 		probeTimeout:     probeTimeout,
 		failureThreshold: failureThreshold,
+		metricsInterval:  4 * time.Second,
 		probe:            NvidiaSmiProbe,
 		status:           Status{Enabled: enabled, Healthy: true},
 		healthyCh:        make(chan struct{}),
@@ -89,15 +104,46 @@ func (m *Monitor) Watch(ctx context.Context) {
 	}
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
+	mt := time.NewTicker(m.metricsInterval)
+	defer mt.Stop()
 	m.runProbe(ctx)
+	m.runMetrics(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
 			m.runProbe(ctx)
+		case <-mt.C:
+			m.runMetrics(ctx)
 		}
 	}
+}
+
+// runMetrics refreshes the cached per-GPU telemetry snapshot. Failures (e.g.
+// nvidia-smi missing) leave the previous snapshot untouched rather than
+// clobbering it with an empty list on a transient hiccup.
+func (m *Monitor) runMetrics(ctx context.Context) {
+	mctx, cancel := context.WithTimeout(ctx, m.probeTimeout)
+	defer cancel()
+	metrics, err := QueryGPUMetrics(mctx)
+	if err != nil {
+		return
+	}
+	m.mu.Lock()
+	m.metrics = metrics
+	m.mu.Unlock()
+}
+
+// Metrics returns a copy of the most recent per-GPU telemetry snapshot. The
+// slice is empty when telemetry is unavailable (CPU-only, nvidia-smi missing,
+// or before the first successful poll).
+func (m *Monitor) Metrics() []Metric {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]Metric, len(m.metrics))
+	copy(out, m.metrics)
+	return out
 }
 
 func (m *Monitor) runProbe(ctx context.Context) {
@@ -175,4 +221,38 @@ func NvidiaSmiProbe(ctx context.Context) error {
 		return fmt.Errorf("nvidia-smi -L: %w (output: %q)", err, string(out))
 	}
 	return nil
+}
+
+// QueryGPUMetrics runs a single nvidia-smi query for per-GPU utilization,
+// temperature and memory. Returns an error if the binary is missing or fails;
+// callers should treat that as "telemetry unavailable", not fatal.
+func QueryGPUMetrics(ctx context.Context) ([]Metric, error) {
+	out, err := exec.CommandContext(ctx, "nvidia-smi",
+		"--query-gpu=index,utilization.gpu,temperature.gpu,memory.used,memory.total",
+		"--format=csv,noheader,nounits").Output()
+	if err != nil {
+		return nil, fmt.Errorf("nvidia-smi query: %w", err)
+	}
+	var metrics []Metric
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Split(line, ",")
+		if len(fields) < 5 {
+			continue
+		}
+		metrics = append(metrics, Metric{
+			Index:       atoiField(fields[0]),
+			Utilization: atoiField(fields[1]),
+			Temperature: atoiField(fields[2]),
+			MemoryUsed:  atoiField(fields[3]),
+			MemoryTotal: atoiField(fields[4]),
+		})
+	}
+	return metrics, nil
+}
+
+// atoiField parses one trimmed nvidia-smi CSV field, yielding 0 for blanks or
+// non-numeric values like "[N/A]".
+func atoiField(s string) int {
+	n, _ := strconv.Atoi(strings.TrimSpace(s))
+	return n
 }

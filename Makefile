@@ -5,6 +5,7 @@ export
 API_PORT ?= 4751
 APP_PORT ?= 4750
 HOST_PROCESS_DIR ?= ./data
+PROCESS_DIR ?= $(abspath $(HOST_PROCESS_DIR))
 
 .PHONY: all init gen-secrets quickstart build build-api build-app run run-gpu stop logs dev dev-api dev-app clean deploy
 
@@ -47,8 +48,9 @@ quickstart: init
 
 build: build-api build-app
 
+# --platform: video2x base is amd64-only; lets the build run on Apple Silicon.
 build-api:
-	docker build -t anime-upscaling-api packages/api
+	docker build --platform=linux/amd64 -t anime-upscaling-api packages/api
 
 build-app:
 	docker build -t anime-upscaling-app packages/app
@@ -75,6 +77,8 @@ dev:
 	$(MAKE) dev-api & $(MAKE) dev-app & wait
 
 dev-api:
+	@mkdir -p "$(PROCESS_DIR)/input" "$(PROCESS_DIR)/output" "$(PROCESS_DIR)/optimized" \
+		"$(PROCESS_DIR)/interpolated" "$(PROCESS_DIR)/temp"
 	cd packages/api && go run ./cmd/animeup serve
 
 dev-app:

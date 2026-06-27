@@ -26,8 +26,8 @@ export function NavLink({ href, matchPrefixes, children }: NavLinkProps) {
       aria-current={isActive ? "page" : undefined}
       className={
         isActive
-          ? "text-sm font-medium text-foreground"
-          : "text-sm text-muted-foreground hover:text-foreground transition-colors"
+          ? "rounded-md bg-secondary px-3 py-1.5 text-sm font-medium text-foreground"
+          : "rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
       }
     >
       {children}

@@ -91,6 +91,38 @@ func TestSetX265Pools_DoesNotMutateInput(t *testing.T) {
 	}
 }
 
+func TestSetX265Param_AppendsAndReplaces(t *testing.T) {
+	got := setX265Param(nil, "frame-threads", "2")
+	if len(got) != 2 || got[0] != "-x265-params" || got[1] != "frame-threads=2" {
+		t.Fatalf("expected -x265-params frame-threads=2 appended, got %v", got)
+	}
+	got = setX265Param([]string{"-x265-params", "frame-threads=8:rd=4"}, "frame-threads", "2")
+	if len(got) != 2 || got[1] != "frame-threads=2:rd=4" {
+		t.Errorf("expected frame-threads token replaced in place, got %v", got)
+	}
+}
+
+func TestSetX265Param_PoolsAndFrameThreadsCoexist(t *testing.T) {
+	// OptimizeFile chama setX265Param duas vezes (pools + frame-threads); ambos
+	// devem cair no mesmo token -x265-params, sem um sobrescrever o outro.
+	got := setX265Param(nil, "pools", "4")
+	got = setX265Param(got, "frame-threads", "2")
+	if len(got) != 2 || got[0] != "-x265-params" {
+		t.Fatalf("expected single -x265-params arg, got %v", got)
+	}
+	if got[1] != "pools=4:frame-threads=2" {
+		t.Errorf("expected pools=4:frame-threads=2, got %q", got[1])
+	}
+}
+
+func TestSetX265Param_DoesNotMutateInput(t *testing.T) {
+	in := []string{"-x265-params", "frame-threads=8"}
+	_ = setX265Param(in, "frame-threads", "2")
+	if in[1] != "frame-threads=8" {
+		t.Errorf("expected input slice untouched, got %v", in)
+	}
+}
+
 func TestDescribeRunError_SignaledExit(t *testing.T) {
 	err := exec.Command("sh", "-c", "kill -SEGV $$").Run()
 	if err == nil {
