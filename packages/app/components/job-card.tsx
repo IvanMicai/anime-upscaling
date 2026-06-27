@@ -31,7 +31,7 @@ export function JobCard({
   return (
     <Link
       href={`/jobs/${job.id}`}
-      className="block py-4 transition-colors hover:bg-card/40"
+      className="block rounded-lg border bg-card/50 p-4 transition-colors hover:bg-card"
     >
       <div className="flex items-center justify-between gap-2">
         <Badge variant="secondary" className="font-mono capitalize">
