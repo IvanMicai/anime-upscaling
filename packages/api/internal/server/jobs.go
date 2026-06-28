@@ -617,15 +617,33 @@ func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.Pipe
 
 	go func() {
 		var wg sync.WaitGroup
+		n := len(fileList)
+
+		// Ordered admission relay: gates[i] admits file i; gates[i+1] is fired only
+		// after file i's first queue Acquire returns, so files enter the GPU/FFmpeg
+		// queues in strict natural-sorted order instead of racing at startup (where
+		// the free-slot fast path ignores priority). n+1 channels: gates[n] is an
+		// unread sink for the last file's token.
+		gates := make([]chan struct{}, n+1)
+		for i := range gates {
+			gates[i] = make(chan struct{}, 1)
+		}
+		if n > 0 {
+			gates[0] <- struct{}{} // admit the first file
+		}
 
 		for i, f := range fileList {
 			wg.Add(1)
 			idx := i + 1
 			filename := f
+			gateIn := gates[i]
+			gateOut := gates[i+1]
 			go func() {
 				defer wg.Done()
+				<-gateIn // wait our turn (always eventually delivered via the cascade)
 				job.setRunningOnce()
-				process.RunCustomPipelineForFile(ctx, cfg, r, gpuQ, ffmpegQ, steps, filename, idx, sourceDir, onEvent, onProgress)
+				admitNext := func() { gateOut <- struct{}{} }
+				process.RunCustomPipelineForFile(ctx, cfg, r, gpuQ, ffmpegQ, steps, filename, idx, sourceDir, admitNext, onEvent, onProgress)
 			}()
 		}
 

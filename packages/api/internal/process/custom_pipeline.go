@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"anime-upscaling/internal/config"
@@ -46,9 +47,23 @@ func RunCustomPipelineForFile(
 	filename string,
 	index int,
 	sourceDir string,
+	admitNext func(),
 	onEvent func(logger.JobLog),
 	onProgress func(runner.Progress),
 ) bool {
+	// admitNext releases the next file's admission gate. It must fire exactly
+	// once — right after this file's first queue Acquire returns (so files enter
+	// the GPU/FFmpeg queues in natural-sorted order) — and the deferred backstop
+	// guarantees it also fires on early returns (ctx cancelled, Acquire error,
+	// empty steps) so the relay never deadlocks.
+	var admitOnce sync.Once
+	admit := func() {
+		if admitNext != nil {
+			admitOnce.Do(admitNext)
+		}
+	}
+	defer admit()
+
 	if sourceDir == "" {
 		sourceDir = cfg.InputDir
 	}
@@ -99,6 +114,7 @@ func RunCustomPipelineForFile(
 			if err != nil {
 				return false
 			}
+			admit()
 
 			gpuSrc := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
 			onEvent(logger.JobLog{
@@ -139,6 +155,7 @@ func RunCustomPipelineForFile(
 			if err != nil {
 				return false
 			}
+			admit()
 
 			gpuSrc := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
 			onEvent(logger.JobLog{
@@ -198,6 +215,7 @@ func RunCustomPipelineForFile(
 				if err != nil {
 					return false
 				}
+				admit()
 				stepOpts := encOpts
 				stepOpts.UseGPU = true
 				stepOpts.GPUDevice = gpuID
@@ -214,6 +232,7 @@ func RunCustomPipelineForFile(
 				if err != nil {
 					return false
 				}
+				admit()
 				ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
 				onEvent(logger.JobLog{
 					Source: ffSrc, Level: "INFO", Index: index,

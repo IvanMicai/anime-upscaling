@@ -1,6 +1,16 @@
 package process
 
-import "testing"
+import (
+	"context"
+	"sync/atomic"
+	"testing"
+
+	"anime-upscaling/internal/config"
+	"anime-upscaling/internal/logger"
+	"anime-upscaling/internal/pipeline"
+	"anime-upscaling/internal/queue"
+	"anime-upscaling/internal/runner"
+)
 
 // TestPipelinePriority_LowerIndexWinsWithinStep verifies that, within the same
 // step, the earlier file (lower index in the natural-sorted list) gets a higher
@@ -32,5 +42,34 @@ func TestPipelinePriority_LaterStepDominates(t *testing.T) {
 			t.Fatalf("step %d index %d (prio %d) did not dominate step %d index 1 (prio %d)",
 				step+1, batch, laterWorst, step, earlierBest)
 		}
+	}
+}
+
+// TestRunCustomPipelineForFile_AdmitsNextOnEarlyReturn verifies the deadlock
+// backstop: when the function returns before any queue Acquire happens (here,
+// the context is already cancelled), the deferred admit() still fires exactly
+// once. Without this, the ordered-admission relay in StartPipelineJob would
+// stall — the next file's gate would never receive its token.
+func TestRunCustomPipelineForFile_AdmitsNextOnEarlyReturn(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancelled before the step loop reaches any Acquire
+
+	var admits int32
+	admitNext := func() { atomic.AddInt32(&admits, 1) }
+
+	steps := []pipeline.PipelineStep{{Operation: "upscale", Scale: 2}}
+	gpuQ := queue.NewGPUQueue(2, 1)
+	ffmpegQ := queue.New(1)
+
+	ok := RunCustomPipelineForFile(
+		ctx, config.Config{}, nil, gpuQ, ffmpegQ, steps,
+		"ep.mkv", 1, "input", admitNext,
+		func(logger.JobLog) {}, func(runner.Progress) {},
+	)
+	if ok {
+		t.Fatal("expected RunCustomPipelineForFile to fail on cancelled context")
+	}
+	if got := atomic.LoadInt32(&admits); got != 1 {
+		t.Fatalf("admitNext called %d times, want exactly 1", got)
 	}
 }

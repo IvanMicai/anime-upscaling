@@ -212,3 +212,61 @@ func TestQueue_AcquireContextCancel(t *testing.T) {
 		t.Fatalf("expected slot %d back, got %d", held, got)
 	}
 }
+
+// TestGPUQueue_OrderedAdmissionRelay reproduces StartPipelineJob's admission
+// relay against a GPUQueue with FREE slots — the scenario the priority argument
+// alone does NOT cover, because Acquire's free-slot fast path serves whoever
+// grabs the mutex first. The relay gates each file so that file i's Acquire
+// returns before file i+1's runs, guaranteeing index-ordered entry even when
+// the goroutines are launched out of order.
+func TestGPUQueue_OrderedAdmissionRelay(t *testing.T) {
+	const n = 12
+	q := NewGPUQueue(2, 1) // 2 GPU slots free at start — exercises the fast path
+
+	gates := make([]chan struct{}, n+1)
+	for i := range gates {
+		gates[i] = make(chan struct{}, 1)
+	}
+	gates[0] <- struct{}{} // admit the first file
+
+	acquired := make(chan int, n)
+	// Launch in scrambled order to prove the relay — not goroutine start order —
+	// decides entry order.
+	launchOrder := []int{9, 2, 11, 4, 7, 1, 12, 5, 10, 3, 8, 6}
+	var wg sync.WaitGroup
+	for _, idx := range launchOrder {
+		wg.Add(1)
+		index := idx
+		gateIn := gates[index-1]
+		gateOut := gates[index]
+		go func() {
+			defer wg.Done()
+			<-gateIn
+			// pipelinePriority(0, index) == -index
+			gpuID, streamIdx, err := q.Acquire(context.Background(), -index)
+			if err != nil {
+				t.Errorf("file %d Acquire failed: %v", index, err)
+				return
+			}
+			// Record entry order at the point of acquisition, BEFORE admitting the
+			// next file — this is the guarantee the fix provides.
+			acquired <- index
+			gateOut <- struct{}{}
+			// Hold the slot briefly so later files contend as waiters too.
+			time.Sleep(time.Millisecond)
+			q.Release(gpuID, streamIdx)
+		}()
+	}
+
+	got := make([]int, 0, n)
+	for i := 0; i < n; i++ {
+		got = append(got, <-acquired)
+	}
+	wg.Wait()
+
+	for i, idx := range got {
+		if idx != i+1 {
+			t.Fatalf("admission order = %v, want 1..%d ascending", got, n)
+		}
+	}
+}
