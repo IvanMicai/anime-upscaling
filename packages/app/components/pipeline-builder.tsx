@@ -155,6 +155,14 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
           <Plus className="size-3.5" />
           Optimize
         </button>
+        <button
+          type="button"
+          className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
+          onClick={() => addStep("cleanup")}
+        >
+          <Plus className="size-3.5" />
+          Limpeza
+        </button>
       </div>
 
       {/* Preview — same "Resultado Estimado" card used on /jobs/new */}

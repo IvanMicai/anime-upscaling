@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"anime-upscaling/internal/cache"
 	"anime-upscaling/internal/config"
 	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/logger"
@@ -650,6 +651,18 @@ func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.Pipe
 		wg.Wait()
 
 		job.finish(ctx)
+
+		// A cleanup step deletes stage files on disk; rebuild the file-status
+		// cache once so the file browser reflects the deletions. Skipped for
+		// pipelines without a cleanup step to avoid the extra disk walk.
+		for _, s := range steps {
+			if s.Operation == "cleanup" {
+				if err := cache.BuildFileStatusCache(cfg); err != nil {
+					fmt.Printf("Warning: cache rebuild after pipeline cleanup failed: %v\n", err)
+				}
+				break
+			}
+		}
 	}()
 
 	return job

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"anime-upscaling/internal/config"
+	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/logger"
 	"anime-upscaling/internal/pipeline"
 	"anime-upscaling/internal/queue"
@@ -248,6 +249,53 @@ func RunCustomPipelineForFile(
 				return false
 			}
 			currentInputDir = cfg.OptimizedDir
+
+		case "cleanup":
+			// Delete the file currently being processed from the selected stage
+			// folders. Best-effort: missing files are skipped, real errors are
+			// logged but never fail the pipeline (the processing already succeeded).
+			onEvent(logger.JobLog{
+				Source: "PIPELINE", Level: "INFO", Index: index,
+				Message: stepLabel + "Limpeza (" + strings.Join(step.CleanupFolders, ", ") + "): " + filename,
+				Time:    time.Now(),
+			})
+
+			dir := filepath.Dir(filename)
+			if dir == "." {
+				dir = ""
+			}
+			name := filepath.Base(filename)
+
+			folderDirs := map[string]string{
+				"input":        cfg.InputDir,
+				"output":       cfg.OutputDir,
+				"interpolated": cfg.InterpolatedDir,
+				"optimized":    cfg.OptimizedDir,
+			}
+			// Only attempt folders where the file actually exists, so stages this
+			// file never passed through don't produce noisy "no such file" errors.
+			var present []string
+			for _, folder := range step.CleanupFolders {
+				d, ok := folderDirs[folder]
+				if ok && files.FileExists(filepath.Join(d, dir, name)) {
+					present = append(present, folder)
+				}
+			}
+
+			if len(present) > 0 {
+				_, errs := files.DeleteFiles(
+					[]files.DeleteItem{{Name: name, Path: dir, Folders: present}},
+					cfg.InputDir, cfg.OutputDir, cfg.OptimizedDir, cfg.InterpolatedDir, cfg.VideoExts,
+				)
+				for _, e := range errs {
+					onEvent(logger.JobLog{Source: "PIPELINE", Level: "STEP", Index: index, Message: "Limpeza: " + e, Time: time.Now()})
+				}
+			}
+
+			// Emit one OK so progress accounting stays correct
+			// (Completed+Failed+Skipped == Total). currentInputDir is left
+			// unchanged — cleanup produces no new file for the next step.
+			onEvent(logger.JobLog{Source: "PIPELINE", Level: "OK", Index: index, Message: stepLabel + "Limpeza concluída: " + filename, Time: time.Now()})
 		}
 	}
 

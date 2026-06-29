@@ -200,7 +200,14 @@ export interface ApiError {
 
 // Pipeline types
 
-export type PipelineOperationType = "upscale" | "interpolate" | "optimize";
+export type PipelineOperationType =
+  | "upscale"
+  | "interpolate"
+  | "optimize"
+  | "cleanup";
+
+// Stage folders a cleanup step can delete from. "output" is the upscaled stage.
+export type CleanupFolder = "input" | "output" | "interpolated" | "optimized";
 
 export type QualityPreset = "ultra" | "alta" | "media" | "baixa";
 
@@ -227,7 +234,18 @@ export interface PipelineStep {
   pix_fmt?: "yuv420p10le" | "yuv420p" | "yuv444p";
   audio_codec?: "copy" | "aac" | "libopus" | "libmp3lame";
   use_gpu?: boolean;
+  // Cleanup fields:
+  cleanup_folders?: CleanupFolder[];
 }
+
+// Folder options for the cleanup step. Value is the backend folder name;
+// the upscaled stage is "output", labelled "Upscaled" in the UI.
+export const CLEANUP_FOLDER_OPTIONS: { value: CleanupFolder; label: string }[] = [
+  { value: "input", label: "Input" },
+  { value: "output", label: "Upscaled" },
+  { value: "interpolated", label: "Interpolated" },
+  { value: "optimized", label: "Optimized" },
+];
 
 export const QUALITY_PRESETS: Record<QualityPreset, { crf: number; label: string }> = {
   ultra: { crf: 16, label: "Ultra" },
@@ -264,6 +282,10 @@ export const OPERATION_DEFAULTS: Record<PipelineOperationType, PipelineStep> = {
     frame_rate: 1,
     frame_rate_mode: "relative",
     use_gpu: false,
+  },
+  cleanup: {
+    operation: "cleanup",
+    cleanup_folders: ["input"],
   },
 };
 

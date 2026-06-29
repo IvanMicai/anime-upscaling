@@ -1,5 +1,9 @@
 import type { PipelineStep } from "@/lib/types";
-import { QUALITY_PRESETS, PROCESSOR_OPTIONS } from "@/lib/types";
+import {
+  QUALITY_PRESETS,
+  PROCESSOR_OPTIONS,
+  CLEANUP_FOLDER_OPTIONS,
+} from "@/lib/types";
 import { formatBytes } from "@/lib/file-utils";
 
 interface VideoState {
@@ -112,6 +116,12 @@ export function formatStepSummary(steps: PipelineStep[]): string {
           (s.resolution ?? 1) > 1 ? `res 1/${s.resolution}` : null,
           fpsLabel,
         ].filter(Boolean).join(" ");
+      case "cleanup": {
+        const folders = (s.cleanup_folders ?? []).map(
+          (f) => CLEANUP_FOLDER_OPTIONS.find((o) => o.value === f)?.label ?? f,
+        );
+        return `Limpeza (${folders.join(", ")})`;
+      }
     }
   }).join(" → ");
 }

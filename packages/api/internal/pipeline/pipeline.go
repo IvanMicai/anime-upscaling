@@ -31,6 +31,8 @@ type PipelineStep struct {
 	PixFmt            string  `json:"pix_fmt,omitempty"`
 	AudioCodec        string  `json:"audio_codec,omitempty"`
 	UseGPU            bool    `json:"use_gpu,omitempty"`
+	// Cleanup-specific field: stage folders whose copy of the file is deleted.
+	CleanupFolders []string `json:"cleanup_folders,omitempty"`
 }
 
 // Pipeline is a named, ordered sequence of processing steps.
@@ -136,6 +138,16 @@ var ValidOperations = map[string]bool{
 	"upscale":     true,
 	"interpolate": true,
 	"optimize":    true,
+	"cleanup":     true,
+}
+
+// ValidCleanupFolders lists the stage folders a cleanup step may delete from.
+// Values are the backend folder names; "output" is the upscaled stage.
+var ValidCleanupFolders = map[string]bool{
+	"input":        true,
+	"output":       true,
+	"interpolated": true,
+	"optimized":    true,
 }
 
 // Store manages CRUD for pipeline definitions stored in a JSON file.

@@ -8,6 +8,7 @@ import { OperationFields } from "@/components/operation-fields";
 import { cn } from "@/lib/utils";
 import { sectionCardPlain } from "@/lib/section";
 import {
+  CLEANUP_FOLDER_OPTIONS,
   PROCESSOR_OPTIONS,
   QUALITY_PRESETS,
   type GPUVendor,
@@ -45,6 +46,12 @@ const OP_STYLES: Record<
     badge: "bg-green-500/20 text-green-400",
     label: "Optimize",
   },
+  cleanup: {
+    border: "border-red-500/50",
+    text: "text-red-400",
+    badge: "bg-red-500/20 text-red-400",
+    label: "Limpeza",
+  },
 };
 
 // Summary chips shown when a step is collapsed, e.g. RealESRGAN · animevideov3 · 2×.
@@ -68,6 +75,14 @@ function stepChips(step: PipelineStep): string[] {
       else if (step.pix_fmt === "yuv444p") chips.push("4:4:4");
       if (step.use_gpu) chips.push("GPU");
       return chips;
+    }
+    case "cleanup": {
+      const folders = step.cleanup_folders ?? [];
+      if (folders.length === 0) return ["Apagar (nada selecionado)"];
+      const labels = folders.map(
+        (f) => CLEANUP_FOLDER_OPTIONS.find((o) => o.value === f)?.label ?? f,
+      );
+      return ["Apagar", ...labels];
     }
   }
 }

@@ -22,6 +22,9 @@ function workerLabel(operation: PipelineOperationType, config: PipelineStep): st
     );
     return `GPU · ${proc?.label ?? "RealESRGAN"}`;
   }
+  if (operation === "cleanup") {
+    return "Limpeza · deleta arquivos";
+  }
   return "GPU · RIFE";
 }
 

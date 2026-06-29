@@ -302,6 +302,15 @@ func validateSteps(steps []pipeline.PipelineStep) error {
 			if s.UseGPU && (s.Codec == "copy" || s.Codec == "libvpx-vp9") {
 				return fmt.Errorf("step %d: use_gpu is incompatible with codec %q", i+1, s.Codec)
 			}
+		case "cleanup":
+			if len(s.CleanupFolders) == 0 {
+				return fmt.Errorf("step %d: cleanup requires at least one folder", i+1)
+			}
+			for _, folder := range s.CleanupFolders {
+				if !pipeline.ValidCleanupFolders[folder] {
+					return fmt.Errorf("step %d: invalid cleanup folder %q", i+1, folder)
+				}
+			}
 		}
 	}
 	return nil

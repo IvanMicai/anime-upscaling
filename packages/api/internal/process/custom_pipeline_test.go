@@ -2,6 +2,8 @@ package process
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 
@@ -71,5 +73,77 @@ func TestRunCustomPipelineForFile_AdmitsNextOnEarlyReturn(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&admits); got != 1 {
 		t.Fatalf("admitNext called %d times, want exactly 1", got)
+	}
+}
+
+// TestRunCustomPipelineForFile_CleanupDeletesSelectedFolders verifies the
+// cleanup step: it deletes the in-flight file from the selected stage folders,
+// silently ignores folders where the file is absent, never touches unselected
+// folders, and emits exactly one OK so progress accounting stays balanced
+// (Completed+Failed+Skipped == Total).
+func TestRunCustomPipelineForFile_CleanupDeletesSelectedFolders(t *testing.T) {
+	base := t.TempDir()
+	cfg := config.Config{
+		BaseDir:         base,
+		InputDir:        filepath.Join(base, "input"),
+		OutputDir:       filepath.Join(base, "output"),
+		OptimizedDir:    filepath.Join(base, "optimized"),
+		InterpolatedDir: filepath.Join(base, "interpolated"),
+		VideoExts:       []string{".mkv", ".mp4", ".avi"},
+	}
+	for _, d := range []string{cfg.InputDir, cfg.OutputDir, cfg.OptimizedDir, cfg.InterpolatedDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	const name = "ep.mkv"
+	// File exists in input and output, but NOT in interpolated.
+	inputFile := filepath.Join(cfg.InputDir, name)
+	outputFile := filepath.Join(cfg.OutputDir, name)
+	optimizedFile := filepath.Join(cfg.OptimizedDir, name)
+	for _, f := range []string{inputFile, outputFile, optimizedFile} {
+		if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	steps := []pipeline.PipelineStep{
+		// Select input + output (present) and interpolated (absent → ignored).
+		{Operation: "cleanup", CleanupFolders: []string{"input", "output", "interpolated"}},
+	}
+
+	var oks int32
+	onEvent := func(e logger.JobLog) {
+		if e.Level == "OK" {
+			atomic.AddInt32(&oks, 1)
+		}
+	}
+
+	gpuQ := queue.NewGPUQueue(2, 1)
+	ffmpegQ := queue.New(1)
+
+	ok := RunCustomPipelineForFile(
+		context.Background(), cfg, nil, gpuQ, ffmpegQ, steps,
+		name, 1, "input", func() {},
+		onEvent, func(runner.Progress) {},
+	)
+	if !ok {
+		t.Fatal("expected cleanup pipeline to succeed")
+	}
+	if got := atomic.LoadInt32(&oks); got != 1 {
+		t.Fatalf("OK events = %d, want exactly 1 (progress accounting)", got)
+	}
+
+	// Selected + present folders are deleted.
+	if _, err := os.Stat(inputFile); !os.IsNotExist(err) {
+		t.Errorf("input file should have been deleted, stat err = %v", err)
+	}
+	if _, err := os.Stat(outputFile); !os.IsNotExist(err) {
+		t.Errorf("output file should have been deleted, stat err = %v", err)
+	}
+	// Unselected folder is untouched.
+	if _, err := os.Stat(optimizedFile); err != nil {
+		t.Errorf("optimized file should remain, stat err = %v", err)
 	}
 }

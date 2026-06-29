@@ -17,10 +17,12 @@ import {
   TUNE_OPTIONS,
   PIX_FMT_OPTIONS,
   AUDIO_CODEC_OPTIONS,
+  CLEANUP_FOLDER_OPTIONS,
   getModelOptions,
   getValidScales,
 } from "@/lib/types";
 import type {
+  CleanupFolder,
   GPUVendor,
   PipelineOperationType,
   PipelineStep,
@@ -203,6 +205,43 @@ export function OperationFields({
             </SelectContent>
           </Select>
         </Field>
+      </div>
+    );
+  }
+
+  if (operation === "cleanup") {
+    const selected = config.cleanup_folders ?? [];
+    const toggle = (folder: CleanupFolder, checked: boolean) => {
+      const next = checked
+        ? [...selected, folder]
+        : selected.filter((f) => f !== folder);
+      onChange({ cleanup_folders: next });
+    };
+    return (
+      <div className="space-y-4">
+        <Field label="Apagar das pastas">
+          <div className="space-y-2">
+            {CLEANUP_FOLDER_OPTIONS.map((opt) => (
+              <label
+                key={opt.value}
+                className="flex items-center gap-2 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(opt.value)}
+                  onChange={(e) => toggle(opt.value, e.target.checked)}
+                  className="size-4"
+                />
+                <span className="text-muted-foreground">{opt.label}</span>
+              </label>
+            ))}
+          </div>
+        </Field>
+        <p className="text-xs text-muted-foreground">
+          Apaga o arquivo em processamento das pastas marcadas neste ponto do
+          pipeline. &quot;Optimized&quot; é o resultado final — marque apenas se
+          quiser descartá-lo.
+        </p>
       </div>
     );
   }
