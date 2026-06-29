@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -28,7 +28,10 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { compareNatural } from "@/lib/sort";
-import { getFiles, deleteFiles, downloadFile } from "@/lib/api";
+import { getFiles, getJobs, deleteFiles, downloadFile } from "@/lib/api";
+import { usePoll } from "@/lib/use-poll";
+import { buildProcessingMap, normalizeRelPath } from "@/lib/processing";
+import { FileProgressCell } from "@/components/file-progress-cell";
 import {
   FOLDER_COLORS,
   COLUMN_ORDER,
@@ -107,6 +110,12 @@ export function FileBrowser() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Live processing state, derived from the polled jobs list. Each running job
+  // reports the file + percent under progress.containers, so we can show a
+  // per-file progress indicator without any backend change.
+  const { data: jobs } = usePoll(getJobs, 3000);
+  const processing = useMemo(() => buildProcessingMap(jobs ?? []), [jobs]);
+
   // Reset view state when the source dir/path changes, during render (not in
   // the effect) to avoid an extra commit. See react.dev "Adjusting some state
   // when a prop changes".
@@ -118,19 +127,56 @@ export function FileBrowser() {
     setDeleteSelections(new Map());
   }
 
-  useEffect(() => {
-    getFiles(dir, path)
-      .then((res) => {
+  const loadFiles = useCallback(
+    (refresh = false) =>
+      getFiles(dir, path, refresh).then((res) => {
         setFiles(res.files ?? []);
         setDirectories(res.directories ?? []);
         setCachedAt(res.cached_at ?? null);
-      })
+      }),
+    [dir, path],
+  );
+
+  useEffect(() => {
+    loadFiles()
       .catch(() => {
         setFiles([]);
         setDirectories([]);
       })
       .finally(() => setLoading(false));
-  }, [dir, path]);
+  }, [loadFiles]);
+
+  // Auto-refresh the list shortly after a file finishes processing, so the new
+  // stage output shows up without a manual refresh. Debounced to coalesce many
+  // near-simultaneous completions; skipped while deleting to avoid disruption.
+  const prevActiveRef = useRef<Set<string>>(new Set());
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const active = new Set<string>();
+    for (const [key, info] of processing) {
+      if (info.status === "running") active.add(key);
+    }
+    let finished = false;
+    for (const key of prevActiveRef.current) {
+      if (!active.has(key)) {
+        finished = true;
+        break;
+      }
+    }
+    prevActiveRef.current = active;
+    if (finished && !deleteMode) {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = setTimeout(() => {
+        loadFiles(true).catch(() => {});
+      }, 1500);
+    }
+  }, [processing, deleteMode, loadFiles]);
+  useEffect(
+    () => () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    },
+    [],
+  );
 
   function handleDirChange(next: FolderKey) {
     setDir(next);
@@ -139,12 +185,7 @@ export function FileBrowser() {
 
   function handleRefresh() {
     setRefreshing(true);
-    getFiles(dir, path, true)
-      .then((res) => {
-        setFiles(res.files ?? []);
-        setDirectories(res.directories ?? []);
-        setCachedAt(res.cached_at ?? null);
-      })
+    loadFiles(true)
       .catch(() => {})
       .finally(() => setRefreshing(false));
   }
@@ -194,10 +235,7 @@ export function FileBrowser() {
       await deleteFiles({ items });
       setDeleteSelections(new Map());
       setConfirmOpen(false);
-      const res = await getFiles(dir, path, true);
-      setFiles(res.files ?? []);
-      setDirectories(res.directories ?? []);
-      setCachedAt(res.cached_at ?? null);
+      await loadFiles(true);
     } catch {
       // keep dialog open on error
     } finally {
@@ -338,6 +376,9 @@ export function FileBrowser() {
                 {filtered.map((file) => {
                   const folders = getFolderData(file, dir);
                   const fileDeleteFolders = deleteSelections.get(file.name);
+                  const info = processing.get(
+                    normalizeRelPath(joinPath(path, file.name)),
+                  );
                   return (
                     <TableRow key={file.name}>
                       <TableCell className="font-mono text-sm truncate max-w-[180px] sm:max-w-[300px]">
@@ -360,7 +401,9 @@ export function FileBrowser() {
                               if (canClickDelete) toggleDeleteCell(file.name, entry.key);
                             }}
                           >
-                            {entry.exists ? (
+                            {!deleteMode && info && info.column === entry.key ? (
+                              <FileProgressCell info={info} />
+                            ) : entry.exists ? (
                               deleteMode ? (
                                 <span>
                                   {formatBytesCompact(entry.size)}
