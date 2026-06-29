@@ -172,9 +172,11 @@ export function JobList({
                       <TableCell>
                         <Badge
                           variant="secondary"
-                          className="font-mono capitalize"
+                          className="max-w-[16rem] font-mono capitalize"
                         >
-                          {jobTypeLabel(job)}
+                          <span className="min-w-0 truncate">
+                            {jobTypeLabel(job)}
+                          </span>
                         </Badge>
                       </TableCell>
                       <TableCell>

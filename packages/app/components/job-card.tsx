@@ -34,10 +34,13 @@ export function JobCard({
       className="block rounded-lg border bg-card/50 p-4 transition-colors hover:bg-card"
     >
       <div className="flex items-center justify-between gap-2">
-        <Badge variant="secondary" className="font-mono capitalize">
-          {jobTypeLabel(job)}
+        <Badge
+          variant="secondary"
+          className="min-w-0 shrink font-mono capitalize"
+        >
+          <span className="min-w-0 truncate">{jobTypeLabel(job)}</span>
         </Badge>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           <StatusBadge status={job.status} />
           <Button
             variant="ghost"
