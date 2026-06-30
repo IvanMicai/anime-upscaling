@@ -2,6 +2,7 @@ services:
   api:
     build: packages/api
     image: anime-upscaling-api
+    platform: linux/amd64  # video2x base is amd64-only (runs under emulation on Apple Silicon)
     container_name: anime-upscaling-api
     env_file: .env
     environment:

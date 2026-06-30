@@ -61,20 +61,22 @@ export function LogViewer({
   return (
     <div className="space-y-2">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <Tabs
-          value={filter}
-          onValueChange={(v) => setFilter(v as Filter)}
-        >
-          <TabsList>
-            <TabsTrigger value={ALL_FILTER}>All</TabsTrigger>
-            {sources.map((s) => (
-              <TabsTrigger key={s} value={s}>
-                {s}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-        <span className="text-xs text-muted-foreground">
+        <div className="min-w-0 max-w-full overflow-x-auto overflow-y-hidden scrollbar-dark">
+          <Tabs
+            value={filter}
+            onValueChange={(v) => setFilter(v as Filter)}
+          >
+            <TabsList className="w-max">
+              <TabsTrigger value={ALL_FILTER}>All</TabsTrigger>
+              {sources.map((s) => (
+                <TabsTrigger key={s} value={s}>
+                  {s}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
+        <span className="shrink-0 text-xs text-muted-foreground">
           {connected ? "streaming" : "disconnected"} &middot; {filtered.length}{" "}
           lines
         </span>

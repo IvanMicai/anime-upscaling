@@ -32,7 +32,7 @@ export interface FolderEntry {
 
 export function computeColumnTotals(
   files: VideoFile[],
-  dir: FolderKey,
+  dir: string,
 ): Record<FolderKey, number> {
   const totals: Record<FolderKey, number> = { input: 0, output: 0, optimized: 0, interpolated: 0 };
   for (const f of files) {

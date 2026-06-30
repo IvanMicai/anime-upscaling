@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PipelineStepCard } from "@/components/pipeline-step-card";
-import { PipelinePreview } from "@/components/pipeline-preview";
+import { ResultPreview } from "@/components/result-preview";
 import type { PipelineStep, Pipeline, GPUVendor } from "@/lib/types";
+import { OPERATION_DEFAULTS } from "@/lib/types";
 import { createPipeline, updatePipeline, getSettings } from "@/lib/api";
 
 interface PipelineBuilderProps {
@@ -16,10 +17,19 @@ interface PipelineBuilderProps {
 export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
   const router = useRouter();
   const [name, setName] = useState(existing?.name ?? "");
-  const [steps, setSteps] = useState<PipelineStep[]>(existing?.steps ?? []);
+  // Each step carries a stable client-side id used as its React key, so the
+  // card instance (and its expanded/collapsed state) follows the step when it's
+  // reordered, instead of staying pinned to a position.
+  const initialSteps = existing?.steps ?? [];
+  const idCounter = useRef(initialSteps.length);
+  const [items, setItems] = useState<{ id: number; step: PipelineStep }[]>(() =>
+    initialSteps.map((step, i) => ({ id: i, step })),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gpuVendor, setGpuVendor] = useState<GPUVendor>("");
+
+  const steps = items.map((it) => it.step);
 
   useEffect(() => {
     getSettings()
@@ -28,50 +38,28 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
   }, []);
 
   function addStep(operation: PipelineStep["operation"]) {
-    const step: PipelineStep = { operation };
-    switch (operation) {
-      case "upscale":
-        step.scale = 2;
-        step.processor = "realesrgan";
-        step.model = "realesr-animevideov3";
-        step.noise_level = 0;
-        break;
-      case "interpolate":
-        step.multiplier = 2;
-        step.rife_model = "rife-v4.6";
-        step.scene_thresh = 10;
-        break;
-      case "optimize":
-        step.quality = "alta";
-        step.resolution = 1;
-        step.frame_rate = 1;
-        step.threads = 0;
-        step.codec = "libx265";
-        step.preset = "fast";
-        step.tune = "animation";
-        step.pix_fmt = "yuv420p10le";
-        step.audio_codec = "copy";
-        break;
-    }
-    setSteps([...steps, step]);
+    setItems((prev) => [
+      ...prev,
+      { id: idCounter.current++, step: { ...OPERATION_DEFAULTS[operation] } },
+    ]);
   }
 
   function updateStep(index: number, step: PipelineStep) {
-    const next = [...steps];
-    next[index] = step;
-    setSteps(next);
+    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, step } : it)));
   }
 
   function removeStep(index: number) {
-    setSteps(steps.filter((_, i) => i !== index));
+    setItems((prev) => prev.filter((_, i) => i !== index));
   }
 
   function moveStep(from: number, to: number) {
-    if (to < 0 || to >= steps.length) return;
-    const next = [...steps];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    setSteps(next);
+    setItems((prev) => {
+      if (to < 0 || to >= prev.length) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
   }
 
   async function handleSave() {
@@ -121,8 +109,8 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
       </div>
 
       {/* Steps */}
-      {steps.map((step, i) => (
-        <div key={i} className="relative">
+      {items.map(({ id, step }, i) => (
+        <div key={id} className="relative">
           {/* Arrow connector */}
           <div className="flex justify-center -mt-3 mb-2">
             <div className="text-muted-foreground/50 text-lg">↓</div>
@@ -141,39 +129,50 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
         </div>
       ))}
 
-      {/* Add step buttons */}
+      {/* Add step buttons — color-coded per operation */}
       <div className="flex flex-col gap-2 sm:flex-row sm:gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="sm:flex-1"
+        <button
+          type="button"
+          className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm font-medium text-blue-400 transition-colors hover:bg-blue-500/20"
           onClick={() => addStep("upscale")}
         >
-          <Plus className="h-3.5 w-3.5 mr-1" />
+          <Plus className="size-3.5" />
           Upscale
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="sm:flex-1"
+        </button>
+        <button
+          type="button"
+          className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-purple-500/40 bg-purple-500/10 px-3 py-2 text-sm font-medium text-purple-400 transition-colors hover:bg-purple-500/20"
           onClick={() => addStep("interpolate")}
         >
-          <Plus className="h-3.5 w-3.5 mr-1" />
+          <Plus className="size-3.5" />
           Interpolate
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="sm:flex-1"
+        </button>
+        <button
+          type="button"
+          className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm font-medium text-green-400 transition-colors hover:bg-green-500/20"
           onClick={() => addStep("optimize")}
         >
-          <Plus className="h-3.5 w-3.5 mr-1" />
+          <Plus className="size-3.5" />
           Optimize
-        </Button>
+        </button>
+        <button
+          type="button"
+          className="inline-flex flex-1 items-center justify-center gap-1 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20"
+          onClick={() => addStep("cleanup")}
+        >
+          <Plus className="size-3.5" />
+          Limpeza
+        </button>
       </div>
 
-      {/* Preview */}
-      <PipelinePreview steps={steps} />
+      {/* Preview — same "Resultado Estimado" card used on /jobs/new */}
+      {steps.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-muted-foreground/25 p-4 text-center text-sm text-muted-foreground">
+          Adicione steps para ver o preview
+        </div>
+      ) : (
+        <ResultPreview steps={steps} fileCount={0} />
+      )}
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 

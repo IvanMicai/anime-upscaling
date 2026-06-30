@@ -19,7 +19,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FilePicker } from "@/components/file-picker";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { usePoll } from "@/lib/use-poll";
+import { cn } from "@/lib/utils";
+import { sectionCardPlain } from "@/lib/section";
 import { getPipelines, deletePipeline, runPipeline } from "@/lib/api";
 import { FOLDER_OPTIONS, type FolderKey } from "@/lib/file-utils";
 import type { Pipeline } from "@/lib/types";
@@ -39,13 +42,20 @@ export default function PipelinesPage() {
   const [browsePath, setBrowsePath] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Pipeline | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  async function handleDelete(id: string) {
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await deletePipeline(id);
+      await deletePipeline(deleteTarget.id);
+      setDeleteTarget(null);
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao deletar");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -91,12 +101,12 @@ export default function PipelinesPage() {
           </Link>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="divide-y divide-border sm:space-y-3 sm:divide-y-0">
           {pipelines.map((p) => {
             const final_ = computePreview(p.steps);
             const sizeEst = formatSizeEstimate(final_);
             return (
-              <div key={p.id} className="rounded-lg border border-border bg-card p-4">
+              <div key={p.id} className={cn("py-4", sectionCardPlain, "sm:bg-card")}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-sm">{p.name}</h3>
@@ -136,7 +146,7 @@ export default function PipelinesPage() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-destructive hover:text-destructive"
-                      onClick={() => handleDelete(p.id)}
+                      onClick={() => setDeleteTarget(p)}
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>
@@ -192,6 +202,21 @@ export default function PipelinesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Excluir pipeline?"
+        description={
+          deleteTarget
+            ? `O pipeline "${deleteTarget.name}" será removido permanentemente.`
+            : undefined
+        }
+        confirmLabel="Excluir"
+        destructive
+        loading={deleting}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

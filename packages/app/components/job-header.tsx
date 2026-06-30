@@ -2,17 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cancelJob, deleteJob } from "@/lib/api";
+import { formatRelativeTime, jobTypeLabel } from "@/lib/format";
+import { sectionCard } from "@/lib/section";
 import type { Job } from "@/lib/types";
-
-function formatTime(iso: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString();
-}
 
 interface JobHeaderProps {
   job: Job;
@@ -23,6 +21,9 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
   const router = useRouter();
   const [cancelling, setCancelling] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const active = job.status === "running" || job.status === "queued";
 
   async function handleCancel() {
     setCancelling(true);
@@ -37,11 +38,6 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
   }
 
   async function handleRemove() {
-    const active = job.status === "running" || job.status === "queued";
-    const message = active
-      ? "Cancel this running job and remove it?"
-      : "Remove this job?";
-    if (!window.confirm(message)) return;
     setRemoving(true);
     router.push("/");
     try {
@@ -54,50 +50,58 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-        <div className="space-y-1">
-          <CardTitle className="font-mono text-sm">{job.id}</CardTitle>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="capitalize">
-              {job.type === "custom_pipeline" && job.pipeline_name ? job.pipeline_name : job.type}
-            </Badge>
-            <StatusBadge status={job.status} />
-          </div>
+    <div className={sectionCard}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-sm font-semibold">{job.id}</span>
+          <Badge variant="secondary" className="capitalize">
+            {jobTypeLabel(job)}
+          </Badge>
+          <StatusBadge status={job.status} />
+          <span className="text-xs text-muted-foreground">
+            Created {formatRelativeTime(job.created_at)}
+            {job.finished_at &&
+              ` · Finished ${formatRelativeTime(job.finished_at)}`}
+          </span>
         </div>
         <div className="flex items-center gap-2">
-          {(job.status === "running" || job.status === "queued") && (
+          {active && (
             <Button
               variant="destructive"
               size="sm"
               onClick={handleCancel}
               disabled={cancelling}
             >
+              <X className="size-4" />
               {cancelling ? "Cancelling..." : "Cancel"}
             </Button>
           )}
           <Button
             variant="outline"
             size="sm"
-            onClick={handleRemove}
+            onClick={() => setConfirmOpen(true)}
             disabled={removing}
           >
+            <Trash2 className="size-4" />
             {removing ? "Removing..." : "Remove"}
           </Button>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-2 text-sm">
-        <div className="flex flex-col gap-1 sm:flex-row sm:gap-8">
-          <div>
-            <span className="text-muted-foreground">Created: </span>
-            {formatTime(job.created_at)}
-          </div>
-          <div>
-            <span className="text-muted-foreground">Finished: </span>
-            {formatTime(job.finished_at)}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={active ? "Cancel and remove job?" : "Remove job?"}
+        description={
+          active
+            ? "This job is still active. It will be cancelled and removed."
+            : "This will remove the job from the list."
+        }
+        confirmLabel={active ? "Cancel & remove" : "Remove"}
+        destructive
+        loading={removing}
+        onConfirm={handleRemove}
+      />
+    </div>
   );
 }

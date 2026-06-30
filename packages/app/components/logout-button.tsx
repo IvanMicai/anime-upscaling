@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function LogoutButton() {
@@ -13,8 +14,15 @@ export function LogoutButton() {
   }
 
   return (
-    <Button variant="ghost" size="sm" onClick={handleLogout}>
-      Log out
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      onClick={handleLogout}
+      aria-label="Log out"
+      title="Log out"
+      className="ml-1 text-muted-foreground"
+    >
+      <LogOut className="size-4" />
     </Button>
   );
 }

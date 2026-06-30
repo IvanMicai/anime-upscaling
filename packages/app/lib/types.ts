@@ -17,6 +17,26 @@ export interface Settings {
   gpu_vendor: GPUVendor;
 }
 
+export interface GPUMetric {
+  index: number;
+  utilization: number;
+  temperature: number;
+  memory_used: number;
+  memory_total: number;
+}
+
+export interface SystemStatus {
+  hostname: string;
+  uptime_seconds: number;
+  online: boolean;
+  gpu_healthy: boolean;
+  gpu_vendor: GPUVendor;
+  gpu_count: number;
+  gpus: GPUMetric[];
+  queue: { queued: number; running: number };
+  throughput: { fps: number };
+}
+
 export interface ContainerProgress {
   frame: number;
   fps: number;
@@ -180,7 +200,14 @@ export interface ApiError {
 
 // Pipeline types
 
-export type PipelineOperationType = "upscale" | "interpolate" | "optimize";
+export type PipelineOperationType =
+  | "upscale"
+  | "interpolate"
+  | "optimize"
+  | "cleanup";
+
+// Stage folders a cleanup step can delete from. "output" is the upscaled stage.
+export type CleanupFolder = "input" | "output" | "interpolated" | "optimized";
 
 export type QualityPreset = "ultra" | "alta" | "media" | "baixa";
 
@@ -207,13 +234,59 @@ export interface PipelineStep {
   pix_fmt?: "yuv420p10le" | "yuv420p" | "yuv444p";
   audio_codec?: "copy" | "aac" | "libopus" | "libmp3lame";
   use_gpu?: boolean;
+  // Cleanup fields:
+  cleanup_folders?: CleanupFolder[];
 }
+
+// Folder options for the cleanup step. Value is the backend folder name;
+// the upscaled stage is "output", labelled "Upscaled" in the UI.
+export const CLEANUP_FOLDER_OPTIONS: { value: CleanupFolder; label: string }[] = [
+  { value: "input", label: "Input" },
+  { value: "output", label: "Upscaled" },
+  { value: "interpolated", label: "Interpolated" },
+  { value: "optimized", label: "Optimized" },
+];
 
 export const QUALITY_PRESETS: Record<QualityPreset, { crf: number; label: string }> = {
   ultra: { crf: 16, label: "Ultra" },
   alta:  { crf: 19, label: "Alta" },
   media: { crf: 22, label: "Média" },
   baixa: { crf: 26, label: "Baixa" },
+};
+
+// Default config for each operation. Shared by Create Job and the pipeline
+// builder so "switch operation → reset fields" behaves identically in both.
+export const OPERATION_DEFAULTS: Record<PipelineOperationType, PipelineStep> = {
+  upscale: {
+    operation: "upscale",
+    scale: 2,
+    processor: "realesrgan",
+    model: "realesr-animevideov3",
+    noise_level: 0,
+  },
+  interpolate: {
+    operation: "interpolate",
+    multiplier: 2,
+    rife_model: "rife-v4.6",
+    scene_thresh: 10,
+  },
+  optimize: {
+    operation: "optimize",
+    codec: "libx265",
+    quality: "alta",
+    preset: "fast",
+    tune: "animation",
+    pix_fmt: "yuv420p10le",
+    audio_codec: "copy",
+    resolution: 1,
+    frame_rate: 1,
+    frame_rate_mode: "relative",
+    use_gpu: false,
+  },
+  cleanup: {
+    operation: "cleanup",
+    cleanup_folders: ["input"],
+  },
 };
 
 // Upscale options
