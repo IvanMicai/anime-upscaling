@@ -241,7 +241,7 @@ export default function NewJobPage() {
           step !== 1 && "hidden",
         )}
       >
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           <div className="space-y-2">
             <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               O que fazer?
@@ -339,7 +339,7 @@ export default function NewJobPage() {
         </div>
 
         {/* Preview + Next */}
-        <div className="space-y-4 lg:sticky lg:top-4">
+        <div className="min-w-0 space-y-4 lg:sticky lg:top-4">
           {isPipelineSelected && selectedPipeline ? (
             <ResultPreview
               steps={selectedPipeline.steps}

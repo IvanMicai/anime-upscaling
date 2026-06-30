@@ -122,7 +122,7 @@ export function OperationFields({
               });
             }}
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -177,7 +177,7 @@ export function OperationFields({
             value={config.rife_model ?? "rife-v4.6"}
             onValueChange={(v) => onChange({ rife_model: v })}
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -194,7 +194,7 @@ export function OperationFields({
             value={String(config.scene_thresh ?? 10)}
             onValueChange={(v) => onChange({ scene_thresh: Number(v) })}
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -271,7 +271,7 @@ export function OperationFields({
             onChange(patch);
           }}
         >
-          <SelectTrigger>
+          <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -307,7 +307,7 @@ export function OperationFields({
             value={config.quality ?? "alta"}
             onValueChange={(v) => onChange({ quality: v as QualityPreset })}
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -327,7 +327,7 @@ export function OperationFields({
               value={config.preset ?? "fast"}
               onValueChange={(v) => onChange({ preset: v as PipelineStep["preset"] })}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -344,7 +344,7 @@ export function OperationFields({
               value={config.tune ?? "animation"}
               onValueChange={(v) => onChange({ tune: v as PipelineStep["tune"] })}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -365,7 +365,7 @@ export function OperationFields({
             value={config.pix_fmt ?? "yuv420p10le"}
             onValueChange={(v) => onChange({ pix_fmt: v as PipelineStep["pix_fmt"] })}
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -386,7 +386,7 @@ export function OperationFields({
             onChange({ audio_codec: v as PipelineStep["audio_codec"] })
           }
         >
-          <SelectTrigger>
+          <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -475,7 +475,7 @@ export function OperationFields({
             value={String(config.threads ?? 0)}
             onValueChange={(v) => onChange({ threads: Number(v) })}
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
