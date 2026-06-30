@@ -115,9 +115,21 @@ export function buildProcessingMap(jobs: Job[]): Map<string, FileProcessing> {
 function operationFor(info: FileProcessing, file: VideoFile): string | null {
   if (info.status === "queued") {
     if (info.jobType !== "custom_pipeline") return info.jobType;
-    // A queued pipeline file may already be partway through; its next pending
-    // step is the first one whose output stage doesn't exist yet.
-    for (const op of info.pipelineOps ?? []) {
+    const ops = info.pipelineOps ?? [];
+    const stageExists = (op: string) =>
+      (op === "upscale" && file.has_upscaled) ||
+      (op === "interpolate" && file.has_interpolated) ||
+      (op === "optimize" && file.has_optimized);
+    // Find the furthest stage already produced. Earlier missing stages were run
+    // and then cleaned up (the pipeline's cleanup step deletes inputs), so they
+    // are NOT pending. The next pending op is the first one after it whose
+    // output is still missing; if none, the file is done (no indicator).
+    let lastDone = -1;
+    ops.forEach((op, i) => {
+      if (stageExists(op)) lastDone = i;
+    });
+    for (let i = lastDone + 1; i < ops.length; i++) {
+      const op = ops[i];
       if (op === "upscale" && !file.has_upscaled) return "upscale";
       if (op === "interpolate" && !file.has_interpolated) return "interpolate";
       if (op === "optimize" && !file.has_optimized) return "optimize";
