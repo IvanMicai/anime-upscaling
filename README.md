@@ -65,9 +65,9 @@ the Compose network.
 
 ## Screenshots
 
-| Pipeline editor | File picker |
-| :---: | :---: |
-| ![Pipeline editor](docs/screenshots/pipeline-editor.png) | ![File picker](docs/screenshots/file-picker.png) |
+| Pipeline editor | File picker | Job detail |
+| :---: | :---: | :---: |
+| ![Pipeline editor](docs/screenshots/pipeline-editor.png) | ![File picker](docs/screenshots/file-picker.png) | ![Job detail](docs/screenshots/job-detail.png) |
 
 ## Models
 
