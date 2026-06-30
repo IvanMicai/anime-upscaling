@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.0](https://github.com/IvanMicai/anime-upscaling/compare/v1.10.7...v1.11.0) (2026-06-30)
+
+### Features
+
+* ship dashboard UX redesign ([#56](https://github.com/IvanMicai/anime-upscaling/issues/56)) ([59fe1cd](https://github.com/IvanMicai/anime-upscaling/commit/59fe1cde4cbc94d0667ec45326c34268b87e65df)), closes [#49](https://github.com/IvanMicai/anime-upscaling/issues/49)
+
 ## [1.10.7](https://github.com/IvanMicai/anime-upscaling/compare/v1.10.6...v1.10.7) (2026-06-09)
 
 ### Bug Fixes
