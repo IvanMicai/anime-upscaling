@@ -17,8 +17,18 @@ const BAR_FILL: Record<FolderKey, string> = {
  */
 export function FileProgressCell({ info }: { info: ResolvedProcessing }) {
   if (info.status === "queued") {
+    // Tint the badge with the target stage's color (e.g. blue for Upscaling,
+    // green for Optimized) so it matches the column it sits in.
+    const colors = info.column ? FOLDER_COLORS[info.column] : null;
     return (
-      <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/20 px-1.5 py-0.5 text-[10px] font-medium text-purple-400">
+      <span
+        className={cn(
+          "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
+          colors
+            ? colors.badge
+            : "border-purple-500/30 bg-purple-500/20 text-purple-400",
+        )}
+      >
         Na fila
       </span>
     );

@@ -51,6 +51,10 @@ import type { VideoFile } from "@/lib/types";
 
 const TAB_ORDER: FolderKey[] = ["input", "output", "optimized", "interpolated"];
 
+// "all" is a virtual pill that shows every file (the union across stages)
+// without filtering by which stage it has.
+type Pill = FolderKey | "all";
+
 // The API returns the union of files across every stage, so the selected
 // directory pill filters the rows down to files that actually have that stage.
 const DIR_HAS: Record<FolderKey, (f: VideoFile) => boolean> = {
@@ -96,7 +100,7 @@ function FileTooltipContent({ entry }: { entry: FolderEntry }) {
 }
 
 export function FileBrowser() {
-  const [dir, setDir] = useState<FolderKey>("input");
+  const [dir, setDir] = useState<Pill>("input");
   const [path, setPath] = useState<string>("");
   const [files, setFiles] = useState<VideoFile[]>([]);
   const [directories, setDirectories] = useState<string[]>([]);
@@ -129,7 +133,9 @@ export function FileBrowser() {
 
   const loadFiles = useCallback(
     (refresh = false) =>
-      getFiles(dir, path, refresh).then((res) => {
+      // "all" has no folder of its own; fetch the input tree, which the API
+      // returns as the union of files across every stage.
+      getFiles(dir === "all" ? "input" : dir, path, refresh).then((res) => {
         setFiles(res.files ?? []);
         setDirectories(res.directories ?? []);
         setCachedAt(res.cached_at ?? null);
@@ -178,7 +184,7 @@ export function FileBrowser() {
     [],
   );
 
-  function handleDirChange(next: FolderKey) {
+  function handleDirChange(next: Pill) {
     setDir(next);
     setPath("");
   }
@@ -244,7 +250,7 @@ export function FileBrowser() {
   }
 
   const filtered = [...files]
-    .filter((f) => DIR_HAS[dir](f))
+    .filter((f) => dir === "all" || DIR_HAS[dir](f))
     .sort((a, b) => compareNatural(a.name, b.name));
   const totals = computeColumnTotals(filtered, dir);
 
@@ -255,6 +261,18 @@ export function FileBrowser() {
     <div className="flex flex-col flex-1 min-h-0 gap-3">
       {/* Directory selector (colored pills) + delete mode toggle */}
       <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+        <button
+          type="button"
+          onClick={() => handleDirChange("all")}
+          aria-pressed={dir === "all"}
+          className={cn(
+            "px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors",
+            "bg-secondary text-foreground border-border hover:bg-secondary/80",
+            dir === "all" ? "ring-2 ring-white/30" : "opacity-50 hover:opacity-100",
+          )}
+        >
+          All
+        </button>
         {TAB_ORDER.map((key) => {
           const active = dir === key;
           return (
@@ -333,7 +351,7 @@ export function FileBrowser() {
         <p className="text-sm text-muted-foreground">Loading files...</p>
       ) : filtered.length === 0 && directories.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No {FOLDER_COLORS[dir].label} files found in /{path}.
+          No {dir === "all" ? "" : `${FOLDER_COLORS[dir].label} `}files found in /{path}.
         </p>
       ) : (
         <TooltipProvider>
