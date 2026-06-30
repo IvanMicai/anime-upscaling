@@ -61,7 +61,7 @@ export function LogViewer({
   return (
     <div className="space-y-2">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 max-w-full overflow-x-auto scrollbar-dark">
+        <div className="min-w-0 max-w-full overflow-x-auto overflow-y-hidden scrollbar-dark">
           <Tabs
             value={filter}
             onValueChange={(v) => setFilter(v as Filter)}
