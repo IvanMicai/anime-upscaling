@@ -1,4 +1,4 @@
-import type { Job } from "./types";
+import type { Job, VideoFile } from "./types";
 import type { FolderKey } from "./file-utils";
 
 /**
@@ -14,7 +14,7 @@ export const OP_TO_COLUMN: Record<string, FolderKey | null> = {
   cleanup: null,
 };
 
-/** Friendly label per operation, shown next to the percentage. */
+/** Friendly label per operation. */
 export const OP_LABEL: Record<string, string> = {
   upscale: "Upscaling",
   interpolate: "Interpolating",
@@ -34,35 +34,32 @@ export function normalizeRelPath(p: string): string {
 }
 
 export interface FileProcessing {
-  column: FolderKey | null;
   percent: number | null;
   status: "running" | "queued";
-  label: string;
+  /** Worker label, e.g. "GPU 0", "FFMPEG 1" (running only). */
+  source?: string;
+  /** FFmpeg sub-phase, e.g. "Encode" | "Remux" | "Check" (running only). */
+  phase?: string;
+  jobType: string;
+  /** Operations a queued file will go through (first one determines its column). */
+  queuedOp?: string | null;
+  /** Pipeline step operations, used to disambiguate GPU upscale vs interpolate. */
+  pipelineOps?: string[];
 }
 
-/** Step prefix emitted by custom pipelines, e.g. "[2/3] Upscale 2x: ep01.mkv". */
-const RE_STEP = /^\[(\d+)\/\d+\]/;
-
-/**
- * Resolve the operation a job is currently performing. Simple job types are the
- * operation itself. For custom pipelines, parse the `[n/N]` prefix from the
- * latest progress message and read the matching step. This is a best-effort
- * guess: `progress.current` is job-level, so with several files in flight it may
- * reflect a different file's step.
- */
-function jobOperation(job: Job): string | null {
-  if (job.type !== "custom_pipeline") return job.type;
-  const m = RE_STEP.exec(job.progress?.current ?? "");
-  if (!m) return null;
-  const idx = parseInt(m[1], 10) - 1;
-  return job.pipeline_steps?.[idx]?.operation ?? null;
+export interface ResolvedProcessing {
+  column: FolderKey | null;
+  label: string;
+  percent: number | null;
+  status: "running" | "queued";
 }
 
 /**
  * Build a map from a file's normalized relative path to its current processing
- * state, derived from the live jobs list. Running entries carry a percentage;
- * queued entries (files in a job that haven't started a worker yet) carry none.
- * Running always wins over queued for the same file.
+ * state, derived from the live jobs list. Running entries carry a percentage and
+ * the worker/phase needed to resolve which stage column they belong to; queued
+ * entries (files in a job that haven't started a worker yet) carry none. Running
+ * always wins over queued for the same file.
  */
 export function buildProcessingMap(jobs: Job[]): Map<string, FileProcessing> {
   const map = new Map<string, FileProcessing>();
@@ -70,15 +67,18 @@ export function buildProcessingMap(jobs: Job[]): Map<string, FileProcessing> {
   for (const job of jobs) {
     if (job.status !== "running" && job.status !== "queued") continue;
 
-    const op = jobOperation(job);
-    const column = op ? (OP_TO_COLUMN[op] ?? null) : null;
-    const label = (op && OP_LABEL[op]) || "Processing";
+    const isPipeline = job.type === "custom_pipeline";
+    const pipelineOps = isPipeline
+      ? (job.pipeline_steps ?? []).map((s) => s.operation)
+      : undefined;
+    const queuedOp = isPipeline ? (pipelineOps?.[0] ?? null) : job.type;
 
     const containers = job.progress?.containers ?? {};
     const active = new Set<string>();
 
-    // Running: one entry per in-flight worker.
-    for (const c of Object.values(containers)) {
+    // Running: one entry per in-flight worker. The container map key is the
+    // worker label (e.g. "FFMPEG 1") — keep it to resolve the stage column.
+    for (const [source, c] of Object.entries(containers)) {
       if (!c?.filename) continue;
       const key = normalizeRelPath(c.filename);
       active.add(key);
@@ -87,18 +87,67 @@ export function buildProcessingMap(jobs: Job[]): Map<string, FileProcessing> {
         (c.total_frames && c.total_frames > 0
           ? (c.frame / c.total_frames) * 100
           : null);
-      map.set(key, { column, percent, status: "running", label });
+      map.set(key, {
+        percent,
+        status: "running",
+        source,
+        phase: c.phase,
+        jobType: job.type,
+        pipelineOps,
+      });
     }
 
     // Queued: files in this job that aren't yet in a worker.
     for (const f of job.files ?? []) {
       const key = normalizeRelPath(f);
       if (active.has(key)) continue;
-      const existing = map.get(key);
-      if (existing?.status === "running") continue;
-      map.set(key, { column, percent: null, status: "queued", label });
+      if (map.get(key)?.status === "running") continue;
+      map.set(key, { percent: null, status: "queued", jobType: job.type, queuedOp });
     }
   }
 
   return map;
+}
+
+/**
+ * Resolve which operation a file is undergoing. Simple jobs are the operation
+ * itself. For custom pipelines the per-job `progress.current` is unreliable
+ * (often empty), so infer the running step from the worker + ffmpeg phase, and
+ * disambiguate GPU upscale-vs-interpolate using the file's existing stages.
+ */
+function operationFor(info: FileProcessing, file: VideoFile): string | null {
+  if (info.status === "queued") return info.queuedOp ?? null;
+  if (info.jobType !== "custom_pipeline") return info.jobType;
+
+  const phase = info.phase;
+  if (phase === "Encode" || phase === "Remux") return "optimize";
+  if (phase === "Check") return "check";
+
+  const src = info.source ?? "";
+  if (src.startsWith("FFMPEG")) return "optimize";
+  if (src.startsWith("GPU")) {
+    const ops = info.pipelineOps ?? [];
+    const hasUpscale = ops.includes("upscale");
+    const hasInterpolate = ops.includes("interpolate");
+    if (hasUpscale && !hasInterpolate) return "upscale";
+    if (hasInterpolate && !hasUpscale) return "interpolate";
+    // Both steps exist: a file that already has an upscaled output but no
+    // interpolated one is on the interpolate step.
+    return file.has_upscaled && !file.has_interpolated ? "interpolate" : "upscale";
+  }
+  return null;
+}
+
+/** Resolve the stage column + label to show for a file's processing state. */
+export function resolveProcessing(
+  info: FileProcessing,
+  file: VideoFile,
+): ResolvedProcessing {
+  const op = operationFor(info, file);
+  return {
+    column: op ? (OP_TO_COLUMN[op] ?? null) : null,
+    label: (op && OP_LABEL[op]) || "Processing",
+    percent: info.percent,
+    status: info.status,
+  };
 }

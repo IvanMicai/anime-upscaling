@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { FOLDER_COLORS, type FolderKey } from "@/lib/file-utils";
-import type { FileProcessing } from "@/lib/processing";
+import type { ResolvedProcessing } from "@/lib/processing";
 
 // Solid fill colors for the determinate bar, matching each stage's accent.
 const BAR_FILL: Record<FolderKey, string> = {
@@ -15,7 +15,7 @@ const BAR_FILL: Record<FolderKey, string> = {
  * a pulsing dot + percent + a thin determinate bar in the stage color; queued
  * shows a discreet "Na fila" pill (purple, matching the queued StatusBadge).
  */
-export function FileProgressCell({ info }: { info: FileProcessing }) {
+export function FileProgressCell({ info }: { info: ResolvedProcessing }) {
   if (info.status === "queued") {
     return (
       <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/20 px-1.5 py-0.5 text-[10px] font-medium text-purple-400">

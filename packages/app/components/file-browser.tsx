@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 import { compareNatural } from "@/lib/sort";
 import { getFiles, getJobs, deleteFiles, downloadFile } from "@/lib/api";
 import { usePoll } from "@/lib/use-poll";
-import { buildProcessingMap, normalizeRelPath } from "@/lib/processing";
+import { buildProcessingMap, normalizeRelPath, resolveProcessing } from "@/lib/processing";
 import { FileProgressCell } from "@/components/file-progress-cell";
 import {
   FOLDER_COLORS,
@@ -379,6 +379,7 @@ export function FileBrowser() {
                   const info = processing.get(
                     normalizeRelPath(joinPath(path, file.name)),
                   );
+                  const proc = info ? resolveProcessing(info, file) : null;
                   return (
                     <TableRow key={file.name}>
                       <TableCell className="font-mono text-sm truncate max-w-[180px] sm:max-w-[300px]">
@@ -401,8 +402,8 @@ export function FileBrowser() {
                               if (canClickDelete) toggleDeleteCell(file.name, entry.key);
                             }}
                           >
-                            {!deleteMode && info && info.column === entry.key ? (
-                              <FileProgressCell info={info} />
+                            {!deleteMode && proc && proc.column === entry.key ? (
+                              <FileProgressCell info={proc} />
                             ) : entry.exists ? (
                               deleteMode ? (
                                 <span>
