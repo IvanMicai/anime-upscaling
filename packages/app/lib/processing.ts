@@ -41,9 +41,7 @@ export interface FileProcessing {
   /** FFmpeg sub-phase, e.g. "Encode" | "Remux" | "Check" (running only). */
   phase?: string;
   jobType: string;
-  /** Operations a queued file will go through (first one determines its column). */
-  queuedOp?: string | null;
-  /** Pipeline step operations, used to disambiguate GPU upscale vs interpolate. */
+  /** Pipeline step operations: disambiguates GPU work and the next queued step. */
   pipelineOps?: string[];
 }
 
@@ -71,7 +69,6 @@ export function buildProcessingMap(jobs: Job[]): Map<string, FileProcessing> {
     const pipelineOps = isPipeline
       ? (job.pipeline_steps ?? []).map((s) => s.operation)
       : undefined;
-    const queuedOp = isPipeline ? (pipelineOps?.[0] ?? null) : job.type;
 
     const containers = job.progress?.containers ?? {};
     const active = new Set<string>();
@@ -102,7 +99,7 @@ export function buildProcessingMap(jobs: Job[]): Map<string, FileProcessing> {
       const key = normalizeRelPath(f);
       if (active.has(key)) continue;
       if (map.get(key)?.status === "running") continue;
-      map.set(key, { percent: null, status: "queued", jobType: job.type, queuedOp });
+      map.set(key, { percent: null, status: "queued", jobType: job.type, pipelineOps });
     }
   }
 
@@ -116,7 +113,17 @@ export function buildProcessingMap(jobs: Job[]): Map<string, FileProcessing> {
  * disambiguate GPU upscale-vs-interpolate using the file's existing stages.
  */
 function operationFor(info: FileProcessing, file: VideoFile): string | null {
-  if (info.status === "queued") return info.queuedOp ?? null;
+  if (info.status === "queued") {
+    if (info.jobType !== "custom_pipeline") return info.jobType;
+    // A queued pipeline file may already be partway through; its next pending
+    // step is the first one whose output stage doesn't exist yet.
+    for (const op of info.pipelineOps ?? []) {
+      if (op === "upscale" && !file.has_upscaled) return "upscale";
+      if (op === "interpolate" && !file.has_interpolated) return "interpolate";
+      if (op === "optimize" && !file.has_optimized) return "optimize";
+    }
+    return null;
+  }
   if (info.jobType !== "custom_pipeline") return info.jobType;
 
   const phase = info.phase;
