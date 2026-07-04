@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.1](https://github.com/IvanMicai/anime-upscaling/compare/v1.11.0...v1.11.1) (2026-07-04)
+
+### Bug Fixes
+
+* normalize anamorphic/interlaced sources to square pixels before video2x ([#57](https://github.com/IvanMicai/anime-upscaling/issues/57)) ([504283a](https://github.com/IvanMicai/anime-upscaling/commit/504283a6470bef79f7545f9c126c4f300c70e839))
+
 ## [1.11.0](https://github.com/IvanMicai/anime-upscaling/compare/v1.10.7...v1.11.0) (2026-06-30)
 
 ### Features
