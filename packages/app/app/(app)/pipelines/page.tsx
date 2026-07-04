@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Play, Pencil, Trash2 } from "lucide-react";
+import { Plus, Play, Pencil, Copy, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,7 +23,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { usePoll } from "@/lib/use-poll";
 import { cn } from "@/lib/utils";
 import { sectionCardPlain } from "@/lib/section";
-import { getPipelines, deletePipeline, runPipeline } from "@/lib/api";
+import { getPipelines, createPipeline, deletePipeline, runPipeline } from "@/lib/api";
 import { FOLDER_OPTIONS, type FolderKey } from "@/lib/file-utils";
 import type { Pipeline } from "@/lib/types";
 import {
@@ -44,6 +44,19 @@ export default function PipelinesPage() {
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Pipeline | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [copyingId, setCopyingId] = useState<string | null>(null);
+
+  async function handleCopy(p: Pipeline) {
+    setCopyingId(p.id);
+    setError(null);
+    try {
+      const created = await createPipeline({ name: `Cópia de ${p.name}`, steps: p.steps });
+      router.push(`/pipelines/${created.id}/edit?focus=name`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao copiar");
+      setCopyingId(null);
+    }
+  }
 
   async function handleDelete() {
     if (!deleteTarget) return;
@@ -142,6 +155,16 @@ export default function PipelinesPage() {
                         <Pencil className="h-3 w-3" />
                       </Button>
                     </Link>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Copiar pipeline"
+                      disabled={copyingId === p.id}
+                      onClick={() => handleCopy(p)}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
