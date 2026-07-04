@@ -28,6 +28,7 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gpuVendor, setGpuVendor] = useState<GPUVendor>("");
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const steps = items.map((it) => it.step);
 
@@ -36,6 +37,16 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
       .then((s) => setGpuVendor(s.gpu_vendor ?? ""))
       .catch(() => {});
   }, []);
+
+  // Ao chegar de "Copiar pipeline" (?focus=name), foca e seleciona o nome para
+  // renomear rapidamente. Lê a query no client (dentro do effect) para evitar o
+  // requisito de <Suspense> que useSearchParams impõe no build.
+  useEffect(() => {
+    if (existing && new URLSearchParams(window.location.search).get("focus") === "name") {
+      nameRef.current?.focus();
+      nameRef.current?.select();
+    }
+  }, [existing]);
 
   function addStep(operation: PipelineStep["operation"]) {
     setItems((prev) => [
@@ -94,6 +105,7 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
       <div className="space-y-2">
         <label className="text-sm font-medium">Nome</label>
         <input
+          ref={nameRef}
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
