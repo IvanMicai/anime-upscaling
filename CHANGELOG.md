@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.12.0](https://github.com/IvanMicai/anime-upscaling/compare/v1.11.1...v1.12.0) (2026-07-04)
+
+### Features
+
+* add copy pipeline action to duplicate an existing pipeline ([#58](https://github.com/IvanMicai/anime-upscaling/issues/58)) ([5d5aa1f](https://github.com/IvanMicai/anime-upscaling/commit/5d5aa1fafc0c5554a87a3ccab48fe08cf7aaee73))
+
 ## [1.11.1](https://github.com/IvanMicai/anime-upscaling/compare/v1.11.0...v1.11.1) (2026-07-04)
 
 ### Bug Fixes
