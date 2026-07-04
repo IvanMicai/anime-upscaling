@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.12.1](https://github.com/IvanMicai/anime-upscaling/compare/v1.12.0...v1.12.1) (2026-07-04)
+
+### Bug Fixes
+
+* sort pipeline list alphabetically (stop reshuffling on /pipelines) ([#59](https://github.com/IvanMicai/anime-upscaling/issues/59)) ([65dcffa](https://github.com/IvanMicai/anime-upscaling/commit/65dcffa335866dd2098db9cf1ee6dea91969efbd))
+
 ## [1.12.0](https://github.com/IvanMicai/anime-upscaling/compare/v1.11.1...v1.12.0) (2026-07-04)
 
 ### Features
