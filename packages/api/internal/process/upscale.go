@@ -86,8 +86,19 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 
 	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Iniciando: " + filename, Time: time.Now()})
 
+	// Convert anamorphic/interlaced sources to square pixels before video2x so
+	// the upscale output displays at its true aspect (no side bars). No-op for
+	// already-square progressive input; cleanup is deferred so it also fires
+	// across the salvage/retry path below.
+	effInputDir, normCleanup, err := normalizeForVideo2x(ctx, cfg, r, filename, inputDir, source, index, onEvent)
+	defer normCleanup()
+	if err != nil {
+		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao normalizar: %s (%v)", filename, err), Time: time.Now()})
+		return false
+	}
+
 	logFile := gpuLogPath(cfg, gpuID, streamIdx)
-	err := r.Video2x(ctx, gpuID, streamIdx, filename, logFile, scale, opts, inputDir, tempOutputDir, gpuProgress)
+	err = r.Video2x(ctx, gpuID, streamIdx, filename, logFile, scale, opts, effInputDir, tempOutputDir, gpuProgress)
 	tempOutPath := filepath.Join(tempOutputDir, filename)
 
 	// glslang's PoolAlloc assertion (an upstream video2x/ncnn-vulkan bug) can
@@ -101,7 +112,7 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 		} else if sig, signaled := runner.SignalFromError(err); signaled {
 			onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Tentativa 1 morreu com signal %s; repetindo upscale: %s", sig, filename), Time: time.Now()})
 			_ = os.Remove(tempOutPath)
-			err = r.Video2x(ctx, gpuID, streamIdx, filename, logFile, scale, opts, inputDir, tempOutputDir, gpuProgress)
+			err = r.Video2x(ctx, gpuID, streamIdx, filename, logFile, scale, opts, effInputDir, tempOutputDir, gpuProgress)
 			if err != nil && salvageSignaledRun(err, logFile, tempOutPath) {
 				onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Recuperando %s na 2ª tentativa: video2x morreu em signal mas output foi escrito por completo", filename), Time: time.Now()})
 				err = nil

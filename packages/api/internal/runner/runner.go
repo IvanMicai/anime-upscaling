@@ -457,6 +457,68 @@ func (r *Runner) FFmpegRemuxSubtitles(ctx context.Context, encodedRelPath, sourc
 	return runError(cmd.Run(), tail)
 }
 
+// FFmpegNormalizeSquare renders a square-pixel copy of src to dst so video2x
+// receives a file it won't mishandle: it converts non-square (anamorphic) pixels
+// to the true display resolution (scale=iw*sar, then setsar=1) and optionally
+// deinterlaces first. Without this, video2x decodes the raw anamorphic grid,
+// upscales it, and re-encodes with square pixels — dropping the display aspect,
+// which pillarboxes 16:9 DVD sources and stretches 4:3 ones.
+//
+// Non-video streams are copied through (audio + subtitles) so downstream stages
+// keep them. The video is re-encoded near-lossless because this is a throwaway
+// intermediate that video2x immediately re-decodes.
+func (r *Runner) FFmpegNormalizeSquare(ctx context.Context, srcAbs, dstAbs string, deinterlace bool, onProgress func(Progress)) error {
+	f, err := os.OpenFile(r.cfg.BaseDir+"/ffmpeg.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("open ffmpeg log: %w", err)
+	}
+	defer f.Close()
+
+	args := []string{
+		"-progress", "pipe:2", "-nostats",
+		"-i", srcAbs,
+		// Explicit v/a/s mapping skips data/attachment streams that would break
+		// -c copy; ? makes audio/subtitle maps optional so sources without them
+		// still succeed.
+		"-map", "0:v:0", "-map", "0:a?", "-map", "0:s?",
+		"-vf", buildNormalizeFilter(deinterlace),
+		"-c:v", "libx264", "-preset", "superfast", "-crf", "12",
+		"-c:a", "copy",
+		"-c:s", "copy",
+		dstAbs,
+	}
+
+	cmd := exec.CommandContext(ctx, r.cfg.FFmpegBin, args...)
+
+	tail := newTailWriter(20)
+	out := io.MultiWriter(f, tail)
+	if onProgress != nil {
+		out = io.MultiWriter(newFFmpegProgressWriter(f, onProgress, "Normalize"), tail)
+	}
+	cmd.Stdout = out
+	cmd.Stderr = out
+
+	label := ProcessPrefix + "ffmpeg-normalize-" + ephemeralSuffix()
+	registerForCtx(ctx, label, cmd)
+	defer tracker.unregister(label)
+
+	return runError(cmd.Run(), tail)
+}
+
+// buildNormalizeFilter builds the -vf chain for FFmpegNormalizeSquare: optional
+// bwdif deinterlace, then scale=iw*sar (square-pixel display width, rounded to
+// even for yuv420) + setsar=1 so nothing downstream re-stretches the result.
+// bwdif's default send_frame mode keeps one frame per frame → no fps change, so
+// audio stays in sync; it also handles anime line art better than yadif.
+func buildNormalizeFilter(deinterlace bool) string {
+	filters := []string{}
+	if deinterlace {
+		filters = append(filters, "bwdif")
+	}
+	filters = append(filters, "scale='round(iw*sar/2)*2':ih:flags=lanczos", "setsar=1")
+	return strings.Join(filters, ",")
+}
+
 func buildVideoFilter(scaleDivisor int, frameRateDivisor int, frameRateAbsolute float64, codec string) string {
 	if codec == "copy" {
 		return ""
@@ -757,6 +819,72 @@ func (r *Runner) ProbeResolution(ctx context.Context, absPath string) (VideoReso
 type VideoResolution struct {
 	Width  int
 	Height int
+}
+
+// AspectInfo holds pixel-aspect and scan metadata for a video's first stream.
+type AspectInfo struct {
+	Width      int
+	Height     int
+	SarNum     int // sample aspect ratio numerator (0 when unknown)
+	SarDen     int // sample aspect ratio denominator (0 when unknown)
+	Interlaced bool
+}
+
+// Anamorphic reports whether the stream uses non-square pixels (SAR != 1:1),
+// which is what makes the stored resolution differ from the display resolution.
+func (a AspectInfo) Anamorphic() bool {
+	return a.SarNum > 0 && a.SarDen > 0 && a.SarNum != a.SarDen
+}
+
+// ProbeAspect reads width/height, sample aspect ratio, and scan type of the
+// first video stream. Missing or "N/A" fields come back as zero values (SAR
+// 0:0, not interlaced). Uses key=value output so field order is irrelevant.
+func (r *Runner) ProbeAspect(ctx context.Context, absPath string) (AspectInfo, error) {
+	var buf bytes.Buffer
+	cmd := exec.CommandContext(ctx, r.cfg.FFprobeBin,
+		"-v", "error",
+		"-select_streams", "v:0",
+		"-show_entries", "stream=width,height,sample_aspect_ratio,field_order",
+		"-of", "default=noprint_wrappers=1",
+		absPath,
+	)
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		return AspectInfo{}, fmt.Errorf("ffprobe aspect: %w", err)
+	}
+
+	fields := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		if k, v, ok := strings.Cut(line, "="); ok {
+			fields[strings.TrimSpace(k)] = strings.TrimSpace(v)
+		}
+	}
+
+	info := AspectInfo{}
+	info.Width, _ = strconv.Atoi(fields["width"])
+	info.Height, _ = strconv.Atoi(fields["height"])
+	info.SarNum, info.SarDen = parseAspectRatio(fields["sample_aspect_ratio"])
+	switch fields["field_order"] {
+	case "tt", "bb", "tb", "bt":
+		info.Interlaced = true
+	}
+	return info, nil
+}
+
+// parseAspectRatio parses ffprobe "num:den" ratios like "32:27". Returns (0, 0)
+// for "N/A", "0:1", empty, or malformed input.
+func parseAspectRatio(s string) (int, int) {
+	parts := strings.SplitN(s, ":", 2)
+	if len(parts) != 2 {
+		return 0, 0
+	}
+	n, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+	d, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err1 != nil || err2 != nil || n <= 0 || d <= 0 {
+		return 0, 0
+	}
+	return n, d
 }
 
 // AudioTrack holds metadata for an audio stream.

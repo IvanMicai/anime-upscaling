@@ -81,10 +81,21 @@ func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, g
 		rifeOpts.UHD = true
 	}
 
+	// Convert anamorphic/interlaced sources to square pixels before video2x so
+	// the output keeps the true aspect (no side bars). No-op when interpolating
+	// after upscale, since that input is already square. Cleanup is deferred so
+	// it also fires across the salvage/retry path below.
+	effInputDir, normCleanup, err := normalizeForVideo2x(ctx, cfg, r, filename, inputDir, source, index, onEvent)
+	defer normCleanup()
+	if err != nil {
+		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao normalizar: %s (%v)", filename, err), Time: time.Now()})
+		return false
+	}
+
 	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Interpolando: " + filename, Time: time.Now()})
 
 	logFile := gpuLogPath(cfg, gpuID, streamIdx)
-	err := r.Video2xRife(ctx, gpuID, streamIdx, filename, logFile, multiplier, rifeOpts, inputDir, tempOutputDir, gpuProgress)
+	err = r.Video2xRife(ctx, gpuID, streamIdx, filename, logFile, multiplier, rifeOpts, effInputDir, tempOutputDir, gpuProgress)
 	tempOutPath := filepath.Join(tempOutputDir, filename)
 
 	// See upscale.go: glslang PoolAlloc aborts can fire after the output is
@@ -96,7 +107,7 @@ func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, g
 		} else if sig, signaled := runner.SignalFromError(err); signaled {
 			onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Tentativa 1 morreu com signal %s; repetindo interpolação: %s", sig, filename), Time: time.Now()})
 			_ = os.Remove(tempOutPath)
-			err = r.Video2xRife(ctx, gpuID, streamIdx, filename, logFile, multiplier, rifeOpts, inputDir, tempOutputDir, gpuProgress)
+			err = r.Video2xRife(ctx, gpuID, streamIdx, filename, logFile, multiplier, rifeOpts, effInputDir, tempOutputDir, gpuProgress)
 			if err != nil && salvageSignaledRun(err, logFile, tempOutPath) {
 				onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Recuperando %s na 2ª tentativa: video2x morreu em signal mas output foi escrito por completo", filename), Time: time.Now()})
 				err = nil
