@@ -70,7 +70,14 @@ export function deleteFiles(req: DeleteFilesRequest): Promise<DeleteFilesRespons
 // Pipeline API
 
 export function getPipelines(): Promise<Pipeline[]> {
-  return fetchJSON<Pipeline[]>("/api/pipelines");
+  // Sort alphabetically (natural order, case-insensitive) so both consumers —
+  // /pipelines and jobs/new — always render a stable order. The backend already
+  // sorts, but this keeps the UI order guaranteed regardless of API version.
+  return fetchJSON<Pipeline[]>("/api/pipelines").then((ps) =>
+    [...ps].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }),
+    ),
+  );
 }
 
 export function getPipeline(id: string): Promise<Pipeline> {

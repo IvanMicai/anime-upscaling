@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"sort"
 	"sync"
 	"time"
+
+	"anime-upscaling/internal/files"
 )
 
 // PipelineStep defines a single operation in a pipeline.
@@ -200,7 +203,11 @@ func generateID() string {
 	return fmt.Sprintf("p_%d_%04x", time.Now().Unix(), rand.Intn(0xFFFF))
 }
 
-// List returns all pipeline definitions.
+// List returns all pipeline definitions sorted alphabetically by name. The
+// backing store is a map, whose Go iteration order is randomized per call, so
+// sorting here gives the API (and both UI screens) a stable order instead of
+// reshuffling on every request. Uses the same natural-order comparator as the
+// file lists (files.NaturalLess) so names with digits sort intuitively.
 func (s *Store) List() []Pipeline {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -209,6 +216,7 @@ func (s *Store) List() []Pipeline {
 	for _, p := range s.data {
 		list = append(list, p)
 	}
+	sort.Slice(list, func(i, j int) bool { return files.NaturalLess(list[i].Name, list[j].Name) })
 	return list
 }
 
