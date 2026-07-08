@@ -22,6 +22,7 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
   const [cancelling, setCancelling] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
 
   const active = job.status === "running" || job.status === "queued";
 
@@ -34,6 +35,7 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
       // ignore — poll will catch up
     } finally {
       setCancelling(false);
+      setCancelConfirmOpen(false);
     }
   }
 
@@ -69,7 +71,7 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
             <Button
               variant="destructive"
               size="sm"
-              onClick={handleCancel}
+              onClick={() => setCancelConfirmOpen(true)}
               disabled={cancelling}
             >
               <X className="size-4" />
@@ -87,6 +89,18 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={cancelConfirmOpen}
+        onOpenChange={setCancelConfirmOpen}
+        title="Cancel job?"
+        description="This job is still active. Cancelling stops processing; progress on unfinished files will be lost."
+        confirmLabel="Cancel job"
+        cancelLabel="Keep running"
+        destructive
+        loading={cancelling}
+        onConfirm={handleCancel}
+      />
 
       <ConfirmDialog
         open={confirmOpen}
