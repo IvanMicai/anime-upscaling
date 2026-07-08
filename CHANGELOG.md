@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.13.0](https://github.com/IvanMicai/anime-upscaling/compare/v1.12.1...v1.13.0) (2026-07-08)
+
+### Features
+
+* default /files to All filter and confirm job cancellation ([#65](https://github.com/IvanMicai/anime-upscaling/issues/65)) ([7dda081](https://github.com/IvanMicai/anime-upscaling/commit/7dda081104b00a025bb9c45bf146ef4279cf97a1))
+
 ## [1.12.1](https://github.com/IvanMicai/anime-upscaling/compare/v1.12.0...v1.12.1) (2026-07-04)
 
 ### Bug Fixes
