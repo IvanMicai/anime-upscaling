@@ -100,7 +100,7 @@ function FileTooltipContent({ entry }: { entry: FolderEntry }) {
 }
 
 export function FileBrowser() {
-  const [dir, setDir] = useState<Pill>("input");
+  const [dir, setDir] = useState<Pill>("all");
   const [path, setPath] = useState<string>("");
   const [files, setFiles] = useState<VideoFile[]>([]);
   const [directories, setDirectories] = useState<string[]>([]);
