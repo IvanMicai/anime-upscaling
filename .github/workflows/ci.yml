@@ -27,7 +27,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.x"
+          go-version: "1.26.5"
           cache-dependency-path: apps/api/go.mod
 
       - name: Check formatting
@@ -56,7 +56,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.x"
+          go-version: "1.26.5"
           cache-dependency-path: apps/api/go.mod
 
       - name: golangci-lint
@@ -78,7 +78,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.x"
+          go-version: "1.26.5"
           cache-dependency-path: apps/api/go.mod
 
       - name: Install govulncheck
