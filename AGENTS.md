@@ -5,8 +5,8 @@ Runbook for AI coding agents working in this repository. Humans: see the
 
 ## At a glance
 
-Self-hosted anime video processing. A **Go API** (`packages/api`) orchestrates
-`video2x` + `ffmpeg` jobs; a **Next.js app** (`packages/app`) is the dashboard
+Self-hosted anime video processing. A **Go API** (`apps/api`) orchestrates
+`video2x` + `ffmpeg` jobs; a **Next.js app** (`apps/web`) is the dashboard
 and the only network-exposed service. They run together via Docker Compose. Read
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before changing job orchestration,
 the queues, the GPU monitor, or the app↔API boundary.
@@ -40,18 +40,18 @@ GPU, build locally instead: `make run-gpu`.
 
 ```bash
 # API (Go): formatting, vet, race-enabled tests
-cd packages/api && gofmt -l . && go vet ./... && go test -race ./...
+cd apps/api && gofmt -l . && go vet ./... && go test -race ./...
 
 # App (Next.js): lint + build
-cd packages/app && pnpm install && pnpm lint && pnpm build
+cd apps/web && pnpm install && pnpm lint && pnpm build
 
 # Optional: Storybook component tests (local-only, not a CI gate — needs a browser)
-cd packages/app && pnpm test-storybook
+cd apps/web && pnpm test-storybook
 ```
 
 CI runs the Go checks (gofmt, vet, race) plus `golangci-lint` and
 `govulncheck`, and the app `lint` + `build`. Match it before pushing. The
-golangci config is `packages/api/.golangci.yml`.
+golangci config is `apps/api/.golangci.yml`.
 
 ## Logs / stop
 
@@ -80,6 +80,6 @@ make stop   # docker compose down
 ## Pointers
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design and decisions.
-- [packages/api/README.md](packages/api/README.md) — HTTP API reference.
+- [apps/api/README.md](apps/api/README.md) — HTTP API reference.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — workflow and conventions.
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — self-hosted deployment.

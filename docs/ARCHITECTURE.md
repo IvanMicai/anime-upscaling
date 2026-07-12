@@ -4,7 +4,7 @@ This document explains how Anime Upscaling is put together and *why* — the
 design decisions, trust boundaries, and concurrency model a new contributor
 needs before changing job orchestration, the queue, or the app↔API boundary.
 
-For the HTTP contract, see the [API reference](../packages/api/README.md). For
+For the HTTP contract, see the [API reference](../apps/api/README.md). For
 running and deploying, see the [README](../README.md) and
 [Deployment guide](DEPLOYMENT.md).
 
@@ -26,8 +26,8 @@ running and deploying, see the [README](../README.md) and
 
 Two processes deployed together by Docker Compose:
 
-- **`packages/app`** — a Next.js web app. The only port published to the host.
-- **`packages/api`** — a Go HTTP server that orchestrates `video2x` and `ffmpeg`
+- **`apps/web`** — a Next.js web app. The only port published to the host.
+- **`apps/api`** — a Go HTTP server that orchestrates `video2x` and `ffmpeg`
   subprocesses. Reachable only on the internal Compose network.
 
 ```
@@ -35,7 +35,7 @@ Two processes deployed together by Docker Compose:
                          │
   browser ──────────────▶│
                 ┌────────▼─────────┐        ┌──────────────────────┐
-                │  app (Next.js)   │  HTTP  │   api (Go)           │
+                │  web (Next.js)   │  HTTP  │   api (Go)           │
                 │  - login gate    │───────▶│  - job manager       │
                 │  - /api/* proxy  │ :4751  │  - GPU + ffmpeg queue│
                 │  - file download │ (internal)  - GPU monitor     │
@@ -63,7 +63,7 @@ children, gates how many run at once, parses their progress output, kills them o
 cancel, and survives a wedged GPU driver. Go fits this: cheap goroutines, first-
 class `context` cancellation, `os/exec` with `CombinedOutput`/pipes, and a single
 static binary that drops cleanly onto the heavy CUDA base image. Entry point:
-[`cmd/animeup/main.go`](../packages/api/cmd/animeup/main.go) (the `serve`
+[`cmd/animeup/main.go`](../apps/api/cmd/animeup/main.go) (the `serve`
 subcommand; there are also CLI subcommands for direct upscale/optimize/pipeline
 runs).
 
@@ -79,16 +79,16 @@ This is the most important design decision to understand before touching auth or
 networking.
 
 **The Go API has no authentication.** It trusts its network: every handler is
-wrapped only in [`corsMiddleware`](../packages/api/internal/server/server.go),
+wrapped only in [`corsMiddleware`](../apps/api/internal/server/server.go),
 which sets permissive CORS and short-circuits `OPTIONS` — there is no token
 check. This is deliberate, and it is why **the API port must never be published
 to the host or the internet**. The security model is "the API is only reachable
 from the app container."
 
 **Auth lives entirely in the app proxy.** Every request flows through
-[`app/api/[...path]/route.ts`](../packages/app/app/api/[...path]/route.ts), which
+[`app/api/[...path]/route.ts`](../apps/web/app/api/[...path]/route.ts), which
 calls `isValidSession` *before* forwarding upstream and returns `401` otherwise.
-The session model ([`lib/auth.ts`](../packages/app/lib/auth.ts)):
+The session model ([`lib/auth.ts`](../apps/web/lib/auth.ts)):
 
 - The cookie value is `SHA-256(AUTH_PASSWORD + AUTH_SECRET)`, hex-encoded.
 - A request is valid when its cookie equals that hash.
@@ -110,8 +110,8 @@ The proxy has two special paths besides plain JSON forwarding:
 
 A *job* is a unit of work over a set of files. Jobs are created at
 `POST /api/jobs` (validated in
-[`handleCreateJob`](../packages/api/internal/server/server.go)) and managed by
-the `JobManager` in [`internal/server/jobs.go`](../packages/api/internal/server/jobs.go).
+[`handleCreateJob`](../apps/api/internal/server/server.go)) and managed by
+the `JobManager` in [`internal/server/jobs.go`](../apps/api/internal/server/jobs.go).
 
 States and transitions:
 
@@ -133,7 +133,7 @@ queued ──(first worker starts)──▶ running ──(all files done)──
 dispatch, files whose output already exists are marked `SKIP`; pipeline step
 failures emit one real `ERRO` plus placeholder errors for the steps that won't
 run, so the totals always balance (see §7 and `failRemaining` in
-[`custom_pipeline.go`](../packages/api/internal/process/custom_pipeline.go)).
+[`custom_pipeline.go`](../apps/api/internal/process/custom_pipeline.go)).
 
 **Jobs are in-memory only.** `JobManager.jobs` is a plain `map[string]*Job`; jobs
 do not survive an API restart. Pipeline *definitions* persist to
@@ -147,7 +147,7 @@ before removing the job.
 ## 5. Concurrency model: the two queues
 
 All throughput control is two priority-aware worker pools in
-[`internal/queue/queue.go`](../packages/api/internal/queue/queue.go), built in
+[`internal/queue/queue.go`](../apps/api/internal/queue/queue.go), built in
 `NewJobManager`:
 
 - **`GPUQueue`** — `GPU_COUNT × STREAMS_PER_GPU` slots, each a `(gpuID,
@@ -161,7 +161,7 @@ All throughput control is two priority-aware worker pools in
 Both pools serve waiters **highest-priority-first**, not FIFO. This matters
 because a custom pipeline launches a goroutine per file up front and lets the
 queue order them. The composite priority
-([`pipelinePriority`](../packages/api/internal/process/custom_pipeline.go)) is:
+([`pipelinePriority`](../apps/api/internal/process/custom_pipeline.go)) is:
 
 ```
 priority = stepIdx * 1_000_000 - index
@@ -189,7 +189,7 @@ queue.
 NVIDIA drivers can wedge (e.g. NVRM Xid 119 / GSP RPC timeouts). When that
 happens, feeding the GPU new work just piles up uninterruptible
 `nvidia-container-cli` processes and makes recovery harder. The monitor
-([`internal/gpu/monitor.go`](../packages/api/internal/gpu/monitor.go)) stops the
+([`internal/gpu/monitor.go`](../apps/api/internal/gpu/monitor.go)) stops the
 bleeding by gating dispatch.
 
 How it works:
@@ -200,7 +200,7 @@ How it works:
 - After **2 consecutive failures** it flips to *unhealthy*; it recovers to
   *healthy* on the next successful probe.
 - It is installed as the `GPUQueue`'s pre-acquisition gate via
-  `jm.SetGPUGate(monitor.WaitHealthy)` ([`server.go`](../packages/api/internal/server/server.go)).
+  `jm.SetGPUGate(monitor.WaitHealthy)` ([`server.go`](../apps/api/internal/server/server.go)).
   While unhealthy, `GPUQueue.Acquire` blocks in `WaitHealthy` until the driver
   recovers or the caller's context is cancelled. The FFmpeg pool is unaffected.
 - It only probes when `GPU_VENDOR=nvidia`. For CPU-only and AMD/Intel it is a
@@ -214,7 +214,7 @@ process and is the operator's responsibility.
 ## 7. Pipelines and the data directory
 
 The `/data` volume holds both media and JSON state. Directories are defined in
-[`internal/config/config.go`](../packages/api/internal/config/config.go):
+[`internal/config/config.go`](../apps/api/internal/config/config.go):
 
 | Directory        | Holds                                              |
 | ---------------- | -------------------------------------------------- |
@@ -226,13 +226,13 @@ The `/data` volume holds both media and JSON state. Directories are defined in
 
 A **pipeline** is an ordered list of steps (`upscale`, `interpolate`,
 `optimize`). `RunCustomPipelineForFile`
-([`custom_pipeline.go`](../packages/api/internal/process/custom_pipeline.go))
+([`custom_pipeline.go`](../apps/api/internal/process/custom_pipeline.go))
 runs all steps for one file, advancing the input directory as it goes: each step
 reads from the previous step's canonical output dir
 (`input → output → interpolated → optimized`). Encodes write into `temp/` and are
 renamed into place on success so partial outputs never appear as finished files.
 Filenames with spaces are hard-linked to a sanitized name for `video2x` and
-restored afterward (see [`internal/runner/runner.go`](../packages/api/internal/runner/runner.go)).
+restored afterward (see [`internal/runner/runner.go`](../apps/api/internal/runner/runner.go)).
 
 Pipeline definitions are stored in `pipelines.json` (a `pipeline.Store`) and
 managed via `/api/pipelines`; a run is triggered with
@@ -244,7 +244,7 @@ managed via `/api/pipelines`; a run is triggered with
 > are delivered by **polling**, not Server-Sent Events.
 
 Each job keeps an in-memory append-only log slice. The client hook
-[`lib/use-log-stream.ts`](../packages/app/lib/use-log-stream.ts) polls
+[`lib/use-log-stream.ts`](../apps/web/lib/use-log-stream.ts) polls
 `GET /api/jobs/{id}/logs?since=<cursor>` every ~1.5s; the server
 (`handleJobLogs`) returns `{ entries, total, running }` where `total` is the new
 cursor the client sends next. Polling stops when `running` is false. (The proxy
@@ -253,7 +253,7 @@ use it.)
 
 Per-file progress is parsed from worker output — `ffmpeg -progress pipe:2` and
 `video2x` stdout — by the runner's progress writers
-([`internal/runner/progress.go`](../packages/api/internal/runner/progress.go)),
+([`internal/runner/progress.go`](../apps/api/internal/runner/progress.go)),
 and surfaced as `Progress.Containers[source]`, keyed by worker label
 (`"GPU 0"`, `"FFMPEG"`, …).
 
@@ -261,7 +261,7 @@ and surfaced as `Progress.Containers[source]`, keyed by worker label
 
 The API image is built `FROM ghcr.io/k4yt3x/video2x:6.4.0`, which bundles an
 older `ffmpeg` whose `libx265` is prone to thread-pool `SIGSEGV`s on some inputs.
-Rather than fork video2x, the [`Dockerfile`](../packages/api/Dockerfile) fetches
+Rather than fork video2x, the [`Dockerfile`](../apps/api/Dockerfile) fetches
 a current static GPL build (libx265 + nvenc) from BtbN and copies `ffmpeg`/
 `ffprobe` into `/usr/local/bin`, which precedes `/usr/bin` on `PATH`. The API
 looks up `ffmpeg`/`ffprobe` by name, so it resolves to the newer binaries with no
@@ -269,7 +269,7 @@ code change. Bump `FFMPEG_VARIANT` to change versions; the build prints
 `ffmpeg -version` into the log.
 
 Relatedly, the **salvage** path
-([`internal/process/salvage.go`](../packages/api/internal/process/salvage.go))
+([`internal/process/salvage.go`](../apps/api/internal/process/salvage.go))
 treats a signal-killed `video2x` run as success when the output is fully written
 and the success marker is in the log — working around a glslang teardown crash
 that kills the process *after* it has finished the actual work.
@@ -295,7 +295,7 @@ that kills the process *after* it has finished the actual work.
 
 ```
 .
-├── packages/
+├── apps/
 │   ├── api/                 Go HTTP API + processing
 │   │   ├── cmd/animeup/      CLI entry point (serve + direct subcommands)
 │   │   ├── internal/
@@ -309,7 +309,7 @@ that kills the process *after* it has finished the actual work.
 │   │   │   ├── cache/        file-status cache (resolution/track metadata)
 │   │   │   └── config/       env + persisted settings
 │   │   └── Dockerfile        video2x base + ffmpeg overlay
-│   └── app/                 Next.js dashboard (App Router)
+│   └── web/                 Next.js dashboard (App Router)
 │       ├── app/api/[...path] server-side proxy + auth gate
 │       ├── components/       UI + Storybook stories
 │       └── lib/              auth, polling hooks, API client, types
@@ -318,7 +318,7 @@ that kills the process *after* it has finished the actual work.
 ```
 
 **Non-standard workspace.** `pnpm-workspace.yaml` and `pnpm-lock.yaml` live in
-`packages/app`, not the repo root. Consequence: pnpm commands run from
-`packages/app`, and CI / Dependabot target that directory rather than `/`. Go
-tooling targets `packages/api` (where `go.mod` lives). Keep this in mind when
+`apps/web`, not the repo root. Consequence: pnpm commands run from
+`apps/web`, and CI / Dependabot target that directory rather than `/`. Go
+tooling targets `apps/api` (where `go.mod` lives). Keep this in mind when
 adding tooling that assumes a root-level manifest.

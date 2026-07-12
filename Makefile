@@ -50,10 +50,10 @@ build: build-api build-app
 
 # --platform: video2x base is amd64-only; lets the build run on Apple Silicon.
 build-api:
-	docker build --platform=linux/amd64 -t anime-upscaling-api packages/api
+	docker build --platform=linux/amd64 -t anime-upscaling-api apps/api
 
 build-app:
-	docker build -t anime-upscaling-app packages/app
+	docker build -t anime-upscaling-web apps/web
 
 # --- Run (production) ---
 
@@ -79,11 +79,11 @@ dev:
 dev-api:
 	@mkdir -p "$(PROCESS_DIR)/input" "$(PROCESS_DIR)/output" "$(PROCESS_DIR)/optimized" \
 		"$(PROCESS_DIR)/interpolated" "$(PROCESS_DIR)/temp"
-	cd packages/api && go run ./cmd/animeup serve
+	cd apps/api && go run ./cmd/animeup serve
 
 dev-app:
-	cp .env packages/app/.env.local
-	cd packages/app && PORT=$(APP_PORT) pnpm dev
+	cp .env apps/web/.env.local
+	cd apps/web && PORT=$(APP_PORT) pnpm dev
 
 # --- Deploy ---
 
@@ -94,5 +94,5 @@ deploy:
 # --- Clean ---
 
 clean:
-	rm -rf bin packages/api/animeup packages/app/.next packages/app/node_modules
-	-docker rmi anime-upscaling-api anime-upscaling-app 2>/dev/null
+	rm -rf bin apps/api/animeup apps/web/.next apps/web/node_modules
+	-docker rmi anime-upscaling-api anime-upscaling-web 2>/dev/null

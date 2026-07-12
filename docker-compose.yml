@@ -1,6 +1,6 @@
 services:
   api:
-    build: packages/api
+    build: apps/api
     image: anime-upscaling-api
     platform: linux/amd64  # video2x base is amd64-only (runs under emulation on Apple Silicon)
     container_name: anime-upscaling-api
@@ -19,10 +19,10 @@ services:
     mem_limit: ${API_MEM_LIMIT:-16g}
     restart: unless-stopped
 
-  app:
-    build: packages/app
-    image: anime-upscaling-app
-    container_name: anime-upscaling-app
+  web:
+    build: apps/web
+    image: anime-upscaling-web
+    container_name: anime-upscaling-web
     env_file: .env
     environment:
       - PORT=${APP_PORT:-4750}

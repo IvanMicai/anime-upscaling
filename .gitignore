@@ -16,8 +16,8 @@ logs/
 data/
 files/
 sources.json
-packages/api/animeup
-packages/app/node_modules/
-packages/app/.next/
-packages/app/next-env.d.ts
-packages/app/tsconfig.tsbuildinfo
+apps/api/animeup
+apps/web/node_modules/
+apps/web/.next/
+apps/web/next-env.d.ts
+apps/web/tsconfig.tsbuildinfo
