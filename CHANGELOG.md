@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.13.1](https://github.com/IvanMicai/anime-upscaling/compare/v1.13.0...v1.13.1) (2026-07-13)
+
+### Bug Fixes
+
+* **deps:** bump web app runtime dependencies ([#78](https://github.com/IvanMicai/anime-upscaling/issues/78)) ([7dc9415](https://github.com/IvanMicai/anime-upscaling/commit/7dc94156185689edd9cd1c3bd07ced2b39d5838b)), closes [#71](https://github.com/IvanMicai/anime-upscaling/issues/71)
+
 ## [1.13.0](https://github.com/IvanMicai/anime-upscaling/compare/v1.12.1...v1.13.0) (2026-07-08)
 
 ### Features
