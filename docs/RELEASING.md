@@ -15,7 +15,7 @@ release, then pushes the API and app images to Docker Hub with matching tags.
 Create two Docker Hub repositories in your user or organization namespace:
 
 - `anime-upscaling-api`
-- `anime-upscaling-app`
+- `anime-upscaling-web`
 
 Create a Docker Hub personal access token:
 
@@ -66,7 +66,7 @@ If the repository has no previous release tag, the first release starts at
 Each release publishes both images:
 
 - `${DOCKERHUB_NAMESPACE}/anime-upscaling-api`
-- `${DOCKERHUB_NAMESPACE}/anime-upscaling-app`
+- `${DOCKERHUB_NAMESPACE}/anime-upscaling-web`
 
 For version `1.2.3`, the workflow publishes:
 
@@ -118,9 +118,9 @@ Docker Hub repository:
 ```bash
 docker login --username my-user
 
-docker build -t my-user/anime-upscaling-api:0.0.0-test packages/api
+docker build -t my-user/anime-upscaling-api:0.0.0-test apps/api
 docker push my-user/anime-upscaling-api:0.0.0-test
 
-docker build -t my-user/anime-upscaling-app:0.0.0-test packages/app
-docker push my-user/anime-upscaling-app:0.0.0-test
+docker build -t my-user/anime-upscaling-web:0.0.0-test apps/web
+docker push my-user/anime-upscaling-web:0.0.0-test
 ```

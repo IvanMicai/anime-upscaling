@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="packages/app/public/favicon/favicon.svg" alt="AnimeUp logo" width="96" />
+  <img src="apps/web/public/favicon/favicon.svg" alt="AnimeUp logo" width="96" />
 
   <h1>Anime Upscaling</h1>
 
@@ -61,7 +61,7 @@ the Compose network.
 - Optional hardware-encoded output (NVIDIA / AMD / Intel) for `optimize` jobs.
 - Docker Compose deployment with a generic default and an NVIDIA GPU overlay.
 - Portainer-friendly stack file for one-click deploys on home servers.
-- Storybook for the UI component library (`packages/app`).
+- Storybook for the UI component library (`apps/web`).
 
 ## Screenshots
 
@@ -74,7 +74,7 @@ the Compose network.
 Three upscale processors are wired in via video2x, plus the full RIFE family for
 frame interpolation. Pick a processor first, then a model — only some model/scale
 combinations are valid (the UI enforces this, see
-[`pipeline.go`](packages/api/internal/pipeline/pipeline.go) for the source of
+[`pipeline.go`](apps/api/internal/pipeline/pipeline.go) for the source of
 truth).
 
 ### Upscale models
@@ -253,7 +253,7 @@ reported per step.
 API:
 
 ```bash
-cd packages/api
+cd apps/api
 go test ./...
 go run ./cmd/animeup serve
 ```
@@ -261,7 +261,7 @@ go run ./cmd/animeup serve
 App:
 
 ```bash
-cd packages/app
+cd apps/web
 pnpm install
 pnpm dev
 pnpm lint
@@ -279,8 +279,8 @@ make dev
 - [Architecture](docs/ARCHITECTURE.md)
 - [Deployment guide](docs/DEPLOYMENT.md)
 - [Releasing guide](docs/RELEASING.md)
-- [API reference](packages/api/README.md)
-- [App notes](packages/app/README.md)
+- [API reference](apps/api/README.md)
+- [App notes](apps/web/README.md)
 - [Contributing](CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Security](SECURITY.md)

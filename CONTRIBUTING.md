@@ -14,7 +14,7 @@ explains the design decisions and trust model the code relies on.
 API:
 
 ```bash
-cd packages/api
+cd apps/api
 go test ./...
 go run ./cmd/animeup serve
 ```
@@ -22,7 +22,7 @@ go run ./cmd/animeup serve
 App:
 
 ```bash
-cd packages/app
+cd apps/web
 pnpm install
 pnpm dev
 ```
@@ -30,7 +30,7 @@ pnpm dev
 Full validation:
 
 ```bash
-cd packages/api && go test ./...
+cd apps/api && go test ./...
 cd ../app && pnpm lint && pnpm build
 ```
 

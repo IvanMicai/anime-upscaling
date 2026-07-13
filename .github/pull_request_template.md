@@ -4,9 +4,9 @@
 
 ## Validation
 
-- [ ] `go test ./...` in `packages/api`
-- [ ] `pnpm lint` in `packages/app`
-- [ ] `pnpm build` in `packages/app`
+- [ ] `go test ./...` in `apps/api`
+- [ ] `pnpm lint` in `apps/web`
+- [ ] `pnpm build` in `apps/web`
 
 ## Notes
 

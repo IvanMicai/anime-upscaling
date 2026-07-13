@@ -31,7 +31,7 @@ make run-gpu   # build locally, NVIDIA overlay
 
 ## Verify it's up
 
-1. `docker compose ps` — `anime-upscaling-app` and `anime-upscaling-api` are up.
+1. `docker compose ps` — `anime-upscaling-web` and `anime-upscaling-api` are up.
 2. Open <http://localhost:4750> and log in with the `AUTH_PASSWORD` from `.env`
    (`grep '^AUTH_PASSWORD=' .env`).
 3. Health probe: the API exposes `GET /api/health/gpu` (reports healthy on

@@ -17,9 +17,9 @@ services:
     mem_limit: ${API_MEM_LIMIT:-16g}
     restart: unless-stopped
 
-  app:
-    image: ${DOCKERHUB_NAMESPACE:-ivanmicai}/anime-upscaling-app:${IMAGE_TAG:-latest}
-    container_name: anime-upscaling-app
+  web:
+    image: ${DOCKERHUB_NAMESPACE:-ivanmicai}/anime-upscaling-web:${IMAGE_TAG:-latest}
+    container_name: anime-upscaling-web
     env_file: .env
     environment:
       - PORT=${APP_PORT:-4750}

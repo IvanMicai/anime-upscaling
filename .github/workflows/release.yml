@@ -13,7 +13,7 @@ permissions:
 
 env:
   API_IMAGE_NAME: anime-upscaling-api
-  APP_IMAGE_NAME: anime-upscaling-app
+  WEB_IMAGE_NAME: anime-upscaling-web
 
 jobs:
   validate:
@@ -26,12 +26,12 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.x"
-          cache-dependency-path: packages/api/go.mod
+          go-version: "1.26.5"
+          cache-dependency-path: apps/api/go.mod
 
       - name: Test API
         run: go test ./...
-        working-directory: packages/api
+        working-directory: apps/api
 
       - name: Set up Node
         uses: actions/setup-node@v6
@@ -43,17 +43,17 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.22.0 --activate
 
-      - name: Install app dependencies
+      - name: Install web dependencies
         run: pnpm install --frozen-lockfile
-        working-directory: packages/app
+        working-directory: apps/web
 
-      - name: Lint app
+      - name: Lint web
         run: pnpm lint
-        working-directory: packages/app
+        working-directory: apps/web
 
-      - name: Build app
+      - name: Build web
         run: pnpm build
-        working-directory: packages/app
+        working-directory: apps/web
 
   release:
     name: Release and publish images
@@ -113,8 +113,8 @@ jobs:
         if: steps.semantic.outputs.new_release_published == 'true'
         uses: docker/build-push-action@v7
         with:
-          context: packages/api
-          file: packages/api/Dockerfile
+          context: apps/api
+          file: apps/api/Dockerfile
           platforms: linux/amd64
           push: true
           tags: |
@@ -129,22 +129,22 @@ jobs:
           cache-from: type=gha,scope=api
           cache-to: type=gha,scope=api,mode=max
 
-      - name: Build and push app image
+      - name: Build and push web image
         if: steps.semantic.outputs.new_release_published == 'true'
         uses: docker/build-push-action@v7
         with:
-          context: packages/app
-          file: packages/app/Dockerfile
+          context: apps/web
+          file: apps/web/Dockerfile
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_version }}
-            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}
-            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}.${{ steps.semantic.outputs.new_release_minor_version }}
-            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:latest
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.WEB_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.WEB_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.WEB_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}.${{ steps.semantic.outputs.new_release_minor_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.WEB_IMAGE_NAME }}:latest
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.semantic.outputs.new_release_version }}
-          cache-from: type=gha,scope=app
-          cache-to: type=gha,scope=app,mode=max
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
