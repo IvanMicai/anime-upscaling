@@ -34,8 +34,8 @@ importers:
         version: 3.6.0
     devDependencies:
       '@storybook/addon-themes':
-        specifier: ^10.4.6
-        version: 10.4.6(storybook@10.5.0(@types/react@19.2.17)(react@19.2.7))
+        specifier: ^10.5.0
+        version: 10.5.0(storybook@10.5.0(@types/react@19.2.17)(react@19.2.7))
       '@storybook/addon-vitest':
         specifier: ^10.4.6
         version: 10.4.6(@vitest/browser-playwright@4.1.5)(@vitest/browser@4.1.5(msw@2.12.10(@types/node@26.1.1)(typescript@5.9.3))(vite@8.0.10(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0))(vitest@4.1.5))(@vitest/runner@4.1.5)(react@19.2.7)(storybook@10.5.0(@types/react@19.2.17)(react@19.2.7))(vitest@4.1.5)
@@ -1903,10 +1903,10 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@storybook/addon-themes@10.4.6':
-    resolution: {integrity: sha512-80d622oB9xWZs3VH4uywkLOA5L2DAx04lVouvCM4XH+pLnJElidoylOLm3i3ByvlGkRjCbB27OUVsW94IgyDrw==}
+  '@storybook/addon-themes@10.5.0':
+    resolution: {integrity: sha512-9dvrN1JcpWt+f+RueMGvdeGTNQJ5y4w931X2HHzE+ItrN2Ogp0vSppb/baUNezeBLqhuUJjPbvyAeAb9v4rong==}
     peerDependencies:
-      storybook: ^10.4.6
+      storybook: ^10.5.0
 
   '@storybook/addon-vitest@10.4.6':
     resolution: {integrity: sha512-VvskHge0GZy86LG6kcY5Ww34z8rDV8JBxqSdUpcJVsWfIvyX6MfAbqI76LlereSyBIJGZJZsqaLwRXsQoVY+0Q==}
@@ -4156,8 +4156,8 @@ packages:
     resolution: {integrity: sha512-vuwillviilfKZsg0VGj5R/YwwcHx4SLsIOI/7K6mQkWx+l5cUHTjj5g0AasTBcyXsbfTgrwsUNmVUb5xVwyPwg==}
     engines: {node: ^10 || ^12 || >=14}
 
-  postcss@8.5.18:
-    resolution: {integrity: sha512-xdB1oSLHbz1vRWgCDalrCqEFTWzFlhqFC5tIHLMOSUIjhm3XXQ1qrFy8S/ESr1JYRRXqM3c1QFiMZUJdUTqyMQ==}
+  postcss@8.5.20:
+    resolution: {integrity: sha512-lW616l85ucIQL+FocMmL7pQFPqBmwejrCMg+iPxyImlrANNJG9NHq/RkyCZopDhd8C3LA03PHRJDjkbGu8vvug==}
     engines: {node: ^10 || ^12 || >=14}
 
   powershell-utils@0.1.0:
@@ -4633,15 +4633,15 @@ packages:
   tldts-core@7.0.23:
     resolution: {integrity: sha512-0g9vrtDQLrNIiCj22HSe9d4mLVG3g5ph5DZ8zCKBr4OtrspmNB6ss7hVyzArAeE88ceZocIEGkyW1Ime7fxPtQ==}
 
-  tldts-core@7.4.8:
-    resolution: {integrity: sha512-c1P7u0EhACHj7lPy4MJm8iTFEU8+nB0LCtddH0fhP7noaVoXAqafMtOOeX+ulpuPBqnrRgRhw494RICT3mbhnw==}
+  tldts-core@7.4.9:
+    resolution: {integrity: sha512-DxKfPBI52p2msTEu7MPhdpdDTBhhVQg1a/8PjQckeyAvO13eMYElX545grIp6nnTGIMZlRvFZPvFhvI/WIz2Vg==}
 
   tldts@7.0.23:
     resolution: {integrity: sha512-ASdhgQIBSay0R/eXggAkQ53G4nTJqTXqC2kbaBbdDwM7SkjyZyO0OaaN1/FH7U/yCeqOHDwFO5j8+Os/IS1dXw==}
     hasBin: true
 
-  tldts@7.4.8:
-    resolution: {integrity: sha512-htwgN/8KRB3z3vnC0BOETVh2m499g5GmyTK9Wq5JBLX3FNz6tSBveAd+fQhzy9hkjif8vy2jwDMR1sGhLtZl2A==}
+  tldts@7.4.9:
+    resolution: {integrity: sha512-3kZ8wQQ/k5DrChD4X4FVvr2D7E5uoRgAqkPyLpSCGUvqOvqu+JEdr3mwMUaVWb+vMHZaKhF5fp2PBigKsui7hA==}
     hasBin: true
 
   to-regex-range@5.0.1:
@@ -6753,7 +6753,7 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@storybook/addon-themes@10.4.6(storybook@10.5.0(@types/react@19.2.17)(react@19.2.7))':
+  '@storybook/addon-themes@10.5.0(storybook@10.5.0(@types/react@19.2.17)(react@19.2.7))':
     dependencies:
       storybook: 10.5.0(@types/react@19.2.17)(react@19.2.7)
       ts-dedent: 2.3.0
@@ -9220,7 +9220,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  postcss@8.5.18:
+  postcss@8.5.20:
     dependencies:
       nanoid: 3.3.16
       picocolors: 1.1.1
@@ -9896,16 +9896,16 @@ snapshots:
 
   tldts-core@7.0.23: {}
 
-  tldts-core@7.4.8:
+  tldts-core@7.4.9:
     optional: true
 
   tldts@7.0.23:
     dependencies:
       tldts-core: 7.0.23
 
-  tldts@7.4.8:
+  tldts@7.4.9:
     dependencies:
-      tldts-core: 7.4.8
+      tldts-core: 7.4.9
     optional: true
 
   to-regex-range@5.0.1:
@@ -9922,7 +9922,7 @@ snapshots:
 
   tough-cookie@6.0.2:
     dependencies:
-      tldts: 7.4.8
+      tldts: 7.4.9
     optional: true
 
   tr46@6.0.0:
@@ -10141,7 +10141,7 @@ snapshots:
     dependencies:
       lightningcss: 1.32.0
       picomatch: 4.0.5
-      postcss: 8.5.18
+      postcss: 8.5.20
       rolldown: 1.0.0-rc.17
       tinyglobby: 0.2.17
     optionalDependencies:
