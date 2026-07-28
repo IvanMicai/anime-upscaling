@@ -65,7 +65,7 @@ func TestRunCustomPipelineForFile_AdmitsNextOnEarlyReturn(t *testing.T) {
 
 	ok := RunCustomPipelineForFile(
 		ctx, config.Config{}, nil, gpuQ, ffmpegQ, steps,
-		"ep.mkv", 1, "input", admitNext,
+		"ep.mkv", 1, "input", 0, admitNext,
 		func(logger.JobLog) {}, func(runner.Progress) {},
 	)
 	if ok {
@@ -125,7 +125,7 @@ func TestRunCustomPipelineForFile_CleanupDeletesSelectedFolders(t *testing.T) {
 
 	ok := RunCustomPipelineForFile(
 		context.Background(), cfg, nil, gpuQ, ffmpegQ, steps,
-		name, 1, "input", func() {},
+		name, 1, "input", 0, func() {},
 		onEvent, func(runner.Progress) {},
 	)
 	if !ok {

@@ -270,3 +270,89 @@ func TestGPUQueue_OrderedAdmissionRelay(t *testing.T) {
 		}
 	}
 }
+
+// TestQueues_PerPoolRelayKeepsBothPoolsBusy reproduces the starvation that
+// StartPipelineJob's per-pool admission relay exists to prevent, using the shape
+// of a resumed pipeline run: many files whose first step needs a GPU, plus a few
+// stranded files whose first step needs FFmpeg.
+//
+// The GPU workload is larger than the GPU pool, so a SINGLE global relay stalls
+// forever at the first file that cannot get a GPU slot — every later file,
+// including the FFmpeg-bound ones, never receives its gate token and the FFmpeg
+// pool sits idle with work ready for it. Giving each pool its own relay lets
+// them advance independently while preserving order within each pool.
+func TestQueues_PerPoolRelayKeepsBothPoolsBusy(t *testing.T) {
+	const gpuFiles, ffmpegFiles = 8, 3
+	gpuQ := NewGPUQueue(2, 1) // deliberately smaller than the GPU workload
+	ffmpegQ := New(ffmpegFiles)
+
+	hold := make(chan struct{}) // keeps every acquired GPU slot occupied
+	admitted := make(chan int, ffmpegFiles)
+	var wg sync.WaitGroup
+
+	// GPU pool relay.
+	gpuGates := make([]chan struct{}, gpuFiles+1)
+	for i := range gpuGates {
+		gpuGates[i] = make(chan struct{}, 1)
+	}
+	gpuGates[0] <- struct{}{}
+	for i := 0; i < gpuFiles; i++ {
+		wg.Add(1)
+		gateIn, gateOut := gpuGates[i], gpuGates[i+1]
+		go func() {
+			defer wg.Done()
+			<-gateIn
+			gpuID, streamIdx, err := gpuQ.Acquire(context.Background(), 0)
+			if err != nil {
+				return
+			}
+			gateOut <- struct{}{} // admit next only after our Acquire returned
+			<-hold
+			gpuQ.Release(gpuID, streamIdx)
+		}()
+	}
+
+	// FFmpeg pool relay — independent of the GPU cascade above.
+	ffGates := make([]chan struct{}, ffmpegFiles+1)
+	for i := range ffGates {
+		ffGates[i] = make(chan struct{}, 1)
+	}
+	ffGates[0] <- struct{}{}
+	for i := 0; i < ffmpegFiles; i++ {
+		wg.Add(1)
+		index := i
+		gateIn, gateOut := ffGates[i], ffGates[i+1]
+		go func() {
+			defer wg.Done()
+			<-gateIn
+			slot, err := ffmpegQ.Acquire(context.Background(), 0)
+			if err != nil {
+				return
+			}
+			admitted <- index
+			gateOut <- struct{}{}
+			ffmpegQ.Release(slot)
+		}()
+	}
+
+	// Every FFmpeg-bound file must reach its pool while the GPU pool is fully
+	// saturated and its own relay is stalled.
+	got := make([]int, 0, ffmpegFiles)
+	for i := 0; i < ffmpegFiles; i++ {
+		select {
+		case idx := <-admitted:
+			got = append(got, idx)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("FFmpeg pool starved: only %d of %d files admitted (%v) while GPUs were busy",
+				len(got), ffmpegFiles, got)
+		}
+	}
+	for i, idx := range got {
+		if idx != i {
+			t.Fatalf("FFmpeg admission order = %v, want 0..%d ascending", got, ffmpegFiles-1)
+		}
+	}
+
+	close(hold) // let the GPU cascade drain
+	wg.Wait()
+}
