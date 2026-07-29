@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.13.3](https://github.com/IvanMicai/anime-upscaling/compare/v1.13.2...v1.13.3) (2026-07-29)
+
+### Bug Fixes
+
+* publish the web image as anime-upscaling-app again ([#88](https://github.com/IvanMicai/anime-upscaling/issues/88)) ([dc291de](https://github.com/IvanMicai/anime-upscaling/commit/dc291de48025b70f27f4e5084f91748567490415)), closes [#71](https://github.com/IvanMicai/anime-upscaling/issues/71)
+
 ## [1.13.2](https://github.com/IvanMicai/anime-upscaling/compare/v1.13.1...v1.13.2) (2026-07-29)
 
 ### Bug Fixes
