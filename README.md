@@ -14,6 +14,14 @@
     <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose" />
     <img src="https://img.shields.io/badge/GPU-NVIDIA%20%7C%20AMD%20%7C%20Intel-76B900" alt="GPU support" />
   </p>
+
+  <p>
+    <a href="https://ivanmicai.github.io/anime-upscaling/"><strong>Website</strong></a>
+    ·
+    <a href="https://ivanmicai.github.io/anime-upscaling/docs/">Documentation</a>
+    ·
+    <a href="https://hub.docker.com/r/ivanmicai/anime-upscaling-web">Docker Hub</a>
+  </p>
 </div>
 
 ---
@@ -275,6 +283,10 @@ make dev
 ```
 
 ## Documentation
+
+Published at
+[ivanmicai.github.io/anime-upscaling/docs](https://ivanmicai.github.io/anime-upscaling/docs/),
+rendered from the files below — see [`site/`](site/README.md).
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Deployment guide](docs/DEPLOYMENT.md)
