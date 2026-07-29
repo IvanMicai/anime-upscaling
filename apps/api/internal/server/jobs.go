@@ -291,6 +291,29 @@ func (m *JobManager) HasActiveJobs() bool {
 	return false
 }
 
+// ActiveFiles returns the set of file names claimed by jobs that are still
+// queued or running. Locking mirrors HasActiveJobs: manager read lock, then
+// per-job lock.
+//
+// A file's name is its identity across every stage folder — the pipeline carries
+// the same name from input/ to output/ to interpolated/ — so a name already in
+// this set means some other job is going to write that episode.
+func (m *JobManager) ActiveFiles() map[string]bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	active := make(map[string]bool)
+	for _, j := range m.jobs {
+		j.mu.Lock()
+		if j.Status == "queued" || j.Status == "running" {
+			for _, f := range j.Files {
+				active[f] = true
+			}
+		}
+		j.mu.Unlock()
+	}
+	return active
+}
+
 // SystemJobStats aggregates live job activity for the global status bar:
 // how many jobs are waiting vs running, and the combined frame rate across all
 // active workers.

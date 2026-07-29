@@ -34,6 +34,100 @@ func pipelinePriority(stepIdx, index int) int {
 	return stepIdx*pipelineStepWeight - index
 }
 
+// pipelineSlots tracks the worker-pool slot a file currently holds, so the step
+// loop can carry it across a step boundary instead of dropping it and queueing
+// up again from scratch.
+//
+// Dropping it is a priority inversion. Between the Release at the end of one
+// step and the Acquire at the start of the next — with the cleanup steps in
+// between running on no slot at all — the file holds nothing and is absent from
+// the waiter list, so Release hands the slot to whoever is parked even when the
+// priority comparator ranks that file below the one just leaving. That is how an
+// episode that had finished its upscale and only owed an interpolate kept losing
+// a GPU to a freshly started episode. Holding through the cleanups and swapping
+// via Yield closes the window; a file only gives up its slot to a pool it is
+// actually leaving, or when it is done.
+type pipelineSlots struct {
+	gpu        bool
+	gpuID      int
+	streamIdx  int
+	ffmpeg     bool
+	ffmpegSlot int
+}
+
+// acquireGPU puts the file on a GPU slot at the given priority, keeping the one
+// it already holds unless a higher-priority waiter claims it. Any FFmpeg slot
+// held is given up first — a file must never occupy a pool it is not using.
+func (s *pipelineSlots) acquireGPU(ctx context.Context, gpuQ *queue.GPUQueue, ffmpegQ *queue.Queue, priority int) error {
+	if s.ffmpeg {
+		ffmpegQ.Release(s.ffmpegSlot)
+		s.ffmpeg = false
+	}
+	if s.gpu {
+		gpuID, streamIdx, err := gpuQ.Yield(ctx, s.gpuID, s.streamIdx, priority)
+		if err != nil {
+			s.gpu = false // Yield already released the slot.
+			return err
+		}
+		s.gpuID, s.streamIdx = gpuID, streamIdx
+		return nil
+	}
+	gpuID, streamIdx, err := gpuQ.Acquire(ctx, priority)
+	if err != nil {
+		return err
+	}
+	s.gpu, s.gpuID, s.streamIdx = true, gpuID, streamIdx
+	return nil
+}
+
+// acquireFFmpeg is acquireGPU's counterpart for the FFmpeg pool.
+func (s *pipelineSlots) acquireFFmpeg(ctx context.Context, gpuQ *queue.GPUQueue, ffmpegQ *queue.Queue, priority int) error {
+	if s.gpu {
+		gpuQ.Release(s.gpuID, s.streamIdx)
+		s.gpu = false
+	}
+	if s.ffmpeg {
+		slot, err := ffmpegQ.Yield(ctx, s.ffmpegSlot, priority)
+		if err != nil {
+			s.ffmpeg = false // Yield already released the slot.
+			return err
+		}
+		s.ffmpegSlot = slot
+		return nil
+	}
+	slot, err := ffmpegQ.Acquire(ctx, priority)
+	if err != nil {
+		return err
+	}
+	s.ffmpeg, s.ffmpegSlot = true, slot
+	return nil
+}
+
+// releaseUnneeded gives back every pool other than next, which is the pool the
+// file's remaining steps will contend for (QueueNone when none of them will).
+func (s *pipelineSlots) releaseUnneeded(next QueueKind, gpuQ *queue.GPUQueue, ffmpegQ *queue.Queue) {
+	if s.gpu && next != QueueGPU {
+		gpuQ.Release(s.gpuID, s.streamIdx)
+		s.gpu = false
+	}
+	if s.ffmpeg && next != QueueFFmpeg {
+		ffmpegQ.Release(s.ffmpegSlot)
+		s.ffmpeg = false
+	}
+}
+
+// release gives back whatever the file still holds. Safe to call repeatedly.
+func (s *pipelineSlots) release(gpuQ *queue.GPUQueue, ffmpegQ *queue.Queue) {
+	if s.gpu {
+		gpuQ.Release(s.gpuID, s.streamIdx)
+		s.gpu = false
+	}
+	if s.ffmpeg {
+		ffmpegQ.Release(s.ffmpegSlot)
+		s.ffmpeg = false
+	}
+}
+
 // RunCustomPipelineForFile executes pipeline steps sequentially for a single
 // file, starting at startStep. It acquires/releases GPU and FFmpeg queue slots
 // as needed per step. sourceDir is the directory startStep reads from; each
@@ -68,6 +162,11 @@ func RunCustomPipelineForFile(
 		}
 	}
 	defer admit()
+
+	// The slot is carried across steps, so exactly one place gives it back: this
+	// backstop, on every exit path (success, step failure, cancellation).
+	var slots pipelineSlots
+	defer slots.release(gpuQ, ffmpegQ)
 
 	if sourceDir == "" {
 		sourceDir = cfg.InputDir
@@ -119,21 +218,19 @@ func RunCustomPipelineForFile(
 				NoiseLevel: step.NoiseLevel,
 			}
 
-			gpuID, streamIdx, err := gpuQ.Acquire(ctx, pipelinePriority(stepIdx, index))
-			if err != nil {
+			if err := slots.acquireGPU(ctx, gpuQ, ffmpegQ, pipelinePriority(stepIdx, index)); err != nil {
 				return false
 			}
 			admit()
 
-			gpuSrc := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
+			gpuSrc := runner.GPUSource(slots.gpuID, slots.streamIdx, cfg.StreamsPerGPU)
 			onEvent(logger.JobLog{
 				Source: gpuSrc, Level: "INFO", Index: index,
 				Message: stepLabel + "Upscale " + fmt.Sprintf("%dx", scale) + ": " + filename,
 				Time:    time.Now(),
 			})
 
-			ok := UpscaleFile(ctx, cfg, r, gpuID, streamIdx, filename, index, scale, upOpts, currentInputDir, cfg.OutputDir, stepOnEvent, onProgress)
-			gpuQ.Release(gpuID, streamIdx)
+			ok := UpscaleFile(ctx, cfg, r, slots.gpuID, slots.streamIdx, filename, index, scale, upOpts, currentInputDir, cfg.OutputDir, stepOnEvent, onProgress)
 
 			if !ok {
 				failRemaining(stepIdx, "PIPELINE", filename)
@@ -160,21 +257,19 @@ func RunCustomPipelineForFile(
 				SceneThresh: sceneThresh,
 			}
 
-			gpuID, streamIdx, err := gpuQ.Acquire(ctx, pipelinePriority(stepIdx, index))
-			if err != nil {
+			if err := slots.acquireGPU(ctx, gpuQ, ffmpegQ, pipelinePriority(stepIdx, index)); err != nil {
 				return false
 			}
 			admit()
 
-			gpuSrc := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
+			gpuSrc := runner.GPUSource(slots.gpuID, slots.streamIdx, cfg.StreamsPerGPU)
 			onEvent(logger.JobLog{
 				Source: gpuSrc, Level: "INFO", Index: index,
 				Message: stepLabel + "Interpolate " + fmt.Sprintf("%dx", multiplier) + ": " + filename,
 				Time:    time.Now(),
 			})
 
-			ok := InterpolateFile(ctx, cfg, r, gpuID, streamIdx, filename, index, multiplier, rifeOpts, currentInputDir, cfg.InterpolatedDir, stepOnEvent, onProgress)
-			gpuQ.Release(gpuID, streamIdx)
+			ok := InterpolateFile(ctx, cfg, r, slots.gpuID, slots.streamIdx, filename, index, multiplier, rifeOpts, currentInputDir, cfg.InterpolatedDir, stepOnEvent, onProgress)
 
 			if !ok {
 				failRemaining(stepIdx, "PIPELINE", filename)
@@ -220,36 +315,32 @@ func RunCustomPipelineForFile(
 			var optimizeOk bool
 
 			if useGPU {
-				gpuID, streamIdx, err := gpuQ.Acquire(ctx, pipelinePriority(stepIdx, index))
-				if err != nil {
+				if err := slots.acquireGPU(ctx, gpuQ, ffmpegQ, pipelinePriority(stepIdx, index)); err != nil {
 					return false
 				}
 				admit()
 				stepOpts := encOpts
 				stepOpts.UseGPU = true
-				stepOpts.GPUDevice = gpuID
-				src := runner.GPUSource(gpuID, streamIdx, cfg.StreamsPerGPU)
+				stepOpts.GPUDevice = slots.gpuID
+				src := runner.GPUSource(slots.gpuID, slots.streamIdx, cfg.StreamsPerGPU)
 				onEvent(logger.JobLog{
 					Source: src, Level: "INFO", Index: index,
 					Message: stepLabel + "Optimize GPU (" + quality + "): " + filename,
 					Time:    time.Now(),
 				})
 				optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, src, resolution, frameRate, frameRateAbsolute, crf, threads, stepOpts, stepOnEvent, onProgress)
-				gpuQ.Release(gpuID, streamIdx)
 			} else {
-				slot, err := ffmpegQ.Acquire(ctx, pipelinePriority(stepIdx, index))
-				if err != nil {
+				if err := slots.acquireFFmpeg(ctx, gpuQ, ffmpegQ, pipelinePriority(stepIdx, index)); err != nil {
 					return false
 				}
 				admit()
-				ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
+				ffSrc := runner.FFmpegSource(slots.ffmpegSlot, cfg.FFmpegStreams)
 				onEvent(logger.JobLog{
 					Source: ffSrc, Level: "INFO", Index: index,
 					Message: stepLabel + "Optimize (" + quality + "): " + filename,
 					Time:    time.Now(),
 				})
 				optimizeOk = OptimizeFile(ctx, cfg, r, filename, index, source, ffSrc, resolution, frameRate, frameRateAbsolute, crf, threads, encOpts, stepOnEvent, onProgress)
-				ffmpegQ.Release(slot)
 			}
 
 			if !optimizeOk {
@@ -305,6 +396,12 @@ func RunCustomPipelineForFile(
 			// unchanged — cleanup produces no new file for the next step.
 			onEvent(logger.JobLog{Source: "PIPELINE", Level: "OK", Index: index, Message: stepLabel + "Limpeza concluída: " + filename, Time: time.Now()})
 		}
+
+		// Hand back a pool the remaining steps will not use, the moment that
+		// becomes known. Carrying a slot is only worth it while the file is still
+		// going to run on that pool; a trailing cleanup must not sit on a GPU that
+		// another episode could be using.
+		slots.releaseUnneeded(FirstQueue(cfg, steps, stepIdx+1), gpuQ, ffmpegQ)
 	}
 
 	// Each step's OK already incremented Completed; emit a STEP-level event
