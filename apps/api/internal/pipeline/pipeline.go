@@ -153,6 +153,24 @@ var ValidCleanupFolders = map[string]bool{
 	"optimized":    true,
 }
 
+// StepOutputStage returns the canonical stage folder an operation writes its
+// result to. Operations that produce no new file (cleanup) return "".
+//
+// This is the inverse of the routing hard-coded in the pipeline executor, and
+// it is what lets a re-run tell how far a file already got: a file sitting in
+// an operation's output folder has completed that operation.
+func StepOutputStage(operation string) string {
+	switch operation {
+	case "upscale":
+		return "output"
+	case "interpolate":
+		return "interpolated"
+	case "optimize":
+		return "optimized"
+	}
+	return ""
+}
+
 // Store manages CRUD for pipeline definitions stored in a JSON file.
 type Store struct {
 	mu       sync.RWMutex

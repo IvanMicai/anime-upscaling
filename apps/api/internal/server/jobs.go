@@ -576,8 +576,10 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 	return job
 }
 
-func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.PipelineStep, fileList []string, sourceDir string) *Job {
-	files.SortNatural(fileList)
+// StartPipelineJob runs a custom pipeline over the given plan. Each plan entry
+// carries the step its file starts on, so files resumed mid-pipeline skip the
+// work they already completed — see process.PlanPipelineFiles.
+func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.PipelineStep, plans []process.FilePlan, sourceDir string) *Job {
 	ctx, cancel := context.WithCancel(context.Background())
 	jobID := m.generateID()
 	ctx = runner.WithJobID(ctx, jobID)
@@ -585,6 +587,15 @@ func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.Pipe
 	source := "input"
 	if s := dirToSourceName(m.cfg, sourceDir); s != "" {
 		source = s
+	}
+
+	// Files resuming mid-pipeline owe fewer steps than a fresh file, so the
+	// progress total is the sum of what is actually left to run.
+	fileList := make([]string, len(plans))
+	total := 0
+	for i, p := range plans {
+		fileList[i] = p.Name
+		total += p.RemainingSteps(steps)
 	}
 
 	job := &Job{
@@ -595,7 +606,7 @@ func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.Pipe
 		PipelineName:  pipelineName,
 		PipelineSteps: steps,
 		Files:         fileList,
-		Progress:      JobProgress{Total: len(fileList) * len(steps)},
+		Progress:      JobProgress{Total: total},
 		CreatedAt:     time.Now().UTC(),
 		cancel:        cancel,
 		done:          make(chan struct{}),
@@ -618,34 +629,52 @@ func (m *JobManager) StartPipelineJob(pipelineName string, steps []pipeline.Pipe
 
 	go func() {
 		var wg sync.WaitGroup
-		n := len(fileList)
 
-		// Ordered admission relay: gates[i] admits file i; gates[i+1] is fired only
-		// after file i's first queue Acquire returns, so files enter the GPU/FFmpeg
-		// queues in strict natural-sorted order instead of racing at startup (where
-		// the free-slot fast path ignores priority). n+1 channels: gates[n] is an
-		// unread sink for the last file's token.
-		gates := make([]chan struct{}, n+1)
-		for i := range gates {
-			gates[i] = make(chan struct{}, 1)
-		}
-		if n > 0 {
-			gates[0] <- struct{}{} // admit the first file
-		}
+		// Ordered admission relay, one per worker pool: within a pool, gates[i]
+		// admits its i-th file and gates[i+1] is fired only after that file's
+		// first queue Acquire returns, so files enter the pool in strict
+		// natural-sorted order instead of racing at startup (where the
+		// free-slot fast path ignores priority).
+		//
+		// The relay is per-pool because a file waiting on a saturated GPU must
+		// not hold back a file whose first step needs FFmpeg. One global relay
+		// stalls at the first file that cannot get a slot, leaving every other
+		// pool idle no matter how much work is already queued for it — which is
+		// exactly what strands FFmpeg work behind GPU work on a resumed run.
+		//
+		// Within a pool, files are admitted in priority order rather than plan
+		// order, so free slots go to the files furthest along the pipeline.
+		byQueue := process.GroupForAdmission(cfg, steps, plans)
 
-		for i, f := range fileList {
-			wg.Add(1)
-			idx := i + 1
-			filename := f
-			gateIn := gates[i]
-			gateOut := gates[i+1]
-			go func() {
-				defer wg.Done()
-				<-gateIn // wait our turn (always eventually delivered via the cascade)
-				job.setRunningOnce()
-				admitNext := func() { gateOut <- struct{}{} }
-				process.RunCustomPipelineForFile(ctx, cfg, r, gpuQ, ffmpegQ, steps, filename, idx, sourceDir, admitNext, onEvent, onProgress)
-			}()
+		for _, kind := range []process.QueueKind{process.QueueGPU, process.QueueFFmpeg, process.QueueNone} {
+			group := byQueue[kind]
+			if len(group) == 0 {
+				continue
+			}
+			// len(group)+1 channels: the last is an unread sink for the final
+			// file's token.
+			gates := make([]chan struct{}, len(group)+1)
+			for i := range gates {
+				gates[i] = make(chan struct{}, 1)
+			}
+			gates[0] <- struct{}{} // admit this pool's first file
+
+			for pos, planIdx := range group {
+				wg.Add(1)
+				p := plans[planIdx]
+				// Index stays global across the plan so the queue's
+				// within-step tiebreak keeps natural order.
+				idx := planIdx + 1
+				gateIn := gates[pos]
+				gateOut := gates[pos+1]
+				go func() {
+					defer wg.Done()
+					<-gateIn // wait our turn (always eventually delivered via the cascade)
+					job.setRunningOnce()
+					admitNext := func() { gateOut <- struct{}{} }
+					process.RunCustomPipelineForFile(ctx, cfg, r, gpuQ, ffmpegQ, steps, p.Name, idx, p.InputDir, p.StartStep, admitNext, onEvent, onProgress)
+				}()
+			}
 		}
 
 		wg.Wait()

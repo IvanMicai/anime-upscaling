@@ -34,10 +34,13 @@ func pipelinePriority(stepIdx, index int) int {
 	return stepIdx*pipelineStepWeight - index
 }
 
-// RunCustomPipelineForFile executes all pipeline steps sequentially for a single file.
-// It acquires/releases GPU and FFmpeg queue slots as needed per step.
-// sourceDir is the directory the first step reads from; each step writes to its
-// canonical output folder (output/, interpolated/, optimized/).
+// RunCustomPipelineForFile executes pipeline steps sequentially for a single
+// file, starting at startStep. It acquires/releases GPU and FFmpeg queue slots
+// as needed per step. sourceDir is the directory startStep reads from; each
+// step writes to its canonical output folder (output/, interpolated/,
+// optimized/).
+//
+// startStep is non-zero for files resumed mid-pipeline — see PlanPipelineFiles.
 func RunCustomPipelineForFile(
 	ctx context.Context,
 	cfg config.Config,
@@ -48,6 +51,7 @@ func RunCustomPipelineForFile(
 	filename string,
 	index int,
 	sourceDir string,
+	startStep int,
 	admitNext func(),
 	onEvent func(logger.JobLog),
 	onProgress func(runner.Progress),
@@ -91,7 +95,11 @@ func RunCustomPipelineForFile(
 		}
 	}
 
-	for stepIdx, step := range steps {
+	if startStep < 0 {
+		startStep = 0
+	}
+	for stepIdx := startStep; stepIdx < len(steps); stepIdx++ {
+		step := steps[stepIdx]
 		if ctx.Err() != nil {
 			return false
 		}
@@ -208,7 +216,7 @@ func RunCustomPipelineForFile(
 			// Convert currentInputDir to relative source name for optimize
 			source := dirToSource(cfg, currentInputDir)
 
-			useGPU := step.UseGPU && cfg.GPUVendor != "" && step.Codec != "copy" && step.Codec != "libvpx-vp9"
+			useGPU := optimizeUsesGPU(cfg, step)
 			var optimizeOk bool
 
 			if useGPU {

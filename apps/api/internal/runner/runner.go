@@ -34,6 +34,39 @@ func sanitizeFilename(filename string) string {
 	return safe + "_" + ephemeralSuffix() + ext
 }
 
+// IsSanitizeArtifact reports whether name looks like a leftover produced by
+// setupSanitizedPaths — either the hard link it creates next to the input file
+// or the partial output written under the sanitized name. Both are shaped
+// "<base, spaces replaced by _>_<base36 nanos><ext>" and are normally removed
+// when the step finishes; a cancelled or killed run leaves them behind.
+//
+// Callers that scan stage folders (pipeline orphan adoption) must skip these:
+// the hard link shares an inode with the real file, so adopting one would
+// reprocess the same episode a second time under a mangled name, and the
+// partial output is an incomplete video.
+//
+// sanitizeFilename strips every space, so a name that still contains one can
+// never be an artifact — that check is what keeps real filenames safe.
+func IsSanitizeArtifact(name string) bool {
+	base := filepath.Base(name)
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+	if strings.ContainsAny(base, " ") {
+		return false
+	}
+	i := strings.LastIndex(base, "_")
+	if i < 0 {
+		return false
+	}
+	nanos, err := strconv.ParseInt(base[i+1:], 36, 64)
+	if err != nil || nanos <= 0 {
+		return false
+	}
+	// Guard against ordinary names whose trailing token happens to parse as
+	// base36 by requiring the value to decode to a plausible wall clock.
+	t := time.Unix(0, nanos).UTC()
+	return t.Year() >= 2020 && t.Year() < 2100
+}
+
 // setupSanitizedPaths creates a symlink with a sanitized name for the input
 // file if the filename needs sanitization. Returns the paths to use for
 // the command and a cleanup function that must be deferred.

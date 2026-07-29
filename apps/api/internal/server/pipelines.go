@@ -10,6 +10,7 @@ import (
 	"anime-upscaling/internal/config"
 	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/pipeline"
+	"anime-upscaling/internal/process"
 )
 
 // handlePipelines handles GET /api/pipelines (list) and POST /api/pipelines (create).
@@ -177,14 +178,6 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list files"})
 			return
 		}
-		if len(all) == 0 {
-			label := req.Source
-			if req.Path != "" {
-				label = req.Source + "/" + req.Path
-			}
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("no video files found in %s/", label)})
-			return
-		}
 		req.Files = make([]string, 0, len(all))
 		for rel := range all {
 			if req.Path != "" {
@@ -210,7 +203,20 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 		}
 	}
 
-	job := jm.StartPipelineJob(p.Name, p.Steps, req.Files, sourceDir)
+	// Plan before rejecting an empty selection: a pipeline whose cleanup steps
+	// empty the source folder as it advances can legitimately have nothing left
+	// there while still owing work on files stranded in a later stage.
+	plans := process.PlanPipelineFiles(cfg, p.Steps, sourceDir, req.Files)
+	if len(plans) == 0 {
+		label := req.Source
+		if req.Path != "" {
+			label = req.Source + "/" + req.Path
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("no video files found in %s/", label)})
+		return
+	}
+
+	job := jm.StartPipelineJob(p.Name, p.Steps, plans, sourceDir)
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":            job.ID,

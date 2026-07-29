@@ -156,3 +156,39 @@ func TestSignalFromError_CanceledContext(t *testing.T) {
 	// just verify SignalFromError doesn't panic or misreport nil errors.
 	_, _ = SignalFromError(err)
 }
+
+// TestIsSanitizeArtifact covers the leftovers a cancelled run strands in a stage
+// folder. Pipeline orphan adoption scans those folders, so a false negative
+// reprocesses an episode under a mangled name and a false positive silently
+// drops a real file from the job.
+func TestIsSanitizeArtifact(t *testing.T) {
+	artifacts := []string{
+		// Exactly what a killed interpolate step left in output/ in production.
+		"Dragon_Ball_GT_S01E55_[pt-BR]_[480p]_dk8x3ne7r3oe.mkv",
+		sanitizeFilename("Some Show S01E01.mkv"),
+		sanitizeFilename("a b.mp4"),
+	}
+	for _, name := range artifacts {
+		if !IsSanitizeArtifact(name) {
+			t.Errorf("IsSanitizeArtifact(%q) = false, want true", name)
+		}
+	}
+
+	real := []string{
+		// Any surviving space rules a name out: sanitizeFilename strips them all.
+		"Dragon Ball GT S01E55 [pt-BR] [480p].mkv",
+		"Digimon Tamers S01E39 [pt-BR] [480p].mkv",
+		// No underscore-suffixed base36 timestamp.
+		"ep.mkv",
+		"Show_S01E01.mkv",
+		"Show_S01E01_1080p_BD_x264_AAC.mkv",
+		// Trailing token parses as base36 but decodes to 1970, not a real run.
+		"Show_S01E01_zzz.mkv",
+		"_.mkv",
+	}
+	for _, name := range real {
+		if IsSanitizeArtifact(name) {
+			t.Errorf("IsSanitizeArtifact(%q) = true, want false", name)
+		}
+	}
+}
