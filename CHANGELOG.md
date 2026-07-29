@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.13.2](https://github.com/IvanMicai/anime-upscaling/compare/v1.13.1...v1.13.2) (2026-07-29)
+
+### Bug Fixes
+
+* **pipeline:** resume stranded files and keep both worker pools busy ([#86](https://github.com/IvanMicai/anime-upscaling/issues/86)) ([7cc44dc](https://github.com/IvanMicai/anime-upscaling/commit/7cc44dca4ef17df69618f1a18266a8563d0db451))
+
 ## [1.13.1](https://github.com/IvanMicai/anime-upscaling/compare/v1.13.0...v1.13.1) (2026-07-13)
 
 ### Bug Fixes
