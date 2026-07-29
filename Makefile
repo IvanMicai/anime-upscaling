@@ -53,7 +53,7 @@ build-api:
 	docker build --platform=linux/amd64 -t anime-upscaling-api apps/api
 
 build-app:
-	docker build -t anime-upscaling-web apps/web
+	docker build -t anime-upscaling-app apps/web
 
 # --- Run (production) ---
 
@@ -95,4 +95,4 @@ deploy:
 
 clean:
 	rm -rf bin apps/api/animeup apps/web/.next apps/web/node_modules
-	-docker rmi anime-upscaling-api anime-upscaling-web 2>/dev/null
+	-docker rmi anime-upscaling-api anime-upscaling-app 2>/dev/null

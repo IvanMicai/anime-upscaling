@@ -5,9 +5,10 @@
 // documentation and it cannot drift from what ships in the tree.
 
 import { readFile, writeFile, mkdir, rm, cp } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { marked } from "marked";
+import { Marked } from "marked";
 
 const SITE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SITE, "..");
@@ -72,6 +73,9 @@ function rewriteHref(href, srcDir) {
   const [target, hash = ""] = href.split("#");
   if (!target) return href;
 
+  // Already a page on this site (docs-index.md links to its siblings that way).
+  if (target.endsWith(".html")) return href;
+
   const repoPath = path
     .normalize(path.join(srcDir, target))
     .replace(/\\/g, "/")
@@ -99,7 +103,7 @@ function renderNav(currentSlug) {
           <ul>
             <li><a href="../">Home</a></li>
             <li><a href="${REPO}">GitHub</a></li>
-            <li><a href="https://hub.docker.com/r/ivanmicai/anime-upscaling-web">Docker Hub</a></li>
+            <li><a href="https://hub.docker.com/r/ivanmicai/anime-upscaling-app">Docker Hub</a></li>
           </ul>
         </nav>`;
 }
@@ -156,7 +160,11 @@ ${body}
 }
 
 async function renderMarkdown(md, srcDir) {
-  marked.use({
+  // A fresh instance per page. `marked.use()` on the shared singleton would
+  // stack one walkTokens hook per page, and every later page would then rewrite
+  // its links once per hook — each pass resolving an already-rewritten href
+  // against the wrong source directory.
+  const md2html = new Marked({
     gfm: true,
     walkTokens(token) {
       if (token.type === "link" || token.type === "image") {
@@ -165,7 +173,7 @@ async function renderMarkdown(md, srcDir) {
     },
   });
 
-  let html = await marked.parse(md);
+  let html = await md2html.parse(md);
 
   // Anchor ids on headings, matching GitHub's slugs so existing tables of
   // contents keep resolving.
@@ -235,7 +243,73 @@ async function build() {
   // Pages is served by the deploy action, not Jekyll.
   await writeFile(path.join(DIST, ".nojekyll"), "");
 
+  await checkLinks();
+
   console.log(`Built ${PAGES.length + 1} pages into ${path.relative(ROOT, DIST)}`);
+}
+
+/**
+ * Fails the build on links that resolve to nothing. External URLs cannot be
+ * checked offline, but the two ways link rewriting has actually broken here can:
+ * a published page leaking out as a GitHub blob URL, and an internal target that
+ * does not exist on disk.
+ */
+async function checkLinks() {
+  const pages = [
+    ["index.html", path.join(DIST, "index.html")],
+    ...PAGES.map((p) => {
+      const name = p.slug === "index" ? "index.html" : `${p.slug}.html`;
+      return [`docs/${name}`, path.join(DIST, "docs", name)];
+    }),
+  ];
+
+  const problems = [];
+
+  for (const [label, file] of pages) {
+    const html = await readFile(file, "utf8");
+    const dir = path.dirname(file);
+    const ids = new Set(
+      [...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]),
+    );
+
+    for (const [, href] of html.matchAll(/href="([^"]+)"/g)) {
+      // A doc we publish must never be linked as a file on GitHub.
+      if (href.startsWith(BLOB) && href.endsWith(".html")) {
+        problems.push(`${label}: publishes as a GitHub blob link — ${href}`);
+        continue;
+      }
+      if (/^(https?:|mailto:|\/\/)/.test(href)) continue;
+
+      if (href.startsWith("#")) {
+        if (!ids.has(href.slice(1))) {
+          problems.push(`${label}: anchor has no matching id — ${href}`);
+        }
+        continue;
+      }
+
+      const [target, hash] = href.split("#");
+      if (!target) continue;
+      const resolved = path.resolve(
+        dir,
+        target.endsWith("/") ? `${target}index.html` : target,
+      );
+      if (!existsSync(resolved)) {
+        problems.push(`${label}: target does not exist — ${href}`);
+        continue;
+      }
+      if (hash && resolved.endsWith(".html")) {
+        const targetHtml = await readFile(resolved, "utf8");
+        if (!new RegExp(`\\bid="${hash.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`).test(targetHtml)) {
+          problems.push(`${label}: anchor has no matching id — ${href}`);
+        }
+      }
+    }
+  }
+
+  if (problems.length) {
+    throw new Error(`Broken links:\n  ${problems.join("\n  ")}`);
+  }
+  console.log(`Link check passed across ${pages.length} pages.`);
 }
 
 build().catch((err) => {

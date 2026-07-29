@@ -21,8 +21,8 @@ services:
 
   web:
     build: apps/web
-    image: anime-upscaling-web
-    container_name: anime-upscaling-web
+    image: anime-upscaling-app
+    container_name: anime-upscaling-app
     env_file: .env
     environment:
       - PORT=${APP_PORT:-4750}
