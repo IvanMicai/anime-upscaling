@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Anime Upscaling — self-hosted anime video restoration</title>
+    <meta
+      name="description"
+      content="Self-hosted dashboard for bulk anime video upscaling, frame interpolation and re-encoding. Powered by video2x and FFmpeg, running on your own GPU."
+    />
+    <link rel="icon" href="./assets/favicon.png" type="image/png" />
+    <meta property="og:title" content="Anime Upscaling" />
+    <meta
+      property="og:description"
+      content="Self-hosted dashboard for bulk anime video upscaling, frame interpolation and re-encoding."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="./assets/pipeline-editor.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="masthead">
+      <div class="masthead__inner">
+        <a class="brand" href="./">
+          <img src="./assets/logo.png" alt="" />
+          <span>
+            <span class="brand__name">Anime Upscaling</span>
+            <span class="brand__sub">video restoration</span>
+          </span>
+        </a>
+        <nav>
+          <a class="is-secondary" href="#operations">Operations</a>
+          <a class="is-secondary" href="#models">Models</a>
+          <a class="is-secondary" href="#quick-start">Quick start</a>
+          <a href="./docs/">Docs</a>
+          <a href="https://github.com/IvanMicai/anime-upscaling">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ------------------------------------------------------- hero -->
+      <section class="hero">
+        <div class="wrap hero__grid">
+          <div>
+            <p class="eyebrow">Self-hosted · video2x + FFmpeg</p>
+            <h1>Queue a season,<br /><em>walk away.</em></h1>
+            <p class="hero__lede">
+              A dashboard for restoring anime in bulk. Point it at a folder,
+              chain upscaling, interpolation and re-encoding into one pipeline,
+              and let your own GPU work through the queue.
+            </p>
+            <div class="hero__actions">
+              <a class="btn btn--primary" href="#quick-start">Quick start</a>
+              <a class="btn" href="./docs/">Read the docs</a>
+              <a class="btn" href="https://github.com/IvanMicai/anime-upscaling"
+                >GitHub</a
+              >
+            </div>
+            <p class="hero__meta">
+              <span>MIT licensed</span>
+              <span>NVIDIA · AMD · Intel</span>
+              <span>Docker Compose</span>
+              <span>No cloud, no telemetry</span>
+            </p>
+          </div>
+
+          <!-- signature element: the pipeline, running -->
+          <div
+            class="rig"
+            id="rig"
+            role="img"
+            aria-label="A pipeline that upscales 1080p 24fps source to 2160p, doubles it to 48fps, then re-encodes it to HEVC at CRF 19."
+          >
+            <div class="rig__bar" aria-hidden="true">
+              <span class="rig__dot"></span>
+              <span>pipeline · 3 steps</span>
+              <button class="rig__replay" type="button" id="replay">
+                replay
+              </button>
+            </div>
+
+            <div class="spec">
+              <div class="spec__label">Source</div>
+              <div class="spec__value">1080p · 24 fps · H.264</div>
+            </div>
+
+            <div class="rig__arrow" aria-hidden="true">↓</div>
+
+            <div class="step" data-step="1" style="--op: var(--upscale)">
+              <div class="step__head">
+                <span class="step__idx">1</span>
+                <span class="step__name">Upscale</span>
+              </div>
+              <div class="step__chips">
+                <span class="chip">realesrgan</span>
+                <span class="chip">realesr-animevideov3</span>
+                <span class="chip">2×</span>
+              </div>
+            </div>
+
+            <div class="rig__arrow" aria-hidden="true">↓</div>
+
+            <div class="step" data-step="2" style="--op: var(--interpolate)">
+              <div class="step__head">
+                <span class="step__idx">2</span>
+                <span class="step__name">Interpolate</span>
+              </div>
+              <div class="step__chips">
+                <span class="chip">rife-v4.6</span>
+                <span class="chip">2×</span>
+              </div>
+            </div>
+
+            <div class="rig__arrow" aria-hidden="true">↓</div>
+
+            <div class="step" data-step="3" style="--op: var(--optimize)">
+              <div class="step__head">
+                <span class="step__idx">3</span>
+                <span class="step__name">Optimize</span>
+              </div>
+              <div class="step__chips">
+                <span class="chip">libx265</span>
+                <span class="chip">CRF 19</span>
+                <span class="chip">tune animation</span>
+              </div>
+            </div>
+
+            <div class="rig__arrow" aria-hidden="true">↓</div>
+
+            <div class="spec spec--out">
+              <div class="spec__label">Output</div>
+              <div class="spec__value">
+                <b id="out-res" class="is-res">1080p</b> ·
+                <b id="out-fps" class="is-fps">24 fps</b> ·
+                <b id="out-codec" class="is-codec">H.264</b>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------- operations -->
+      <section class="band" id="operations">
+        <div class="wrap">
+          <div class="band__head">
+            <p class="eyebrow">Operations</p>
+            <h2>Four things it does to a file</h2>
+            <p>
+              Every job — and every step inside a pipeline — is one of these.
+              Chain them in any order and the intermediate files stay on disk.
+            </p>
+          </div>
+          <div class="ops">
+            <article class="op" style="--op: var(--upscale)">
+              <h3>upscale</h3>
+              <p>
+                Runs video2x with the processor, model and scale you pick.
+                RealESRGAN, Anime4K or RealCUGAN.
+              </p>
+            </article>
+            <article class="op" style="--op: var(--interpolate)">
+              <h3>interpolate</h3>
+              <p>
+                Runs RIFE to multiply the frame rate. Turns 24 fps into 48 or
+                96 without the soap-opera artefacts of naive blending.
+              </p>
+            </article>
+            <article class="op" style="--op: var(--optimize)">
+              <h3>optimize</h3>
+              <p>
+                Re-encodes with the codec, CRF preset and audio settings you
+                choose. Optional hardware encoding on NVIDIA, AMD or Intel.
+              </p>
+            </article>
+            <article class="op" style="--op: var(--integrity)">
+              <h3>integrity check</h3>
+              <p>
+                Probes the file with FFmpeg to confirm it decodes end to end,
+                so a truncated download never reaches the queue.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- --------------------------------------------------- features -->
+      <section class="band">
+        <div class="wrap">
+          <div class="band__head">
+            <p class="eyebrow">What you get</p>
+            <h2>Built for a media box, not a laptop</h2>
+            <p>
+              It assumes you have a GPU, a lot of episodes, and no interest in
+              paying per minute of video.
+            </p>
+          </div>
+          <ul class="feats">
+            <li>Live log streaming per job, with per-step progress and ETA</li>
+            <li>Reusable pipelines saved as named, ordered step chains</li>
+            <li>File explorer with natural-sort episode ordering</li>
+            <li>GPU health monitor with NVIDIA driver wedge detection</li>
+            <li>Configurable GPU streams and FFmpeg worker count per host</li>
+            <li>Portainer-friendly stack file for one-click home server deploys</li>
+            <li>Single-password login gate in front of the dashboard</li>
+            <li>Everything on your machine — no cloud, no telemetry</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------ screenshots -->
+      <section class="band">
+        <div class="wrap">
+          <div class="band__head">
+            <p class="eyebrow">The dashboard</p>
+            <h2>Dense where it counts</h2>
+          </div>
+          <div class="shots">
+            <figure class="shot">
+              <img
+                src="./assets/pipeline-editor.png"
+                alt="Pipeline editor showing a two-step chain with an estimated result of 1080p 24fps to 2160p 48fps"
+                loading="lazy"
+              />
+              <figcaption>pipeline editor</figcaption>
+            </figure>
+            <figure class="shot">
+              <img
+                src="./assets/file-picker.png"
+                alt="File picker browsing a folder tree of episodes"
+                loading="lazy"
+              />
+              <figcaption>file picker</figcaption>
+            </figure>
+            <figure class="shot">
+              <img
+                src="./assets/job-detail.png"
+                alt="Job detail view with live logs and progress"
+                loading="lazy"
+              />
+              <figcaption>job detail</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ----------------------------------------------------- models -->
+      <section class="band" id="models">
+        <div class="wrap">
+          <div class="band__head">
+            <p class="eyebrow">Models</p>
+            <h2>Pick a processor, then a model</h2>
+            <p>
+              Only some model and scale combinations are valid; the UI enforces
+              the rules so you cannot queue a job that will fail an hour in.
+            </p>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Processor</th>
+                  <th scope="col">Scales</th>
+                  <th scope="col">Best for</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>realesrgan</code></td>
+                  <td>2× · 3× · 4×</td>
+                  <td>
+                    Pure neural upscaler. Best raw quality for anime video, and
+                    the highest VRAM cost.
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>libplacebo</code> (Anime4K v4)</td>
+                  <td>2× · 3× · 4×</td>
+                  <td>
+                    GPU shaders. Very fast and light enough to run a whole
+                    season overnight beside other workloads.
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>realcugan</code></td>
+                  <td>2× · 3× · 4×</td>
+                  <td>
+                    Middle ground. Strong on stylised content, with the most
+                    control over denoise behaviour.
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>rife</code></td>
+                  <td>frame rate</td>
+                  <td>
+                    Every RIFE generation through <code>rife-v4.26</code>.
+                    <code>rife-v4.6</code> is a sensible default for modern
+                    anime.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note">
+            <strong>Codecs:</strong> libx265, libx264, libvpx-vp9 or stream
+            copy, with quality presets from CRF 16 to CRF 26 and the standard
+            x264/x265 speed ladder.
+          </p>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------ quick start -->
+      <section class="band" id="quick-start">
+        <div class="wrap">
+          <div class="band__head">
+            <p class="eyebrow">Quick start</p>
+            <h2>Running in one command</h2>
+            <p>
+              Generates a strong secret and a random password, creates the media
+              folders, and starts the stack from prebuilt images. Nothing to
+              build.
+            </p>
+          </div>
+
+          <div class="steps-2col">
+            <div>
+              <div class="code">
+                <div class="code__head">
+                  <span>CPU · prebuilt images</span>
+                  <button class="copy" type="button" data-copy="qs-cpu">
+                    copy
+                  </button>
+                </div>
+                <pre id="qs-cpu"><code>git clone https://github.com/IvanMicai/anime-upscaling.git
+cd anime-upscaling
+make quickstart</code></pre>
+              </div>
+              <p class="note">
+                It prints the generated password when it finishes. Open
+                <code>http://localhost:4750</code> and log in with it. Re-running
+                <code>make quickstart</code> never overwrites a password you
+                already set.
+              </p>
+            </div>
+
+            <div>
+              <div class="code">
+                <div class="code__head">
+                  <span>NVIDIA GPU · built from source</span>
+                  <button class="copy" type="button" data-copy="qs-gpu">
+                    copy
+                  </button>
+                </div>
+                <pre id="qs-gpu"><code>cp .env.example .env
+# set AUTH_PASSWORD and AUTH_SECRET first
+make run-gpu</code></pre>
+              </div>
+              <p class="note">
+                Needs the NVIDIA Container Toolkit on the host. Drop source
+                videos in <code>data/input</code>; results land in
+                <code>data/output</code>, <code>data/optimized</code> or
+                <code>data/interpolated</code> depending on the job.
+              </p>
+            </div>
+          </div>
+
+          <p class="note">
+            <strong>Before you expose it:</strong> publish the web port only —
+            the API is meant to stay on the internal Compose network. The login
+            is a single shared password, so put the service behind HTTPS, a VPN
+            or a trusted reverse proxy if it is reachable outside a private
+            network.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="wrap">
+        <div class="foot__grid">
+          <div>
+            <h4>Project</h4>
+            <ul>
+              <li>
+                <a href="https://github.com/IvanMicai/anime-upscaling">Source</a>
+              </li>
+              <li>
+                <a
+                  href="https://github.com/IvanMicai/anime-upscaling/issues"
+                  >Issues</a
+                >
+              </li>
+              <li>
+                <a
+                  href="https://github.com/IvanMicai/anime-upscaling/blob/main/CHANGELOG.md"
+                  >Changelog</a
+                >
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h4>Docs</h4>
+            <ul>
+              <li><a href="./docs/">Overview</a></li>
+              <li><a href="./docs/architecture.html">Architecture</a></li>
+              <li><a href="./docs/deployment.html">Deployment</a></li>
+              <li><a href="./docs/api.html">API reference</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4>Images</h4>
+            <ul>
+              <li>
+                <a href="https://hub.docker.com/r/ivanmicai/anime-upscaling-web"
+                  >Web image</a
+                >
+              </li>
+              <li>
+                <a href="https://hub.docker.com/r/ivanmicai/anime-upscaling-api"
+                  >API image</a
+                >
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h4>Built on</h4>
+            <ul>
+              <li><a href="https://github.com/k4yt3x/video2x">video2x</a></li>
+              <li><a href="https://ffmpeg.org/">FFmpeg</a></li>
+              <li>
+                <a href="https://github.com/xinntao/Real-ESRGAN">Real-ESRGAN</a>
+              </li>
+              <li><a href="https://github.com/bloc97/Anime4K">Anime4K</a></li>
+              <li>
+                <a href="https://github.com/megvii-research/ECCV2022-RIFE"
+                  >RIFE</a
+                >
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div class="foot__base">
+          <span>MIT licensed</span>
+          <span>Go 1.26 · Next.js 16</span>
+          <span>Not affiliated with any of the upstream projects</span>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      // The hero pipeline runs once on load: each step lights up in sequence
+      // and the output spec picks up whatever that step changed.
+      (function () {
+        var rig = document.getElementById("rig");
+        if (!rig) return;
+
+        var steps = rig.querySelectorAll(".step");
+        var out = {
+          res: document.getElementById("out-res"),
+          fps: document.getElementById("out-fps"),
+          codec: document.getElementById("out-codec"),
+        };
+        var lands = [
+          { field: "res", value: "2160p" },
+          { field: "fps", value: "48 fps" },
+          { field: "codec", value: "HEVC" },
+        ];
+        var timers = [];
+        var reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+        function settle() {
+          steps.forEach(function (s) {
+            s.classList.add("is-live");
+          });
+          lands.forEach(function (l) {
+            out[l.field].textContent = l.value;
+            out[l.field].classList.add("is-lifted");
+          });
+        }
+
+        function reset() {
+          timers.forEach(clearTimeout);
+          timers = [];
+          steps.forEach(function (s) {
+            s.classList.remove("is-live");
+          });
+          out.res.textContent = "1080p";
+          out.fps.textContent = "24 fps";
+          out.codec.textContent = "H.264";
+          out.res.classList.remove("is-lifted");
+          out.fps.classList.remove("is-lifted");
+          out.codec.classList.remove("is-lifted");
+        }
+
+        function run() {
+          reset();
+          if (reduced.matches) {
+            settle();
+            return;
+          }
+          steps.forEach(function (step, i) {
+            timers.push(
+              setTimeout(function () {
+                step.classList.add("is-live");
+                var land = lands[i];
+                if (!land) return;
+                timers.push(
+                  setTimeout(function () {
+                    out[land.field].textContent = land.value;
+                    out[land.field].classList.add("is-lifted");
+                  }, 420),
+                );
+              }, 500 + i * 900),
+            );
+          });
+        }
+
+        document.getElementById("replay").addEventListener("click", run);
+        run();
+      })();
+
+      // Copy buttons on the quick-start blocks.
+      document.querySelectorAll(".copy").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var src = document.getElementById(btn.dataset.copy);
+          if (!src || !navigator.clipboard) return;
+          navigator.clipboard.writeText(src.innerText.trim()).then(function () {
+            var was = btn.textContent;
+            btn.textContent = "copied";
+            setTimeout(function () {
+              btn.textContent = was;
+            }, 1400);
+          });
+        });
+      });
+    </script>
+  </body>
+</html>
