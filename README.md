@@ -20,7 +20,7 @@
     ·
     <a href="https://ivanmicai.github.io/anime-upscaling/docs/">Documentation</a>
     ·
-    <a href="https://hub.docker.com/r/ivanmicai/anime-upscaling-web">Docker Hub</a>
+    <a href="https://hub.docker.com/r/ivanmicai/anime-upscaling-app">Docker Hub</a>
   </p>
 </div>
 

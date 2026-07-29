@@ -13,7 +13,11 @@ permissions:
 
 env:
   API_IMAGE_NAME: anime-upscaling-api
-  WEB_IMAGE_NAME: anime-upscaling-web
+  # Published name for the apps/web image. It is deliberately "-app", not
+  # "-web": the image predates the packages/app -> apps/web directory rename and
+  # people already pull it by this name. Renaming the source directory must not
+  # rename a published artifact — do not "fix" this to match the folder.
+  APP_IMAGE_NAME: anime-upscaling-app
 
 jobs:
   validate:
@@ -138,10 +142,10 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.WEB_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_version }}
-            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.WEB_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}
-            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.WEB_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}.${{ steps.semantic.outputs.new_release_minor_version }}
-            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.WEB_IMAGE_NAME }}:latest
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}.${{ steps.semantic.outputs.new_release_minor_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:latest
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}

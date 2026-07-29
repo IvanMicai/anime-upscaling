@@ -67,7 +67,7 @@ if it runs outside a private network.
 
 | Image | Contents |
 | --- | --- |
-| [`ivanmicai/anime-upscaling-web`](https://hub.docker.com/r/ivanmicai/anime-upscaling-web) | Next.js dashboard |
+| [`ivanmicai/anime-upscaling-app`](https://hub.docker.com/r/ivanmicai/anime-upscaling-app) | Next.js dashboard |
 | [`ivanmicai/anime-upscaling-api`](https://hub.docker.com/r/ivanmicai/anime-upscaling-api) | Go API, video2x and FFmpeg workers |
 
 Both are tagged `latest`, `X`, `X.Y` and `X.Y.Z` on every release.

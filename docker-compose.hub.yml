@@ -18,8 +18,8 @@ services:
     restart: unless-stopped
 
   web:
-    image: ${DOCKERHUB_NAMESPACE:-ivanmicai}/anime-upscaling-web:${IMAGE_TAG:-latest}
-    container_name: anime-upscaling-web
+    image: ${DOCKERHUB_NAMESPACE:-ivanmicai}/anime-upscaling-app:${IMAGE_TAG:-latest}
+    container_name: anime-upscaling-app
     env_file: .env
     environment:
       - PORT=${APP_PORT:-4750}
