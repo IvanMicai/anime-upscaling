@@ -206,13 +206,26 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 	// Plan before rejecting an empty selection: a pipeline whose cleanup steps
 	// empty the source folder as it advances can legitimately have nothing left
 	// there while still owing work on files stranded in a later stage.
-	plans := process.PlanPipelineFiles(cfg, p.Steps, sourceDir, req.Files)
+	plans := process.PlanPipelineFiles(cfg, p.Steps, sourceDir, req.Path, req.Files)
 	if len(plans) == 0 {
 		label := req.Source
 		if req.Path != "" {
 			label = req.Source + "/" + req.Path
 		}
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("no video files found in %s/", label)})
+		return
+	}
+
+	// Two runs over the same episode would interpolate and encode it twice and
+	// race each other's os.Rename onto the same destination — and because each
+	// pipeline's cleanup steps empty the earlier stage folders as it advances,
+	// the overlap is easy to create by accident: a file another job is upscaling
+	// is gone from input/ and sitting in output/, which is exactly what this
+	// run's planner adopts. The plan, not the request, is what must be checked.
+	if conflicts := overlapping(plans, jm.ActiveFiles()); len(conflicts) > 0 {
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error": fmt.Sprintf("already being processed by another job: %s", summarizeNames(conflicts)),
+		})
 		return
 	}
 
@@ -225,6 +238,31 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 		"pipeline_name": p.Name,
 		"files":         job.Files,
 	})
+}
+
+// overlapping returns the planned file names that are already claimed by
+// another job, in plan order.
+func overlapping(plans []process.FilePlan, busy map[string]bool) []string {
+	if len(busy) == 0 {
+		return nil
+	}
+	var conflicts []string
+	for _, p := range plans {
+		if busy[p.Name] {
+			conflicts = append(conflicts, p.Name)
+		}
+	}
+	return conflicts
+}
+
+// summarizeNames renders a name list for an error message, naming the first few
+// and counting the rest so a whole-library collision stays readable.
+func summarizeNames(names []string) string {
+	const show = 3
+	if len(names) <= show {
+		return strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(names[:show], ", "), len(names)-show)
 }
 
 func validateSteps(steps []pipeline.PipelineStep) error {

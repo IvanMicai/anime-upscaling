@@ -1,6 +1,7 @@
 package process
 
 import (
+	"path/filepath"
 	"sort"
 
 	"anime-upscaling/internal/config"
@@ -129,7 +130,14 @@ func GroupForAdmission(cfg config.Config, steps []pipeline.PipelineStep, plans [
 // reached the last producing step has finished the pipeline — at most some
 // trailing cleanup did not run — so it is left alone rather than re-listed on
 // every subsequent run.
-func PlanPipelineFiles(cfg config.Config, steps []pipeline.PipelineStep, sourceDir string, sourceFiles []string) []FilePlan {
+//
+// scope is the run's subfolder, relative to a stage root (the request's path,
+// "" for a whole-library run). Adoption is confined to it, because a run is
+// responsible for one folder: adopting a stray from a folder the user did not
+// pick would resume it mid-pipeline, and the very next step of a pipeline like
+// upscale/cleanup/interpolate is the cleanup that deletes that episode's master
+// from input/ — for a series this run was never asked to touch.
+func PlanPipelineFiles(cfg config.Config, steps []pipeline.PipelineStep, sourceDir, scope string, sourceFiles []string) []FilePlan {
 	ordered := make([]string, len(sourceFiles))
 	copy(ordered, sourceFiles)
 	files.SortNatural(ordered)
@@ -166,11 +174,17 @@ func PlanPipelineFiles(cfg config.Config, steps []pipeline.PipelineStep, sourceD
 	// order means a later stage simply overwrites an earlier one.
 	furthest := make(map[string]producer)
 	for _, p := range producers {
-		found, err := files.WalkVideos(p.dir, cfg.VideoExts)
+		found, err := files.WalkVideos(filepath.Join(p.dir, scope), cfg.VideoExts)
 		if err != nil {
 			continue
 		}
 		for rel := range found {
+			// WalkVideos returns paths relative to the directory it walked, so
+			// re-attach the scope: every other name here — sourceFiles, FilePlan
+			// names, the cleanup lookups — is relative to the stage root.
+			if scope != "" {
+				rel = filepath.ToSlash(filepath.Join(scope, rel))
+			}
 			if inSource[rel] || runner.IsSanitizeArtifact(rel) {
 				continue
 			}
@@ -185,11 +199,23 @@ func PlanPipelineFiles(cfg config.Config, steps []pipeline.PipelineStep, sourceD
 		}
 		orphans = append(orphans, name)
 	}
-	files.SortNatural(orphans)
+	// Not sorted here: the whole plan is sorted below, and furthest's keys are
+	// unique, so the comparator is a total order and this order cannot survive.
 
 	for _, name := range orphans {
 		p := furthest[name]
 		plans = append(plans, FilePlan{Name: name, StartStep: p.stepIdx + 1, InputDir: p.dir})
 	}
+
+	// One natural sort over the whole plan, source files and adopted orphans
+	// together. A plan index is not just a label: it is the tiebreak every queue
+	// uses to pick among files waiting on the same step (pipelinePriority), and
+	// it is the order the dashboard lists the job's files in. Appending orphans
+	// after the source files makes that index disagree with the alphabetical
+	// order the file picker shows, and gives every adopted file a worse tiebreak
+	// than every source file — so an episode that resumed one step from the end
+	// loses its pool slot, over and over, to freshly started episodes that catch
+	// up to the same step later.
+	sort.SliceStable(plans, func(i, j int) bool { return files.NaturalLess(plans[i].Name, plans[j].Name) })
 	return plans
 }

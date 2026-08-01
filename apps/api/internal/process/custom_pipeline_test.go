@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"anime-upscaling/internal/config"
 	"anime-upscaling/internal/logger"
@@ -45,6 +46,164 @@ func TestPipelinePriority_LaterStepDominates(t *testing.T) {
 				step+1, batch, laterWorst, step, earlierBest)
 		}
 	}
+}
+
+// TestPipelineSlots_CarriesSlotAcrossStepBoundary verifies the file keeps the
+// pool slot it already holds when it moves to another step on the same pool, and
+// that a lower-priority file parked behind it does not get to slip in. This is
+// the inversion the plain Release/Acquire pair allowed: the cleanup step between
+// two GPU steps left the file holding nothing, so its GPU went to whichever
+// freshly started episode happened to be waiting.
+func TestPipelineSlots_CarriesSlotAcrossStepBoundary(t *testing.T) {
+	gpuQ := queue.NewGPUQueue(1, 1)
+	ffmpegQ := queue.New(1)
+	ctx := context.Background()
+
+	var slots pipelineSlots
+	if err := slots.acquireGPU(ctx, gpuQ, ffmpegQ, pipelinePriority(0, 1)); err != nil {
+		t.Fatalf("upscale acquire failed: %v", err)
+	}
+	gotGPU, gotStream := slots.gpuID, slots.streamIdx
+
+	// A later episode still on step 0 parks behind us.
+	jumped := make(chan struct{})
+	go func() {
+		gpuID, streamIdx, err := gpuQ.Acquire(ctx, pipelinePriority(0, 2))
+		if err != nil {
+			return
+		}
+		close(jumped)
+		gpuQ.Release(gpuID, streamIdx)
+	}()
+	// Give the contender time to park before the step boundary.
+	time.Sleep(20 * time.Millisecond)
+
+	if err := slots.acquireGPU(ctx, gpuQ, ffmpegQ, pipelinePriority(2, 1)); err != nil {
+		t.Fatalf("interpolate acquire failed: %v", err)
+	}
+	if slots.gpuID != gotGPU || slots.streamIdx != gotStream {
+		t.Fatalf("moved to GPU %d/%d across the step boundary, want to keep %d/%d",
+			slots.gpuID, slots.streamIdx, gotGPU, gotStream)
+	}
+	select {
+	case <-jumped:
+		t.Fatal("a lower-priority episode took the GPU across the step boundary")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	slots.release(gpuQ, ffmpegQ)
+	select {
+	case <-jumped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiting episode never got the GPU after the pipeline released it")
+	}
+}
+
+// TestPipelineSlots_NeverHoldsTwoPools verifies a file hands its GPU back the
+// moment it moves to an FFmpeg step, and vice versa. Holding both would idle a
+// worker that another episode is waiting for — the pools are sized to run
+// concurrently, not to be reserved by one file.
+func TestPipelineSlots_NeverHoldsTwoPools(t *testing.T) {
+	gpuQ := queue.NewGPUQueue(1, 1)
+	ffmpegQ := queue.New(1)
+	ctx := context.Background()
+
+	var slots pipelineSlots
+	if err := slots.acquireGPU(ctx, gpuQ, ffmpegQ, pipelinePriority(2, 1)); err != nil {
+		t.Fatalf("interpolate acquire failed: %v", err)
+	}
+	if err := slots.acquireFFmpeg(ctx, gpuQ, ffmpegQ, pipelinePriority(4, 1)); err != nil {
+		t.Fatalf("optimize acquire failed: %v", err)
+	}
+	if slots.gpu {
+		t.Error("still holding a GPU slot while running on the FFmpeg pool")
+	}
+	if !slots.ffmpeg {
+		t.Error("not holding the FFmpeg slot it just acquired")
+	}
+	assertFree(t, gpuQ, "GPU pool after moving to an FFmpeg step")
+
+	// And back again, for pipelines that encode before a further GPU step.
+	if err := slots.acquireGPU(ctx, gpuQ, ffmpegQ, pipelinePriority(5, 1)); err != nil {
+		t.Fatalf("second GPU acquire failed: %v", err)
+	}
+	if slots.ffmpeg {
+		t.Error("still holding an FFmpeg slot while running on the GPU pool")
+	}
+
+	slots.release(gpuQ, ffmpegQ)
+	assertFree(t, gpuQ, "GPU pool after release")
+}
+
+// TestPipelineSlots_ReleaseUnneededFreesPoolsTheFileIsDoneWith verifies the
+// trailing cleanup steps run holding nothing, so the last encode does not keep a
+// worker reserved while it deletes a file.
+func TestPipelineSlots_ReleaseUnneededFreesPoolsTheFileIsDoneWith(t *testing.T) {
+	gpuQ := queue.NewGPUQueue(1, 1)
+	ffmpegQ := queue.New(1)
+	ctx := context.Background()
+
+	var slots pipelineSlots
+	if err := slots.acquireFFmpeg(ctx, gpuQ, ffmpegQ, pipelinePriority(4, 1)); err != nil {
+		t.Fatalf("optimize acquire failed: %v", err)
+	}
+
+	// Only a cleanup left after the optimize step.
+	slots.releaseUnneeded(QueueNone, gpuQ, ffmpegQ)
+	if slots.ffmpeg || slots.gpu {
+		t.Fatalf("still holding a slot with no pool steps left: %+v", slots)
+	}
+
+	acquired := make(chan struct{})
+	go func() {
+		slot, err := ffmpegQ.Acquire(ctx, 0)
+		if err != nil {
+			return
+		}
+		close(acquired)
+		ffmpegQ.Release(slot)
+	}()
+	select {
+	case <-acquired:
+	case <-time.After(2 * time.Second):
+		t.Fatal("FFmpeg slot was not returned to the pool")
+	}
+}
+
+// TestFirstQueue_DrivesSlotHandoverOnTheRealPipeline pins the look-ahead the
+// step loop uses to decide whether to carry its slot into the next step. On the
+// production pipeline it must keep the GPU across the cleanup that separates
+// upscale from interpolate, and give it up right after the interpolate — before
+// the next cleanup — because the file's remaining work is an FFmpeg encode.
+func TestFirstQueue_DrivesSlotHandoverOnTheRealPipeline(t *testing.T) {
+	cfg := testCfg(t)
+	steps := realPipeline()
+
+	for _, tc := range []struct {
+		afterStep int
+		want      QueueKind
+		why       string
+	}{
+		{0, QueueGPU, "upscale done: interpolate is still ahead, keep the GPU across the cleanup"},
+		{2, QueueFFmpeg, "interpolate done: only the encode is left, hand the GPU back now"},
+		{4, QueueNone, "encode done: the trailing cleanup needs no worker at all"},
+	} {
+		if got := FirstQueue(cfg, steps, tc.afterStep+1); got != tc.want {
+			t.Errorf("after step %d: FirstQueue=%v, want %v (%s)", tc.afterStep, got, tc.want, tc.why)
+		}
+	}
+}
+
+// assertFree fails unless the GPU pool has a slot available right now.
+func assertFree(t *testing.T, q *queue.GPUQueue, what string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	gpuID, streamIdx, err := q.Acquire(ctx, 0)
+	if err != nil {
+		t.Fatalf("%s: no slot available (%v)", what, err)
+	}
+	q.Release(gpuID, streamIdx)
 }
 
 // TestRunCustomPipelineForFile_AdmitsNextOnEarlyReturn verifies the deadlock

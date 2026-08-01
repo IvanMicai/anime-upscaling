@@ -69,6 +69,56 @@ func (q *Queue) Acquire(ctx context.Context, priority int) (int, error) {
 	}
 }
 
+// Yield re-contends for the slot the caller already holds, at a new priority,
+// without ever letting go of it in a way a lower-priority waiter could exploit.
+// It returns the slot to keep using: the one it came in with when nobody
+// outranks the new priority, otherwise whichever slot it is eventually served —
+// possibly the same one again — after the incumbent slot has been handed to the
+// waiter that did outrank it and the caller has waited its turn. Callers must
+// use the returned slot rather than the one they passed in.
+//
+// This is what a multi-step pipeline needs at a step boundary. Release+Acquire
+// looks equivalent but is not: between the two calls the caller holds nothing
+// and is absent from the waiter list, so Release hands the slot to whoever
+// happens to be parked — including files the priority comparator ranks below it.
+// Yield makes the swap atomic under the queue lock, closing that window.
+//
+// On error the slot has already been released; the caller must not release it
+// again.
+func (q *Queue) Yield(ctx context.Context, slot, priority int) (int, error) {
+	q.mu.Lock()
+	best := bestWaiter(len(q.waiters), func(i int) int { return q.waiters[i].priority })
+	if best < 0 || q.waiters[best].priority <= priority {
+		// Nobody outranks us: keep the slot, no handoff, no window.
+		q.mu.Unlock()
+		return slot, nil
+	}
+	w := q.waiters[best]
+	q.waiters = append(q.waiters[:best], q.waiters[best+1:]...)
+	self := queueWaiter{priority: priority, ch: make(chan int, 1)}
+	q.waiters = append(q.waiters, self)
+	q.mu.Unlock()
+	w.ch <- slot
+
+	select {
+	case got := <-self.ch:
+		return got, nil
+	case <-ctx.Done():
+		q.mu.Lock()
+		for i, ww := range q.waiters {
+			if ww.ch == self.ch {
+				q.waiters = append(q.waiters[:i], q.waiters[i+1:]...)
+				q.mu.Unlock()
+				return 0, ctx.Err()
+			}
+		}
+		// Waiter was already fulfilled between ctx cancel and lock — return the slot.
+		q.mu.Unlock()
+		q.Release(<-self.ch)
+		return 0, ctx.Err()
+	}
+}
+
 // Release returns a slot back to the pool, waking the highest-priority waiter if any.
 func (q *Queue) Release(slot int) {
 	q.mu.Lock()
@@ -77,16 +127,24 @@ func (q *Queue) Release(slot int) {
 		q.mu.Unlock()
 		return
 	}
-	best := 0
-	for i := 1; i < len(q.waiters); i++ {
-		if q.waiters[i].priority > q.waiters[best].priority {
-			best = i
-		}
-	}
+	best := bestWaiter(len(q.waiters), func(i int) int { return q.waiters[i].priority })
 	w := q.waiters[best]
 	q.waiters = append(q.waiters[:best], q.waiters[best+1:]...)
 	q.mu.Unlock()
 	w.ch <- slot
+}
+
+// bestWaiter returns the index of the highest-priority waiter among n, or -1
+// when there are none. Ties keep the earliest waiter, so equal priorities are
+// served in the order they parked.
+func bestWaiter(n int, priority func(i int) int) int {
+	best := -1
+	for i := 0; i < n; i++ {
+		if best < 0 || priority(i) > priority(best) {
+			best = i
+		}
+	}
+	return best
 }
 
 // Submit enqueues fn for execution. Blocks until a slot is free or ctx is cancelled,
@@ -205,6 +263,59 @@ func (q *GPUQueue) Acquire(ctx context.Context, priority int) (int, int, error) 
 	}
 }
 
+// Yield re-contends for the GPU slot the caller already holds, at a new
+// priority. See Queue.Yield for why a step boundary must not be a plain
+// Release+Acquire.
+//
+// The gate runs first, exactly as in Acquire: continuing to the next step is a
+// fresh allocation against the driver, so a wedged GPU must stall it too. The
+// slot is held while the gate blocks, which costs nothing — every other GPU
+// caller is gated at its own Acquire — and is given up if the gate fails.
+//
+// On error the slot has already been released; the caller must not release it
+// again.
+func (q *GPUQueue) Yield(ctx context.Context, gpuID, streamIdx, priority int) (int, int, error) {
+	if gate := q.currentGate(); gate != nil {
+		if err := gate(ctx); err != nil {
+			q.Release(gpuID, streamIdx)
+			return 0, 0, err
+		}
+	}
+
+	s := gpuSlot{gpuID: gpuID, streamIdx: streamIdx}
+	q.mu.Lock()
+	best := bestWaiter(len(q.waiters), func(i int) int { return q.waiters[i].priority })
+	if best < 0 || q.waiters[best].priority <= priority {
+		q.mu.Unlock()
+		return gpuID, streamIdx, nil
+	}
+	w := q.waiters[best]
+	q.waiters = append(q.waiters[:best], q.waiters[best+1:]...)
+	self := gpuWaiter{priority: priority, ch: make(chan gpuSlot, 1)}
+	q.waiters = append(q.waiters, self)
+	q.mu.Unlock()
+	w.ch <- s
+
+	select {
+	case got := <-self.ch:
+		return got.gpuID, got.streamIdx, nil
+	case <-ctx.Done():
+		q.mu.Lock()
+		for i, ww := range q.waiters {
+			if ww.ch == self.ch {
+				q.waiters = append(q.waiters[:i], q.waiters[i+1:]...)
+				q.mu.Unlock()
+				return 0, 0, ctx.Err()
+			}
+		}
+		// Waiter was already fulfilled between ctx cancel and lock — return the slot.
+		q.mu.Unlock()
+		got := <-self.ch
+		q.Release(got.gpuID, got.streamIdx)
+		return 0, 0, ctx.Err()
+	}
+}
+
 // Release returns a GPU slot back to the pool, waking the highest-priority waiter if any.
 func (q *GPUQueue) Release(gpuID, streamIdx int) {
 	s := gpuSlot{gpuID: gpuID, streamIdx: streamIdx}
@@ -214,12 +325,7 @@ func (q *GPUQueue) Release(gpuID, streamIdx int) {
 		q.mu.Unlock()
 		return
 	}
-	best := 0
-	for i := 1; i < len(q.waiters); i++ {
-		if q.waiters[i].priority > q.waiters[best].priority {
-			best = i
-		}
-	}
+	best := bestWaiter(len(q.waiters), func(i int) int { return q.waiters[i].priority })
 	w := q.waiters[best]
 	q.waiters = append(q.waiters[:best], q.waiters[best+1:]...)
 	q.mu.Unlock()

@@ -72,7 +72,7 @@ func TestPlanPipelineFiles_AdoptsStrandedFiles(t *testing.T) {
 	write(t, cfg.InterpolatedDir, "Digimon S01E41.mkv")
 
 	sourceFiles := []string{"GT S01E58.mkv", "GT S01E59.mkv"}
-	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, sourceFiles)
+	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, "", sourceFiles)
 
 	want := map[string]FilePlan{
 		// Still in the source folder -> whole pipeline, as before.
@@ -115,7 +115,7 @@ func TestPlanPipelineFiles_RoutesStrandedWorkToBothPools(t *testing.T) {
 	write(t, cfg.OutputDir, "GT S01E55.mkv")
 	write(t, cfg.InterpolatedDir, "Digimon S01E39.mkv")
 
-	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, []string{"GT S01E58.mkv"})
+	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, "", []string{"GT S01E58.mkv"})
 
 	got := map[string]QueueKind{}
 	for _, p := range plans {
@@ -146,7 +146,7 @@ func TestPlanPipelineFiles_LeavesFinishedFilesAlone(t *testing.T) {
 	write(t, cfg.OptimizedDir, "Done S01E02.mkv")
 	write(t, cfg.InterpolatedDir, "Done S01E02.mkv")
 
-	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, nil)
+	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, "", nil)
 	if len(plans) != 0 {
 		t.Fatalf("planned %+v, want no files adopted", plans)
 	}
@@ -166,7 +166,7 @@ func TestPlanPipelineFiles_SkipsSanitizeArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, nil)
+	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, "", nil)
 	if len(plans) != 1 {
 		t.Fatalf("planned %d files, want 1: %+v", len(plans), plans)
 	}
@@ -188,7 +188,7 @@ func TestPlanPipelineFiles_SourceFilesAlwaysStartAtZero(t *testing.T) {
 	write(t, cfg.InputDir, name)
 	write(t, cfg.OutputDir, name) // possibly partial output from the killed run
 
-	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, []string{name})
+	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, "", []string{name})
 	if len(plans) != 1 {
 		t.Fatalf("planned %d files, want 1: %+v", len(plans), plans)
 	}
@@ -223,7 +223,7 @@ func TestGroupForAdmission_ResumedFilesGetFreeSlotsFirst(t *testing.T) {
 	write(t, cfg.InterpolatedDir, "Digimon Tamers S01E40.mkv")
 	write(t, cfg.InterpolatedDir, "Digimon Tamers S01E41.mkv")
 
-	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, sourceFiles)
+	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, "", sourceFiles)
 	groups := GroupForAdmission(cfg, steps, plans)
 
 	head := func(kind QueueKind, n int) []string {
@@ -249,6 +249,155 @@ func TestGroupForAdmission_ResumedFilesGetFreeSlotsFirst(t *testing.T) {
 	}
 	if got := head(QueueFFmpeg, 3); !reflect.DeepEqual(got, wantFFmpeg) {
 		t.Errorf("FFmpeg slots take %v, want %v", got, wantFFmpeg)
+	}
+}
+
+// TestPlanPipelineFiles_OrdersWholePlanNaturally pins the ordering contract the
+// rest of the scheduler is built on: a plan index is the file's alphabetical
+// rank across source files AND adopted orphans, matching what the file picker
+// lists. Appending orphans after the source files instead is what made a resumed
+// run process episodes out of order.
+func TestPlanPipelineFiles_OrdersWholePlanNaturally(t *testing.T) {
+	cfg := testCfg(t)
+	steps := realPipeline()
+
+	// In the source folder: the fresh episodes.
+	source := []string{"Dragon Ball GT S01E58.mkv", "Dragon Ball GT S01E60.mkv"}
+	for _, n := range source {
+		write(t, cfg.InputDir, n)
+	}
+	// Stranded by the cancelled run, alphabetically before and between them.
+	write(t, cfg.InterpolatedDir, "Digimon Tamers S01E39.mkv")
+	write(t, cfg.OutputDir, "Dragon Ball GT S01E55.mkv")
+	write(t, cfg.OutputDir, "Dragon Ball GT S01E59.mkv")
+
+	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, "", source)
+
+	got := make([]string, len(plans))
+	for i, p := range plans {
+		got[i] = p.Name
+	}
+	want := []string{
+		"Digimon Tamers S01E39.mkv",
+		"Dragon Ball GT S01E55.mkv",
+		"Dragon Ball GT S01E58.mkv",
+		"Dragon Ball GT S01E59.mkv",
+		"Dragon Ball GT S01E60.mkv",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("plan order = %v, want %v", got, want)
+	}
+
+	// Sorting must not disturb where each file resumes.
+	wantStart := map[string]int{
+		"Digimon Tamers S01E39.mkv": 3,
+		"Dragon Ball GT S01E55.mkv": 1,
+		"Dragon Ball GT S01E58.mkv": 0,
+		"Dragon Ball GT S01E59.mkv": 1,
+		"Dragon Ball GT S01E60.mkv": 0,
+	}
+	for _, p := range plans {
+		if p.StartStep != wantStart[p.Name] {
+			t.Errorf("%s: StartStep=%d, want %d", p.Name, p.StartStep, wantStart[p.Name])
+		}
+	}
+}
+
+// TestPlanPipelineFiles_AdoptedFileKeepsItsPlaceInLine is the starvation
+// regression, expressed as the priority the queue actually compares. Three
+// episodes were stranded one step from the end of the pipeline; the fresh input
+// files that would later catch up to that same step come after them
+// alphabetically, so the stranded ones must outrank them.
+//
+// With orphans appended after the source files, every stranded episode got a
+// worse tiebreak than every fresh one and was passed over each time an FFmpeg
+// slot came free — for hours, and then again by the next episode to arrive.
+func TestPlanPipelineFiles_AdoptedFileKeepsItsPlaceInLine(t *testing.T) {
+	cfg := testCfg(t)
+	steps := realPipeline()
+
+	var source []string
+	for i := 58; i <= 64; i++ {
+		name := fmt.Sprintf("Dragon Ball GT S01E%d.mkv", i)
+		write(t, cfg.InputDir, name)
+		source = append(source, name)
+	}
+	stranded := []string{
+		"Digimon Tamers S01E42.mkv", // awaiting optimize
+		"Dragon Ball GT S01E55.mkv",
+		"Dragon Ball GT S01E57.mkv",
+	}
+	for _, n := range stranded {
+		write(t, cfg.InterpolatedDir, n)
+	}
+
+	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, "", source)
+
+	// The optimize step (index 4) is where they all meet: the stranded files
+	// start there, the fresh ones arrive there after upscale + interpolate.
+	const optimizeStep = 4
+	prio := make(map[string]int, len(plans))
+	for i, p := range plans {
+		prio[p.Name] = pipelinePriority(optimizeStep, i+1)
+	}
+	for _, s := range stranded {
+		for _, f := range source {
+			if prio[s] <= prio[f] {
+				t.Errorf("%s (prio %d) does not outrank %s (prio %d) on the optimize step",
+					s, prio[s], f, prio[f])
+			}
+		}
+	}
+}
+
+// TestPlanPipelineFiles_AdoptsOnlyWithinTheRequestedFolder guards the blast
+// radius of orphan adoption. A run over one series must not reach into another:
+// an adopted file resumes mid-pipeline, and the next step of this pipeline is
+// the cleanup that deletes that episode's master from input/ — for a folder the
+// user never picked.
+func TestPlanPipelineFiles_AdoptsOnlyWithinTheRequestedFolder(t *testing.T) {
+	cfg := testCfg(t)
+	steps := realPipeline()
+
+	for _, d := range []string{
+		filepath.Join(cfg.InputDir, "ShowA"),
+		filepath.Join(cfg.InputDir, "ShowB"),
+		filepath.Join(cfg.OutputDir, "ShowA"),
+		filepath.Join(cfg.OutputDir, "ShowB"),
+	} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, filepath.Join(cfg.InputDir, "ShowA"), "ep01.mkv")
+	write(t, filepath.Join(cfg.InputDir, "ShowB"), "ep01.mkv") // ShowB's master
+	write(t, filepath.Join(cfg.OutputDir, "ShowA"), "ep02.mkv")
+	write(t, filepath.Join(cfg.OutputDir, "ShowB"), "ep02.mkv")
+
+	plans := PlanPipelineFiles(cfg, steps, cfg.InputDir, "ShowA", []string{"ShowA/ep01.mkv"})
+
+	got := make([]string, len(plans))
+	for i, p := range plans {
+		got[i] = p.Name
+	}
+	want := []string{"ShowA/ep01.mkv", "ShowA/ep02.mkv"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("plan = %v, want %v (ShowB must not be touched)", got, want)
+	}
+
+	// The adopted name keeps the folder prefix, so every later lookup — the
+	// stage folders it reads from, and the cleanup that deletes it — resolves
+	// to the right file.
+	adopted := plans[1]
+	if adopted.InputDir != cfg.OutputDir || adopted.StartStep != 1 {
+		t.Errorf("adopted %s: dir=%s start=%d, want dir=%s start=1",
+			adopted.Name, adopted.InputDir, adopted.StartStep, cfg.OutputDir)
+	}
+
+	// An unscoped run still sweeps the whole library, as before.
+	all := PlanPipelineFiles(cfg, steps, cfg.InputDir, "", []string{"ShowA/ep01.mkv"})
+	if len(all) != 3 {
+		t.Fatalf("unscoped run planned %d files, want 3: %+v", len(all), all)
 	}
 }
 
