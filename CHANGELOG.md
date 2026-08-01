@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.13.4](https://github.com/IvanMicai/anime-upscaling/compare/v1.13.3...v1.13.4) (2026-08-01)
+
+### Bug Fixes
+
+* **pipeline:** dispatch files in alphabetical order and stop starving resumed ones ([#89](https://github.com/IvanMicai/anime-upscaling/issues/89)) ([019244d](https://github.com/IvanMicai/anime-upscaling/commit/019244dd671575ce1cfdf050f668b13fcdf3a92b))
+
 ## [1.13.3](https://github.com/IvanMicai/anime-upscaling/compare/v1.13.2...v1.13.3) (2026-07-29)
 
 ### Bug Fixes
