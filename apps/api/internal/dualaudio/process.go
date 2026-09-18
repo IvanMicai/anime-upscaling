@@ -26,12 +26,20 @@ const (
 type Gate struct {
 	MaxResidualSec float64 // median residual; p95 may be 3x this
 	MinCoverage    float64
+	// MinValidated is the share of validation windows whose peak must land on
+	// zero. Clean episodes sit above 0.8; one with a misplaced stretch measured
+	// 0.36.
+	MinValidated float64
+	// MaxOffSec is how many seconds may play at a consistently wrong offset.
+	MaxOffSec float64
 }
 
 // DefaultGate matches the validated thresholds: 50 ms is below the point where
 // dialogue reads as out of sync, and 90% coverage allows for credits and
 // previews that exist in only one release.
-func DefaultGate() Gate { return Gate{MaxResidualSec: 0.05, MinCoverage: 0.90} }
+func DefaultGate() Gate {
+	return Gate{MaxResidualSec: 0.05, MinCoverage: 0.90, MinValidated: 0.75, MaxOffSec: 8}
+}
 
 // Result is what one episode produced.
 type Result struct {
@@ -42,6 +50,10 @@ type Result struct {
 	Alignment      *Alignment `json:"alignment,omitempty"`
 	ResidualMedian float64    `json:"residual_median"`
 	ResidualP95    float64    `json:"residual_p95"`
+	Validated      int        `json:"validated"`    // validation windows with the peak on zero
+	ValidatedOf    int        `json:"validated_of"` // ... out of this many eligible
+	Misses         []Miss     `json:"misses,omitempty"`
+	OffSec         float64    `json:"off_sec"` // seconds at a consistently wrong offset
 	Written        bool       `json:"written"`
 }
 
@@ -79,8 +91,8 @@ func Process(ctx context.Context, t Tools, j Job) (*Result, error) {
 	if err != nil {
 		return res, err
 	}
-	baseFeat := ExtractFeatures(baseMono)
-	al := Align(baseFeat, ExtractFeatures(dubMono), baseDur, dubDur, j.Options)
+	baseFeat, dubFeat := ExtractFeatures(baseMono), ExtractFeatures(dubMono)
+	al := Align(baseFeat, dubFeat, baseDur, dubDur, j.Options)
 	res.Alignment = al
 	if len(al.Segments) == 0 {
 		res.Notes = append(res.Notes, "no window locked: the two files are probably different content")
@@ -92,16 +104,15 @@ func Process(ctx context.Context, t Tools, j Job) (*Result, error) {
 		return res, err
 	}
 	var basePCM []int16
-	if j.GapFill == GapFillBase && len(al.Gaps) > 0 {
+	if j.GapFill == GapFillBase {
 		if basePCM, err = t.DecodePCM(ctx, j.BasePath, outRate, outChannels, j.BaseStream); err != nil {
 			return res, err
 		}
 	}
-	rendered := Render(al, dubPCM, basePCM, j.GapFill)
-
-	var n int
-	res.ResidualMedian, res.ResidualP95, n = Residual(rendered, baseFeat, al.Segments, j.Options.MinConfidence)
-	res.Status, res.Notes = grade(al, res.ResidualMedian, res.ResidualP95, n, j.Gate)
+	rendered, best := Refine(al, baseFeat, dubFeat, dubPCM, basePCM, j.GapFill, j.Options.MinConfidence)
+	res.ResidualMedian, res.ResidualP95 = best.Median, best.P95
+	res.Validated, res.ValidatedOf, res.Misses, res.OffSec = best.Hits, best.Eligible, best.Misses, best.OffSec
+	res.Status, res.Notes = grade(al, best, j.Gate)
 
 	if j.OutPath != "" && (res.Status == StatusOK || j.Force) {
 		if err := t.Mux(ctx, j.BasePath, rendered, j.OutPath, j.Mux); err != nil {
@@ -112,18 +123,69 @@ func Process(ctx context.Context, t Tools, j Job) (*Result, error) {
 	return res, nil
 }
 
-func grade(al *Alignment, med, p95 float64, n int, g Gate) (Status, []string) {
+const maxSolveRounds = 4
+
+func betterThan(v, best Validation) bool {
+	if v.OffSec != best.OffSec {
+		return v.OffSec < best.OffSec
+	}
+	return len(v.Offs) < len(best.Offs)
+}
+
+// Refine renders, validates and re-solves in a closed loop, and leaves al at
+// the best map found.
+//
+// Validation does not only fail an episode, it MEASURES what is missing: a
+// confident residual of +0.14 s over a stretch says the right lag there is the
+// segment's lag + 0.14. Those become candidate lags, the solver runs again, and
+// the loop goes on while the consistent error shrinks.
+func Refine(al *Alignment, baseFeat, dubFeat *Features, dubPCM, basePCM []int16, fill GapFill, minConf float64) ([]int16, Validation) {
+	var rendered []int16
+	var best Validation
+	bestSegs, bestGaps, bestCov := al.Segments, al.Gaps, al.Coverage
+	for round := 0; round < maxSolveRounds; round++ {
+		out := Render(al, dubPCM, basePCM, fill)
+		v := Validate(out, baseFeat, al.Segments, minConf)
+		if round > 0 && !betterThan(v, best) {
+			break // no better: keep the best so far
+		}
+		rendered, best = out, v
+		bestSegs, bestGaps, bestCov = al.Segments, al.Gaps, al.Coverage
+		// Feed back EVERY confident disagreement, not only consistent runs: a
+		// segment too short for the sweep yields a single disagreeing window. A
+		// false one costs a round and nothing else — a candidate that does not
+		// fit simply never scores.
+		if !al.AddCandidates(v.Offs) {
+			break
+		}
+		al.Solve(baseFeat, dubFeat)
+		if len(al.Segments) == 0 {
+			break
+		}
+	}
+	al.Segments, al.Gaps, al.Coverage = bestSegs, bestGaps, bestCov
+	return rendered, best
+}
+
+func grade(al *Alignment, v Validation, g Gate) (Status, []string) {
+	med, p95, n, eligible := v.Median, v.P95, v.Hits, v.Eligible
 	var notes []string
 	if al.Coverage < g.MinCoverage {
 		notes = append(notes, fmt.Sprintf("coverage %.0f%% < %.0f%%", al.Coverage*100, g.MinCoverage*100))
 	}
 	switch {
-	case n == 0:
-		notes = append(notes, "validation found no confident window")
+	case eligible == 0:
+		notes = append(notes, "validation found no window to check")
 	case med > g.MaxResidualSec:
 		notes = append(notes, fmt.Sprintf("median residual %.0f ms > %.0f ms", med*1000, g.MaxResidualSec*1000))
 	case p95 > g.MaxResidualSec*3:
 		notes = append(notes, fmt.Sprintf("p95 residual %.0f ms", p95*1000))
+	}
+	if v.OffSec > g.MaxOffSec {
+		notes = append(notes, fmt.Sprintf("%.0f s playing at a consistently wrong offset", v.OffSec))
+	}
+	if eligible > 0 && float64(n) < g.MinValidated*float64(eligible) {
+		notes = append(notes, fmt.Sprintf("only %d/%d validation windows in place", n, eligible))
 	}
 	if al.WindowsTotal > 0 && al.WindowsLocked*2 < al.WindowsTotal {
 		notes = append(notes, fmt.Sprintf("only %d/%d windows locked", al.WindowsLocked, al.WindowsTotal))

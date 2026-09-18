@@ -117,10 +117,18 @@ func TestAlignRecoversStepAndCut(t *testing.T) {
 			t.Errorf("segment %d lag = %.3f, want %.3f", i, got, want)
 		}
 	}
-	// The join has to land inside the stretch the dub does not have; outside it
-	// one side would play at the other's offset.
-	if cut := al.Segments[0].BaseEnd; cut < 48 || cut > 60 {
-		t.Errorf("boundary at %.1f s, want within the 50-58 s cut", cut)
+	// The base holds 8 s (50-58 s) the dub does not have. That stretch must be
+	// left as a gap — it plays the base audio — not filled with repeated dub.
+	endA, startB := al.Segments[0].BaseEnd, al.Segments[1].BaseStart
+	if math.Abs(endA-50) > 2 || math.Abs(startB-58) > 2 {
+		t.Errorf("join = %.1f -> %.1f s, want ~50 -> ~58", endA, startB)
+	}
+	// Two gaps: the 0.5 s the dub lacks at the very start, and the hole.
+	if len(al.Gaps) != 2 {
+		t.Fatalf("gaps = %+v, want the leading 0.5 s and the hole", al.Gaps)
+	}
+	if h := al.Gaps[1]; math.Abs(h.Start-endA) > 1e-6 || math.Abs(h.End-startB) > 1e-6 {
+		t.Errorf("hole = %+v, want exactly %.2f -> %.2f", h, endA, startB)
 	}
 	if al.DriftSuspected {
 		t.Error("constant offsets reported as drift")
@@ -134,12 +142,18 @@ func TestRenderedTrackHasNoResidual(t *testing.T) {
 		float64(len(base))/featRate, float64(len(dub))/featRate, testOptions())
 
 	rendered := Render(al, upsampleStereo(toPCM(dub)), upsampleStereo(toPCM(base)), GapFillBase)
-	med, p95, n := Residual(rendered, baseFeat, al.Segments, 6)
-	if n == 0 {
-		t.Fatal("no validation window locked")
+	v := Validate(rendered, baseFeat, al.Segments, 6)
+	if v.Hits == 0 {
+		t.Fatal("no validation window in place")
 	}
-	if med > 0.02 || p95 > 0.05 {
-		t.Errorf("residual median=%.0f ms p95=%.0f ms, want <=20/50", med*1000, p95*1000)
+	if v.Hits*4 < v.Eligible*3 {
+		t.Errorf("only %d/%d validation windows in place on a clean fixture", v.Hits, v.Eligible)
+	}
+	// P95 is left out on purpose: this fixture's voice is loud against its music,
+	// and a lone 10 s window can lock onto noise. One window is not evidence —
+	// which is why the gate counts runs of three.
+	if v.Median > 0.02 || v.OffSec > 0 {
+		t.Errorf("residual median=%.0f ms off=%.0f s, want <=20 ms and 0 s", v.Median*1000, v.OffSec)
 	}
 	if want := int(math.Round(al.BaseDuration*outRate)) * outChannels; len(rendered) != want {
 		t.Errorf("rendered length = %d, want %d (base timeline)", len(rendered), want)
@@ -157,6 +171,113 @@ func upsampleStereo(mono []int16) []int16 {
 		}
 	}
 	return out
+}
+
+// Recurring music makes a few neighbouring windows agree on an absurd lag. They
+// used to become a segment and — being last in order — get stretched to the end
+// of the video. The monotonic chain must drop them.
+func TestGroupDropsNonMonotonicMismatch(t *testing.T) {
+	const wm = 3000
+	var est []estimate
+	for f := 0; f < 60000; f += 1000 {
+		est = append(est, estimate{f, -5562, 27}) // the real alignment: lag -55.62 s
+	}
+	// Two 3-window mismatches in the middle of it, as measured on a real episode.
+	spurious := []estimate{{3000, 50629, 12}, {4000, 50629, 12}, {5000, 50629, 12}}
+	est = append(est[:6], append(spurious, est[6:]...)...)
+
+	chain, _ := chainGroups(est, 8, wm, 117760)
+	locked := 0
+	for _, g := range chain {
+		for _, w := range g {
+			locked++
+			if w.lag != -5562 {
+				t.Errorf("mismatched window survived in the chain: %+v", w)
+			}
+		}
+	}
+	if locked != 60 {
+		t.Errorf("chain holds %d windows, want the 60 real ones only", locked)
+	}
+}
+
+func TestGroupDropsLightFarGroup(t *testing.T) {
+	const wm = 3000
+	var est []estimate
+	for f := 0; f < 40000; f += 1000 {
+		est = append(est, estimate{f, 100, 30})
+	}
+	// Monotonic, but light (2 windows) and 237 s away from the only heavy group.
+	est = append(est, estimate{41000, 23800, 9}, estimate{42000, 23800, 9})
+	chain, _ := chainGroups(est, 8, wm, 200000)
+	if len(chain) != 1 || len(chain[0]) != 40 {
+		t.Fatalf("chain = %d group(s), want only the heavy one", len(chain))
+	}
+}
+
+func TestEdgeExtensionIsBounded(t *testing.T) {
+	base, dub := fixture()
+	// Keep only the middle of the dub measurable by muting its first 60 s.
+	for i := 0; i < 60*featRate; i++ {
+		dub[i] = 0
+	}
+	al := Align(ExtractFeatures(toPCM(base)), ExtractFeatures(toPCM(dub)),
+		float64(len(base))/featRate, float64(len(dub))/featRate, testOptions())
+	if len(al.Segments) == 0 {
+		t.Fatal("nothing aligned")
+	}
+	if al.Segments[0].BaseStart < 5 {
+		t.Errorf("first segment starts at %.1f s: extended over a stretch that was never measured", al.Segments[0].BaseStart)
+	}
+}
+
+// A stretch shorter than the sweep can resolve never yields two agreeing
+// windows, so its lag is never proposed and it plays at a neighbour's offset.
+// The closed loop has to recover it from what validation measures.
+func TestRefineRecoversSegmentTooShortForTheSweep(t *testing.T) {
+	// Seed chosen so the synthetic score is not accidentally self-similar at a
+	// 0.3 s shift inside the short stretch (random tone bursts sometimes are, and
+	// then a wrong lag honestly out-scores the true one).
+	m := music(120, 37)
+	base := mix(m, voice(len(m), 137))
+	// lag +0.5 s up to 60 s, +0.9 s for the next 12 s, +1.3 s after that.
+	var dm []float64
+	dm = append(dm, m[int(0.5*featRate):60*featRate]...)
+	dm = append(dm, m[int(60.4*featRate):72*featRate]...)
+	dm = append(dm, m[int(72.4*featRate):]...)
+	dub := mix(dm, voice(len(dm), 237))
+
+	opt := Options{WindowSec: 20, HopSec: 10, SearchSec: 15, MinConfidence: 6, ToleranceSec: 0.08}
+	baseFeat, dubFeat := ExtractFeatures(toPCM(base)), ExtractFeatures(toPCM(dub))
+	al := Align(baseFeat, dubFeat, float64(len(base))/featRate, float64(len(dub))/featRate, opt)
+	_, v := Refine(al, baseFeat, dubFeat, upsampleStereo(toPCM(dub)), upsampleStereo(toPCM(base)), GapFillBase, 6)
+
+	if v.OffSec > 0 {
+		t.Errorf("%.0f s still playing at a wrong offset after refinement", v.OffSec)
+	}
+	// Judge by what matters: how long the dub plays at the wrong offset, against
+	// the known truth. Splitting the short stretch between its neighbours — what
+	// the coarse sweep alone does — leaves ~11 s wrong.
+	truth := func(t float64) float64 {
+		switch {
+		case t < 60.4:
+			return 0.5
+		case t < 72.4:
+			return 0.9
+		}
+		return 1.3
+	}
+	wrong := 0.0
+	for t := 1.0; t < 119; t += 0.5 {
+		for _, s := range al.Segments {
+			if s.BaseStart <= t && t < s.BaseEnd && math.Abs(s.Lag-truth(t)) > 0.06 {
+				wrong += 0.5
+			}
+		}
+	}
+	if wrong > 3 {
+		t.Errorf("%.1f s at the wrong offset, want <= 3: %+v", wrong, al.Segments)
+	}
 }
 
 func TestCoverageIsUnionNotSum(t *testing.T) {
@@ -238,23 +359,24 @@ func TestFlagContested(t *testing.T) {
 
 func TestGrade(t *testing.T) {
 	good := &Alignment{Coverage: 0.96, WindowsTotal: 100, WindowsLocked: 100}
-	if s, notes := grade(good, 0.001, 0.02, 40, DefaultGate()); s != StatusOK {
+	if s, notes := grade(good, Validation{Median: 0.001, P95: 0.02, Hits: 40, Eligible: 41}, DefaultGate()); s != StatusOK {
 		t.Errorf("clean episode graded %s: %v", s, notes)
 	}
 	cases := map[string]struct {
-		al       *Alignment
-		med, p95 float64
-		n        int
+		al *Alignment
+		v  Validation
 	}{
-		"low coverage":        {&Alignment{Coverage: 0.27, WindowsTotal: 10, WindowsLocked: 10}, 0.001, 0.01, 10},
-		"median residual":     {good, 0.083, 0.1, 40},
-		"p95 residual":        {good, 0.003, 0.907, 40},
-		"nothing to validate": {good, 0, 0, 0},
-		"few windows":         {&Alignment{Coverage: 0.95, WindowsTotal: 100, WindowsLocked: 30}, 0.001, 0.01, 10},
-		"drift":               {&Alignment{Coverage: 0.95, WindowsTotal: 10, WindowsLocked: 10, DriftSuspected: true}, 0.001, 0.01, 10},
+		"low coverage":                           {&Alignment{Coverage: 0.27, WindowsTotal: 10, WindowsLocked: 10}, Validation{Median: 0.001, P95: 0.01, Hits: 10, Eligible: 10}},
+		"median residual":                        {good, Validation{Median: 0.083, P95: 0.1, Hits: 40, Eligible: 41}},
+		"p95 residual":                           {good, Validation{Median: 0.003, P95: 0.907, Hits: 40, Eligible: 41}},
+		"nothing to validate":                    {good, Validation{}},
+		"misplaced stretch unseen by the median": {good, Validation{Median: 0.002, P95: 0.01, Hits: 18, Eligible: 69}},
+		"short stretch at a neighbour's offset":  {good, Validation{Median: 0.001, P95: 0.02, Hits: 232, Eligible: 243, OffSec: 30}},
+		"few windows":                            {&Alignment{Coverage: 0.95, WindowsTotal: 100, WindowsLocked: 30}, Validation{Median: 0.001, P95: 0.01, Hits: 10, Eligible: 10}},
+		"drift":                                  {&Alignment{Coverage: 0.95, WindowsTotal: 10, WindowsLocked: 10, DriftSuspected: true}, Validation{Median: 0.001, P95: 0.01, Hits: 10, Eligible: 10}},
 	}
 	for name, c := range cases {
-		if s, _ := grade(c.al, c.med, c.p95, c.n, DefaultGate()); s != StatusReview {
+		if s, _ := grade(c.al, c.v, DefaultGate()); s != StatusReview {
 			t.Errorf("%s: graded %s, want review", name, s)
 		}
 	}

@@ -178,8 +178,9 @@ func dualaudioAnalyze(ctx context.Context, t dualaudio.Tools, args []string) err
 func printResult(name string, r *dualaudio.Result) {
 	fmt.Printf("%-7s %s\n", r.Status, name)
 	if al := r.Alignment; al != nil {
-		fmt.Printf("        coverage %.1f%%, windows %d/%d, residual %.0f ms (p95 %.0f ms)\n",
-			al.Coverage*100, al.WindowsLocked, al.WindowsTotal, r.ResidualMedian*1000, r.ResidualP95*1000)
+		fmt.Printf("        coverage %.1f%%, windows %d/%d, validated %d/%d, off %.0f s, residual %.0f ms (p95 %.0f ms)\n",
+			al.Coverage*100, al.WindowsLocked, al.WindowsTotal, r.Validated, r.ValidatedOf, r.OffSec,
+			r.ResidualMedian*1000, r.ResidualP95*1000)
 		for _, s := range al.Segments {
 			fmt.Printf("        %8.1f -> %8.1f s  lag %+8.2f s  (n=%d, conf %.0f)\n",
 				s.BaseStart, s.BaseEnd, s.Lag, s.Windows, s.Confidence)
@@ -187,6 +188,13 @@ func printResult(name string, r *dualaudio.Result) {
 		for _, g := range al.Gaps {
 			fmt.Printf("        %8.1f -> %8.1f s  base only\n", g.Start, g.End)
 		}
+	}
+	if len(r.Misses) > 0 && r.Status != dualaudio.StatusOK {
+		fmt.Print("        out of place at:")
+		for _, m := range r.Misses {
+			fmt.Printf(" %.0fs(%+.2f|c%.0f)", m.BaseTime, m.Lag, m.Confidence)
+		}
+		fmt.Println()
 	}
 	for _, n := range r.Notes {
 		fmt.Printf("        note: %s\n", n)
