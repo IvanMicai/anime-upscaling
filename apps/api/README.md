@@ -379,6 +379,16 @@ the "two folders" case), `files` (an explicit list, may span folders), or neithe
 `POST /api/merge/preview` takes `source`, `path`, `files`, `paths` and returns
 `{ pairs, unpaired }` — the pairing a job would do, without starting it.
 
+Two endpoints support choosing the picture by eye:
+
+- `GET /api/merge/locate?source=&a=&b=&t=` — where time `t` (seconds) of file `a`
+  falls in file `b`, found by audio: `{ location: { t_a, t_b, lag, confidence,
+  matched }, a: { width, height, bitrate, duration }, b: {…} }`. The same scene
+  is not at the same timestamp in two releases. `matched: false` means it could
+  not be found and `t_b` falls back to `t`.
+- `GET /api/merge/frame?source=&file=&t=` — one frame as `image/png` (lossless,
+  so the comparison is not judging JPEG artefacts).
+
 ### Optimize
 
 - Codec: `libx265` (HEVC)

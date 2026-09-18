@@ -13,6 +13,7 @@ import type {
   Settings,
   SystemStatus,
   MergePreview,
+  MergeLocateResponse,
 } from "./types";
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -62,6 +63,17 @@ export function previewMerge(req: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });
+}
+
+// Where time `t` of file `a` falls in file `b`, found by audio.
+export function locateMergeFrame(source: string, a: string, b: string, t: number): Promise<MergeLocateResponse> {
+  const params = new URLSearchParams({ source, a, b, t: t.toFixed(3) });
+  return fetchJSON<MergeLocateResponse>(`/api/merge/locate?${params}`);
+}
+
+// URL of one frame as PNG (lossless on purpose: it is there to judge quality).
+export function mergeFrameUrl(source: string, file: string, t: number): string {
+  return `/api/merge/frame?${new URLSearchParams({ source, file, t: t.toFixed(3) })}`;
 }
 
 export function cancelJob(id: string): Promise<CancelJobResponse> {

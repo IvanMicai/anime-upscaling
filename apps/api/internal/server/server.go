@@ -48,6 +48,8 @@ func CmdServe(cfg config.Config) error {
 	mux.HandleFunc("/api/files/download", corsMiddleware(handleFileDownload(cfg)))
 	mux.HandleFunc("/api/files", corsMiddleware(handleFiles(cfg)))
 	mux.HandleFunc("/api/merge/preview", corsMiddleware(handleMergePreview(cfg)))
+	mux.HandleFunc("/api/merge/locate", corsMiddleware(handleMergeLocate(cfg)))
+	mux.HandleFunc("/api/merge/frame", corsMiddleware(handleMergeFrame(cfg)))
 	mux.HandleFunc("/api/jobs", corsMiddleware(handleJobs(jm, cfg)))
 	mux.HandleFunc("/api/jobs/", corsMiddleware(handleJobRoutes(jm)))
 	mux.HandleFunc("/api/pipelines", corsMiddleware(handlePipelines(ps)))

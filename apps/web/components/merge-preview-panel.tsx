@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRight, TriangleAlert } from "lucide-react";
+import { ArrowRight, Images, TriangleAlert } from "lucide-react";
+import { MergeCompareDialog } from "@/components/merge-compare-dialog";
 import { previewMerge } from "@/lib/api";
-import type { MergePreview } from "@/lib/types";
+import type { MergePair, MergePreview } from "@/lib/types";
 
 const baseName = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 
@@ -18,13 +19,20 @@ export function MergePreviewPanel({
   files,
   dirs,
   onLanguages,
+  video,
+  onPickVideo,
 }: {
   source: string;
   path: string;
   files: string[];
   dirs: string[];
   onLanguages: (tags: string[]) => void;
+  // Which file supplies the picture ("auto" or a language tag), and how to
+  // change it — set from the picture comparison.
+  video: string;
+  onPickVideo: (languageTag: string) => void;
 }) {
+  const [comparing, setComparing] = useState<MergePair | null>(null);
   const [preview, setPreview] = useState<MergePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const nothingPicked = files.length === 0 && dirs.length === 0;
@@ -80,6 +88,8 @@ export function MergePreviewPanel({
           )}
         </span>
         <span className="text-xs text-muted-foreground">
+          vídeo: <span className="text-foreground">{video === "auto" ? "automático" : `[${video}]`}</span>
+          {" · "}
           {nothingPicked
             ? `tudo em ${path || "/"}`
             : dirs.length > 0
@@ -91,11 +101,22 @@ export function MergePreviewPanel({
       {preview.pairs.length > 0 && (
         <ul className="scrollbar-dark mt-2 max-h-36 space-y-1 overflow-auto font-mono text-xs">
           {preview.pairs.map((p) => (
-            <li key={p.output} className={p.exists ? "text-muted-foreground line-through" : undefined}>
-              <span className="text-muted-foreground">[{p.lang_a.tag}]</span> {baseName(p.a)}
-              <span className="text-muted-foreground"> + [{p.lang_b.tag}]</span> {baseName(p.b)}
-              <ArrowRight className="mx-1 inline size-3 text-muted-foreground" />
-              <span className="text-pink-400">{p.output}</span>
+            <li key={p.output} className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setComparing(p)}
+                title="Comparar a imagem dos dois arquivos"
+                className="inline-flex shrink-0 items-center gap-1 rounded border border-border px-1.5 py-0.5 font-sans text-[11px] text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+              >
+                <Images className="size-3" />
+                Comparar
+              </button>
+              <span className={p.exists ? "text-muted-foreground line-through" : undefined}>
+                <span className="text-muted-foreground">[{p.lang_a.tag}]</span> {baseName(p.a)}
+                <span className="text-muted-foreground"> + [{p.lang_b.tag}]</span> {baseName(p.b)}
+                <ArrowRight className="mx-1 inline size-3 text-muted-foreground" />
+                <span className="text-pink-400">{p.output}</span>
+              </span>
             </li>
           ))}
         </ul>
@@ -115,6 +136,16 @@ export function MergePreviewPanel({
             ))}
           </ul>
         </details>
+      )}
+
+      {comparing && (
+        <MergeCompareDialog
+          open
+          onOpenChange={(o) => !o && setComparing(null)}
+          source={source}
+          pair={comparing}
+          onPick={onPickVideo}
+        />
       )}
 
       {preview.pairs.length === 0 && (

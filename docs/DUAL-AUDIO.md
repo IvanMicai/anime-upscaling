@@ -31,6 +31,30 @@ already merged, and what is left without a partner and why.
 | **Faixa de áudio padrão** | Default: the language that did *not* supply the video — the one the merge was done for. |
 | **Gravar mesmo sem sincronia garantida** | Off by default: a pair that fails the gate is not written and the log says why. |
 
+### Choosing the picture by looking
+
+*Automático* counts pixels, and pixels are not quality. Each pair in the preview
+has a **Comparar** button that shows the same frame from both files in one box
+with a draggable divider (double-click zooms), a few seek points plus a free
+slider, and the resolution and bitrate of each. *Usar o vídeo de […]* sets the
+choice for the job.
+
+"The same frame" is the part that needs care: it is **not at the same
+timestamp**. On a real pair, frame `t=100 s` of one file is a Pokéball in
+mid-flight; `t=100 s` of the other is a different scene altogether, and the same
+Pokéball is at `142.35 s` — and the offset had been `+30.7 s` a minute earlier,
+because a cut sits in between. So the second frame is taken where
+`GET /api/merge/locate` finds the same moment **by audio**: 30 s of audio around
+the point, searched in ±4 min of the other file, about a second of work instead
+of the ~40 s a full alignment takes. Near a cut part of a centred window has no
+counterpart, so three placements are tried (centred, forward, backward) and the
+most confident wins. When nothing matches — a dialogue-only stretch, or content
+the other file lacks — the dialog says the two frames may not be the same scene
+instead of presenting them as if they were.
+
+Frames are served as **PNG**: they exist to judge picture quality, and JPEG would
+add artefacts of its own to exactly what is being judged.
+
 The result lands in **`merged/`**, a stage folder like the others: it is a valid
 source for upscale, interpolate, optimize, check and saved pipelines.
 

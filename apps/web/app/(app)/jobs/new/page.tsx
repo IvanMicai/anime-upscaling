@@ -456,6 +456,8 @@ export default function NewJobPage() {
             files={selectedFiles}
             dirs={selectedDirs}
             onLanguages={setMergeLanguages}
+            video={mergeCfg.video}
+            onPickVideo={(video) => setMergeCfg((prev) => ({ ...prev, video }))}
           />
         )}
 

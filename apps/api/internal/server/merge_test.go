@@ -138,3 +138,32 @@ func TestJobDetailCarriesMergeBlock(t *testing.T) {
 		t.Errorf("job detail = %s, want the merge block", rec.Body.String())
 	}
 }
+
+func TestMergeFrameAndLocateValidateInput(t *testing.T) {
+	cfg := mergeTestConfig(t, "a.en.mkv", "a.pt-br.mkv")
+	for _, url := range []string{
+		"/api/merge/frame?file=../../etc/passwd&t=1",
+		"/api/merge/frame?file=a.en.mkv&t=abc",
+		"/api/merge/frame?file=a.en.mkv&t=-3",
+		"/api/merge/frame?file=missing.en.mkv&t=1",
+		"/api/merge/frame?source=nope&file=a.en.mkv&t=1",
+		"/api/merge/frame?file=a.en.txt&t=1",
+	} {
+		rec := httptest.NewRecorder()
+		handleMergeFrame(cfg)(rec, httptest.NewRequest(http.MethodGet, url, nil))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", url, rec.Code)
+		}
+	}
+	for _, url := range []string{
+		"/api/merge/locate?a=a.en.mkv&b=../x.mkv&t=1",
+		"/api/merge/locate?a=a.en.mkv&t=1",
+		"/api/merge/locate?a=a.en.mkv&b=a.pt-br.mkv",
+	} {
+		rec := httptest.NewRecorder()
+		handleMergeLocate(cfg)(rec, httptest.NewRequest(http.MethodGet, url, nil))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", url, rec.Code)
+		}
+	}
+}

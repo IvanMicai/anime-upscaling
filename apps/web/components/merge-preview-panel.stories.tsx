@@ -7,7 +7,10 @@ const meta: Meta<typeof MergePreviewPanel> = {
   component: MergePreviewPanel,
   parameters: { layout: "padded" },
   tags: ["autodocs"],
-  args: { source: "input", path: "", files: [], dirs: ["Show/EN", "Show/PT"], onLanguages: fn() },
+  args: {
+    source: "input", path: "", files: [], dirs: ["Show/EN", "Show/PT"],
+    onLanguages: fn(), video: "auto", onPickVideo: fn(),
+  },
   decorators: [
     (Story) => (
       <div className="w-full max-w-3xl">

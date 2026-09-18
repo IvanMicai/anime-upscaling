@@ -1,11 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"anime-upscaling/internal/config"
 	"anime-upscaling/internal/dualaudio"
@@ -208,5 +211,112 @@ func handleMergePreview(cfg config.Config) http.HandlerFunc {
 			pairs[i].Exists = files.FileExists(filepath.Join(cfg.MergedDir, filepath.FromSlash(pairs[i].Output)))
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{"pairs": pairs, "unpaired": unpaired})
+	}
+}
+
+// mergeSourceFile resolves and validates a video file of a merge source.
+func mergeSourceFile(cfg config.Config, source, rel string) (string, error) {
+	if source == "" {
+		source = "input"
+	}
+	dir, ok := resolveFolder(cfg, source)
+	if !ok {
+		return "", fmt.Errorf("invalid source")
+	}
+	if !files.SafeVideoRelPath(rel, cfg.VideoExts) {
+		return "", fmt.Errorf("invalid filename: %s", rel)
+	}
+	abs := filepath.Join(dir, filepath.FromSlash(rel))
+	if !files.FileExists(abs) {
+		return "", fmt.Errorf("file not found: %s", rel)
+	}
+	return abs, nil
+}
+
+func queryTime(r *http.Request) (float64, error) {
+	t, err := strconv.ParseFloat(r.URL.Query().Get("t"), 64)
+	if err != nil || t < 0 || t > 24*3600 {
+		return 0, fmt.Errorf("t must be a time in seconds")
+	}
+	return t, nil
+}
+
+// GET /api/merge/locate?source=&a=&b=&t= — where time t of file a falls in file
+// b, found by audio, plus what is needed to label the two pictures. Comparing
+// picture quality needs the same FRAME from both files, and that is not at the
+// same timestamp.
+func handleMergeLocate(cfg config.Config) http.HandlerFunc {
+	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		q := r.URL.Query()
+		bad := func(err error) { writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()}) }
+		pathA, err := mergeSourceFile(cfg, q.Get("source"), q.Get("a"))
+		if err != nil {
+			bad(err)
+			return
+		}
+		pathB, err := mergeSourceFile(cfg, q.Get("source"), q.Get("b"))
+		if err != nil {
+			bad(err)
+			return
+		}
+		t, err := queryTime(r)
+		if err != nil {
+			bad(err)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+		loc, err := dualaudio.Locate(ctx, tools, pathA, pathB, t)
+		if err != nil {
+			bad(err)
+			return
+		}
+		resp := map[string]interface{}{"location": loc}
+		for key, p := range map[string]string{"a": pathA, "b": pathB} {
+			st, errS := tools.VideoStats(ctx, p)
+			dur, errD := tools.Duration(ctx, p)
+			if errS == nil && errD == nil {
+				resp[key] = map[string]interface{}{"width": st.Width, "height": st.Height, "bitrate": st.Bitrate, "duration": dur}
+			}
+		}
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+// GET /api/merge/frame?source=&file=&t= — one frame, as PNG.
+func handleMergeFrame(cfg config.Config) http.HandlerFunc {
+	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		path, err := mergeSourceFile(cfg, r.URL.Query().Get("source"), r.URL.Query().Get("file"))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		t, err := queryTime(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		png, err := tools.Frame(ctx, path, t)
+		if err != nil || len(png) == 0 {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "could not extract a frame at that time"})
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		// The frame of a file at a time never changes; let the browser keep it so
+		// going back to a seek point is instant.
+		w.Header().Set("Cache-Control", "private, max-age=3600")
+		_, _ = w.Write(png)
 	}
 }

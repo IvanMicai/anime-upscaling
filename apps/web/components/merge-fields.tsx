@@ -74,8 +74,9 @@ export function MergeFields({
         />
         {languages.length === 0 && (
           <p className="text-xs text-muted-foreground">
-            Selecione os arquivos para escolher o idioma pelo nome. Mais pixels não é sempre melhor imagem:
-            um upscale pode perder para a fonte limpa de menor resolução.
+            Mais pixels não é sempre melhor imagem: um upscale pode perder para a fonte limpa de menor
+            resolução. No passo seguinte, <span className="text-foreground">Comparar</span> mostra o mesmo
+            frame dos dois arquivos lado a lado, e os idiomas da seleção aparecem aqui.
           </p>
         )}
       </div>

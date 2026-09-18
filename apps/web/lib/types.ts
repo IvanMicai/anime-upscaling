@@ -126,6 +126,29 @@ export interface MergePreview {
   unpaired: MergeUnpaired[];
 }
 
+// Where a point of file A falls in file B (found by audio), for comparing the
+// picture of the two: the same scene is not at the same timestamp in both.
+export interface MergeLocation {
+  t_a: number;
+  t_b: number;
+  lag: number;
+  confidence: number;
+  matched: boolean;
+}
+
+export interface MergeVideoInfo {
+  width: number;
+  height: number;
+  bitrate: number;
+  duration: number;
+}
+
+export interface MergeLocateResponse {
+  location: MergeLocation;
+  a?: MergeVideoInfo;
+  b?: MergeVideoInfo;
+}
+
 export type MergeGapFill = "base" | "silence";
 
 export interface MergeConfig {

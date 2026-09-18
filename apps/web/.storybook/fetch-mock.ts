@@ -76,6 +76,17 @@ if (typeof window !== "undefined") {
       return jsonResponse(samplePipeline);
     }
 
+    if (url.startsWith("/api/merge/locate")) {
+      const t = Number(new URL(url, "http://x").searchParams.get("t") ?? 0);
+      // The first 100 s match with a lag; past that the mock "cannot find" the
+      // moment, to show the warning state.
+      const matched = t < 1000;
+      return jsonResponse({
+        location: { t_a: t, t_b: matched ? t - 10.5 : t, lag: matched ? -10.5 : 0, confidence: matched ? 41 : 3, matched },
+        a: { width: 640, height: 480, bitrate: 1_200_000, duration: 1342 },
+        b: { width: 1280, height: 960, bitrate: 1_900_000, duration: 1293 },
+      });
+    }
     if (url === "/api/merge/preview") {
       return jsonResponse({
         pairs: [
