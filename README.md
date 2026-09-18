@@ -67,6 +67,8 @@ the Compose network.
 - File explorer with natural-sort episode ordering across deep folder trees.
 - Configurable concurrency: GPU streams and FFmpeg worker count per host.
 - Optional hardware-encoded output (NVIDIA / AMD / Intel) for `optimize` jobs.
+- Dual audio from the CLI: join one release's video with another's dub, synced
+  segment by segment and paired by audio content ([docs](docs/DUAL-AUDIO.md)).
 - Docker Compose deployment with a generic default and an NVIDIA GPU overlay.
 - Portainer-friendly stack file for one-click deploys on home servers.
 - Storybook for the UI component library (`apps/web`).
@@ -290,6 +292,7 @@ rendered from the files below — see [`site/`](site/README.md).
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Deployment guide](docs/DEPLOYMENT.md)
+- [Dual audio](docs/DUAL-AUDIO.md)
 - [Releasing guide](docs/RELEASING.md)
 - [API reference](apps/api/README.md)
 - [App notes](apps/web/README.md)
