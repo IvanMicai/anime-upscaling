@@ -13,6 +13,14 @@ import (
 	"fmt"
 )
 
+// Phases reported through Job.OnPhase, in order.
+const (
+	PhaseDecode   = "decode"
+	PhaseAlign    = "align"
+	PhaseValidate = "validate"
+	PhaseWrite    = "write"
+)
+
 // Status is the verdict of the quality gate.
 type Status string
 
@@ -54,7 +62,9 @@ type Result struct {
 	ValidatedOf    int        `json:"validated_of"` // ... out of this many eligible
 	Misses         []Miss     `json:"misses,omitempty"`
 	OffSec         float64    `json:"off_sec"` // seconds at a consistently wrong offset
+	TickSec        float64    `json:"tick_sec"`
 	Written        bool       `json:"written"`
+	VideoFrom      string     `json:"video_from,omitempty"` // language tag of the video's file
 }
 
 // Job describes one episode to build.
@@ -67,13 +77,27 @@ type Job struct {
 	Mux                        MuxOptions
 	// Force writes the file even when the gate says "review".
 	Force bool
+	// TickSec is the spacing of the sync checks; 0 means DefaultTickSec.
+	TickSec float64
+	// Tags are extra container tags. The sync verdict is added to them.
+	Tags map[string]string
+	// VideoFrom is the language tag of the base file, recorded in the verdict.
+	VideoFrom string
+	// OnPhase, when set, is told which stage an episode is in.
+	OnPhase func(phase string)
 }
 
 // Process analyses, rebuilds, validates and — only if the gate passes — writes
 // one episode. The point of the gate is that an episode which did not line up
 // is reported with its reason rather than shipped quietly out of sync.
 func Process(ctx context.Context, t Tools, j Job) (*Result, error) {
-	res := &Result{Base: j.BasePath, Dub: j.DubPath, Status: StatusFail}
+	res := &Result{Base: j.BasePath, Dub: j.DubPath, Status: StatusFail, VideoFrom: j.VideoFrom}
+	phase := func(p string) {
+		if j.OnPhase != nil {
+			j.OnPhase(p)
+		}
+	}
+	phase(PhaseDecode)
 
 	baseDur, err := t.Duration(ctx, j.BasePath)
 	if err != nil {
@@ -91,6 +115,7 @@ func Process(ctx context.Context, t Tools, j Job) (*Result, error) {
 	if err != nil {
 		return res, err
 	}
+	phase(PhaseAlign)
 	baseFeat, dubFeat := ExtractFeatures(baseMono), ExtractFeatures(dubMono)
 	al := Align(baseFeat, dubFeat, baseDur, dubDur, j.Options)
 	res.Alignment = al
@@ -109,13 +134,26 @@ func Process(ctx context.Context, t Tools, j Job) (*Result, error) {
 			return res, err
 		}
 	}
-	rendered, best := Refine(al, baseFeat, dubFeat, dubPCM, basePCM, j.GapFill, j.Options.MinConfidence)
+	phase(PhaseValidate)
+	rendered, best := Refine(al, baseFeat, dubFeat, dubPCM, basePCM, j.GapFill, j.Options.MinConfidence, j.TickSec)
+	res.TickSec = best.TickSec
 	res.ResidualMedian, res.ResidualP95 = best.Median, best.P95
 	res.Validated, res.ValidatedOf, res.Misses, res.OffSec = best.Hits, best.Eligible, best.Misses, best.OffSec
 	res.Status, res.Notes = grade(al, best, j.Gate)
 
 	if j.OutPath != "" && (res.Status == StatusOK || j.Force) {
-		if err := t.Mux(ctx, j.BasePath, rendered, j.OutPath, j.Mux); err != nil {
+		phase(PhaseWrite)
+		mo := j.Mux
+		mo.Tags = map[string]string{}
+		for k, v := range j.Tags {
+			mo.Tags[k] = v
+		}
+		// The verdict travels WITH the file, so anything that lists it later can
+		// say how good the sync is without re-measuring it.
+		sync := res.SyncInfo()
+		mo.Tags[SyncTag] = sync.Encode()
+		mo.Tags[SyncSummaryTag] = sync.Summary()
+		if err := t.Mux(ctx, j.BasePath, rendered, j.OutPath, mo); err != nil {
 			return res, err
 		}
 		res.Written = true
@@ -139,13 +177,13 @@ func betterThan(v, best Validation) bool {
 // confident residual of +0.14 s over a stretch says the right lag there is the
 // segment's lag + 0.14. Those become candidate lags, the solver runs again, and
 // the loop goes on while the consistent error shrinks.
-func Refine(al *Alignment, baseFeat, dubFeat *Features, dubPCM, basePCM []int16, fill GapFill, minConf float64) ([]int16, Validation) {
+func Refine(al *Alignment, baseFeat, dubFeat *Features, dubPCM, basePCM []int16, fill GapFill, minConf, tickSec float64) ([]int16, Validation) {
 	var rendered []int16
 	var best Validation
 	bestSegs, bestGaps, bestCov := al.Segments, al.Gaps, al.Coverage
 	for round := 0; round < maxSolveRounds; round++ {
 		out := Render(al, dubPCM, basePCM, fill)
-		v := Validate(out, baseFeat, al.Segments, minConf)
+		v := Validate(out, baseFeat, al.Segments, minConf, tickSec)
 		if round > 0 && !betterThan(v, best) {
 			break // no better: keep the best so far
 		}

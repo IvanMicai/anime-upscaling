@@ -219,6 +219,7 @@ The `/data` volume holds both media and JSON state. Directories are defined in
 | Directory        | Holds                                              |
 | ---------------- | -------------------------------------------------- |
 | `input/`         | Source files you drop in                           |
+| `merged/`        | Dual-audio merges (`merge` jobs); a valid source for every other step |
 | `output/`        | Upscale results                                    |
 | `interpolated/`  | Frame-interpolation (RIFE) results                 |
 | `optimized/`     | Final re-encodes                                   |

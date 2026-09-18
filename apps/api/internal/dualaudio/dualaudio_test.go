@@ -142,7 +142,7 @@ func TestRenderedTrackHasNoResidual(t *testing.T) {
 		float64(len(base))/featRate, float64(len(dub))/featRate, testOptions())
 
 	rendered := Render(al, upsampleStereo(toPCM(dub)), upsampleStereo(toPCM(base)), GapFillBase)
-	v := Validate(rendered, baseFeat, al.Segments, 6)
+	v := Validate(rendered, baseFeat, al.Segments, 6, DefaultTickSec)
 	if v.Hits == 0 {
 		t.Fatal("no validation window in place")
 	}
@@ -250,7 +250,7 @@ func TestRefineRecoversSegmentTooShortForTheSweep(t *testing.T) {
 	opt := Options{WindowSec: 20, HopSec: 10, SearchSec: 15, MinConfidence: 6, ToleranceSec: 0.08}
 	baseFeat, dubFeat := ExtractFeatures(toPCM(base)), ExtractFeatures(toPCM(dub))
 	al := Align(baseFeat, dubFeat, float64(len(base))/featRate, float64(len(dub))/featRate, opt)
-	_, v := Refine(al, baseFeat, dubFeat, upsampleStereo(toPCM(dub)), upsampleStereo(toPCM(base)), GapFillBase, 6)
+	_, v := Refine(al, baseFeat, dubFeat, upsampleStereo(toPCM(dub)), upsampleStereo(toPCM(base)), GapFillBase, 6, DefaultTickSec)
 
 	if v.OffSec > 0 {
 		t.Errorf("%.0f s still playing at a wrong offset after refinement", v.OffSec)

@@ -132,14 +132,28 @@ type Validation struct {
 	// stretch playing at a neighbour's offset. The hit share cannot see it (40 s
 	// wrong is 3% of an episode); checking finished files did, in 14 of 75
 	// episodes graded "ok".
-	OffSec float64
-	Offs   []Offset // feed these to Alignment.AddCandidates
+	OffSec  float64
+	TickSec float64  // spacing between checks
+	Offs    []Offset // feed these to Alignment.AddCandidates
 }
 
 const (
 	validateWinSec = 10.0
-	validateHopSec = 5.0
+	// DefaultTickSec is how often the rebuilt track is checked against the base.
+	DefaultTickSec = 5.0
+	MinTickSec     = 1.0
+	MaxTickSec     = 30.0
 )
+
+// ClampTick bounds a requested tick. Below 1 s neighbouring windows are 90%
+// the same audio and add cost, not evidence; above 30 s a misplaced stretch can
+// fall between two checks.
+func ClampTick(sec float64) float64 {
+	if sec <= 0 {
+		return DefaultTickSec
+	}
+	return math.Max(MinTickSec, math.Min(MaxTickSec, sec))
+}
 
 // Validate re-correlates the rebuilt track against the base.
 //
@@ -153,13 +167,23 @@ const (
 // in the 10 s searched (about a 1% chance of hitting zero by luck). Without the
 // hit share, a stretch carrying the wrong audio is invisible: no window locks
 // there, so it never enters the median, which then looks perfect.
-func Validate(rendered []int16, base *Features, segs []Segment, minConf float64) Validation {
+//
+// tickSec is the spacing between checks. The window stays at 10 s whatever the
+// tick — a shorter one does not hold enough score to lock — so a finer tick
+// means more overlapping checks, not shorter ones.
+func Validate(rendered []int16, base *Features, segs []Segment, minConf, tickSec float64) Validation {
+	tickSec = ClampTick(tickSec)
 	var v Validation
+	v.TickSec = tickSec
 	feat := ExtractFeatures(downmix16k(rendered))
 	if feat.Frames < 100 {
 		return v
 	}
-	wm, hm := int(validateWinSec*fps), int(validateHopSec*fps)
+	wm, hm := int(validateWinSec*fps), int(tickSec*fps)
+	// A run is evidence only once it holds two windows that do NOT overlap;
+	// neighbours that share audio can share one spurious peak. At a 5 s tick
+	// that is three in a row, at 1 s it is eleven.
+	minRun := int(math.Ceil(validateWinSec/tickSec)) + 1
 	var abs []float64
 	var confident []Offset
 	// A window counts when dub audio covers ALL of it — and it MAY span a join
@@ -200,11 +224,8 @@ func Validate(rendered []int16, base *Features, segs []Segment, minConf float64)
 	}
 
 	var run []Offset
-	// Three in a row, not two: windows overlap by half, so two neighbours can
-	// share one spurious peak and "agree" without being independent evidence.
-	// Three guarantees a disjoint pair.
 	flush := func() {
-		if len(run) >= 3 {
+		if len(run) >= minRun {
 			v.OffSec += run[len(run)-1].BaseTime - run[0].BaseTime + validateWinSec
 		}
 	}
@@ -214,7 +235,7 @@ func Validate(rendered []int16, base *Features, segs []Segment, minConf float64)
 			v.Offs = append(v.Offs, o)
 		}
 		if off && (len(run) == 0 || (math.Abs(o.Lag-run[len(run)-1].Lag) <= 0.08 &&
-			o.BaseTime-run[len(run)-1].BaseTime <= validateHopSec*1.5)) {
+			o.BaseTime-run[len(run)-1].BaseTime <= tickSec*1.5)) {
 			run = append(run, o)
 			continue
 		}

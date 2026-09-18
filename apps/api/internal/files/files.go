@@ -19,10 +19,12 @@ type VideoFile struct {
 	HasOptimized       bool   `json:"has_optimized,omitempty"`
 	HasInput           bool   `json:"has_input,omitempty"`
 	HasInterpolated    bool   `json:"has_interpolated,omitempty"`
+	HasMerged          bool   `json:"has_merged,omitempty"`
 	UpscaledSize       int64  `json:"upscaled_size,omitempty"`
 	OptimizedSize      int64  `json:"optimized_size,omitempty"`
 	InputSize          int64  `json:"input_size,omitempty"`
 	InterpolatedSize   int64  `json:"interpolated_size,omitempty"`
+	MergedSize         int64  `json:"merged_size,omitempty"`
 	UpscaledWidth      int    `json:"upscaled_width,omitempty"`
 	UpscaledHeight     int    `json:"upscaled_height,omitempty"`
 	OptimizedWidth     int    `json:"optimized_width,omitempty"`
@@ -31,12 +33,15 @@ type VideoFile struct {
 	InputHeight        int    `json:"input_height,omitempty"`
 	InterpolatedWidth  int    `json:"interpolated_width,omitempty"`
 	InterpolatedHeight int    `json:"interpolated_height,omitempty"`
+	MergedWidth        int    `json:"merged_width,omitempty"`
+	MergedHeight       int    `json:"merged_height,omitempty"`
 
 	FrameRate             float64 `json:"frame_rate,omitempty"`
 	InputFrameRate        float64 `json:"input_frame_rate,omitempty"`
 	UpscaledFrameRate     float64 `json:"upscaled_frame_rate,omitempty"`
 	OptimizedFrameRate    float64 `json:"optimized_frame_rate,omitempty"`
 	InterpolatedFrameRate float64 `json:"interpolated_frame_rate,omitempty"`
+	MergedFrameRate       float64 `json:"merged_frame_rate,omitempty"`
 
 	Audio                 []runner.AudioTrack    `json:"audio,omitempty"`
 	Subtitles             []runner.SubtitleTrack `json:"subtitles,omitempty"`
@@ -48,6 +53,14 @@ type VideoFile struct {
 	OptimizedSubtitles    []runner.SubtitleTrack `json:"optimized_subtitles,omitempty"`
 	InterpolatedAudio     []runner.AudioTrack    `json:"interpolated_audio,omitempty"`
 	InterpolatedSubtitles []runner.SubtitleTrack `json:"interpolated_subtitles,omitempty"`
+	MergedAudio           []runner.AudioTrack    `json:"merged_audio,omitempty"`
+	MergedSubtitles       []runner.SubtitleTrack `json:"merged_subtitles,omitempty"`
+
+	// Sync is the dual-audio sync verdict read from the file's own tags. It is
+	// set for whichever stage copy carries it: a merged file, and any later
+	// stage that kept the container tags.
+	Sync       *runner.SyncInfo `json:"sync,omitempty"`
+	MergedSync *runner.SyncInfo `json:"merged_sync,omitempty"`
 }
 
 func ListVideos(dir string, exts []string) ([]string, error) {
@@ -205,6 +218,9 @@ func ListAllWithStatus(primary string, baseDirs map[string]string, subPath strin
 			case "interpolated":
 				vf.HasInterpolated = true
 				vf.InterpolatedSize = size
+			case "merged":
+				vf.HasMerged = true
+				vf.MergedSize = size
 			}
 			if label == primary {
 				vf.Size = size
@@ -233,13 +249,9 @@ type DeleteItem struct {
 	Folders []string `json:"folders"`
 }
 
-func DeleteFiles(items []DeleteItem, inputDir, outputDir, optimizedDir, interpolatedDir string, exts []string) (int, []string) {
-	folderDirs := map[string]string{
-		"input":        inputDir,
-		"output":       outputDir,
-		"optimized":    optimizedDir,
-		"interpolated": interpolatedDir,
-	}
+// DeleteFiles removes items from the named stage folders. folderDirs maps a
+// folder name to its directory (config.Config.StageDirs).
+func DeleteFiles(items []DeleteItem, folderDirs map[string]string, exts []string) (int, []string) {
 
 	deleted := 0
 	var errors []string

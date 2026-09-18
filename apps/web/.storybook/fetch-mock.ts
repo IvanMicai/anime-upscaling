@@ -76,6 +76,25 @@ if (typeof window !== "undefined") {
       return jsonResponse(samplePipeline);
     }
 
+    if (url === "/api/merge/preview") {
+      return jsonResponse({
+        pairs: [
+          {
+            a: "Show/EN/ep01.en.mkv", b: "Show/PT/ep01.pt-br.mp4", output: "Show/ep01.mkv",
+            lang_a: { tag: "en", iso3: "eng", title: "English" },
+            lang_b: { tag: "pt-br", iso3: "por", title: "Português (BR)" },
+          },
+          {
+            a: "Show/EN/ep02.en.mkv", b: "Show/PT/ep02.pt-br.mp4", output: "Show/ep02.mkv", exists: true,
+            lang_a: { tag: "en", iso3: "eng", title: "English" },
+            lang_b: { tag: "pt-br", iso3: "por", title: "Português (BR)" },
+          },
+        ],
+        unpaired: [
+          { file: "Show/EN/extra.en.mkv", reason: "no file with the same name in another language" },
+        ],
+      });
+    }
     if (url === "/api/settings") return jsonResponse(settings);
 
     if (url === "/api/logout") return jsonResponse({}, { status: 204 });

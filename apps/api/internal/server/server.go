@@ -47,6 +47,7 @@ func CmdServe(cfg config.Config) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/files/download", corsMiddleware(handleFileDownload(cfg)))
 	mux.HandleFunc("/api/files", corsMiddleware(handleFiles(cfg)))
+	mux.HandleFunc("/api/merge/preview", corsMiddleware(handleMergePreview(cfg)))
 	mux.HandleFunc("/api/jobs", corsMiddleware(handleJobs(jm, cfg)))
 	mux.HandleFunc("/api/jobs/", corsMiddleware(handleJobRoutes(jm)))
 	mux.HandleFunc("/api/pipelines", corsMiddleware(handlePipelines(ps)))
@@ -75,12 +76,7 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 // GET /api/files/download?dir=input&name=video.mkv
 func handleFileDownload(cfg config.Config) http.HandlerFunc {
-	allowed := map[string]string{
-		"input":        cfg.InputDir,
-		"output":       cfg.OutputDir,
-		"optimized":    cfg.OptimizedDir,
-		"interpolated": cfg.InterpolatedDir,
-	}
+	allowed := cfg.StageDirs()
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -137,6 +133,7 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 		"output":       "output",
 		"optimized":    "optimize",
 		"interpolated": "interpolated",
+		"merged":       "merged",
 	}
 
 	return func(w http.ResponseWriter, req *http.Request) {
@@ -152,7 +149,7 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no items to delete"})
 				return
 			}
-			deleted, errs := files.DeleteFiles(body.Items, cfg.InputDir, cfg.OutputDir, cfg.OptimizedDir, cfg.InterpolatedDir, cfg.VideoExts)
+			deleted, errs := files.DeleteFiles(body.Items, cfg.StageDirs(), cfg.VideoExts)
 			// Invalidate cache after deletion
 			if deleted > 0 {
 				if err := cache.BuildFileStatusCache(cfg); err != nil {
@@ -181,15 +178,10 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 		subPath := req.URL.Query().Get("path")
 		forceRefresh := req.URL.Query().Get("refresh") == "true"
 
-		allowed := map[string]string{
-			"input":        cfg.InputDir,
-			"output":       cfg.OutputDir,
-			"optimized":    cfg.OptimizedDir,
-			"interpolated": cfg.InterpolatedDir,
-		}
+		allowed := cfg.StageDirs()
 
 		if _, ok := allowed[dir]; !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid dir: must be input, output, optimized, or interpolated"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid dir: must be input, merged, output, interpolated, or optimized"})
 			return
 		}
 		if !files.SafeRelDir(subPath) {
@@ -241,15 +233,8 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 
 				// Primary dir resolution
 				var primary *cache.SourceEntry
-				switch primaryLabel {
-				case "input":
-					primary = status.Input
-				case "output":
-					primary = status.Output
-				case "optimize":
-					primary = status.Optimize
-				case "interpolated":
-					primary = status.Interpolated
+				if slot := status.Slot(primaryLabel); slot != nil {
+					primary = *slot
 				}
 				if primary != nil {
 					videoFiles[i].Width = primary.Width
@@ -257,6 +242,7 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 					videoFiles[i].FrameRate = primary.FrameRate
 					videoFiles[i].Audio = primary.Audio
 					videoFiles[i].Subtitles = primary.Subtitles
+					videoFiles[i].Sync = primary.Sync
 				}
 
 				// Cross-dir resolutions + tracks
@@ -288,6 +274,14 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 					videoFiles[i].InterpolatedAudio = status.Interpolated.Audio
 					videoFiles[i].InterpolatedSubtitles = status.Interpolated.Subtitles
 				}
+				if dir != "merged" && status.Merged != nil {
+					videoFiles[i].MergedWidth = status.Merged.Width
+					videoFiles[i].MergedHeight = status.Merged.Height
+					videoFiles[i].MergedFrameRate = status.Merged.FrameRate
+					videoFiles[i].MergedAudio = status.Merged.Audio
+					videoFiles[i].MergedSubtitles = status.Merged.Subtitles
+					videoFiles[i].MergedSync = status.Merged.Sync
+				}
 			}
 		}
 
@@ -298,6 +292,7 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 			Output       int64 `json:"output"`
 			Optimized    int64 `json:"optimized"`
 			Interpolated int64 `json:"interpolated"`
+			Merged       int64 `json:"merged"`
 		}
 		dirSizes := make(map[string]*folderSizes, len(directories))
 		if len(directories) > 0 {
@@ -336,6 +331,9 @@ func handleFiles(cfg config.Config) http.HandlerFunc {
 				}
 				if status.Interpolated != nil {
 					agg.Interpolated += status.Interpolated.Size
+				}
+				if status.Merged != nil {
+					agg.Merged += status.Merged.Size
 				}
 			}
 		}
@@ -398,15 +396,20 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		PixFmt            string   `json:"pix_fmt"`
 		AudioCodec        string   `json:"audio_codec"`
 		UseGPU            bool     `json:"use_gpu"`
+		mergeRequest
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
 
-	validTypes := map[string]bool{"upscale": true, "optimize": true, "check": true, "interpolate": true}
+	validTypes := map[string]bool{"upscale": true, "optimize": true, "check": true, "interpolate": true, "merge": true}
 	if !validTypes[req.Type] {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be upscale, optimize, check, or interpolate"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be upscale, optimize, check, interpolate, or merge"})
+		return
+	}
+	if req.Type == "merge" {
+		handleCreateMergeJob(jm, cfg, w, req.Source, req.Path, req.Files, req.mergeRequest)
 		return
 	}
 
@@ -539,7 +542,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 	}
 	sourceDir, ok := resolveFolder(cfg, req.Source)
 	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source (must be input, output, interpolated, or optimized)"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source (must be input, merged, output, interpolated, or optimized)"})
 		return
 	}
 
@@ -694,12 +697,14 @@ func handleGetJob(jm *JobManager, id string, w http.ResponseWriter, r *http.Requ
 		Threads       int                     `json:"threads,omitempty"`
 		PipelineName  string                  `json:"pipeline_name,omitempty"`
 		PipelineSteps []pipeline.PipelineStep `json:"pipeline_steps,omitempty"`
+		Merge         *MergeParams            `json:"merge,omitempty"`
 		Files         []string                `json:"files"`
 		Progress      JobProgress             `json:"progress"`
 		CreatedAt     time.Time               `json:"created_at"`
 		FinishedAt    *time.Time              `json:"finished_at,omitempty"`
 	}
 	writeJSON(w, http.StatusOK, jobDetail{
+		Merge:         snap.Merge,
 		ID:            snap.ID,
 		Type:          snap.Type,
 		Status:        snap.Status,
@@ -856,31 +861,18 @@ func handleSystem(jm *JobManager, m *gpu.Monitor, hostname string, startedAt tim
 // resolveFolder maps a logical folder name (input/output/interpolated/optimized)
 // to its absolute directory path from config. Returns ok=false for unknown names.
 func resolveFolder(cfg config.Config, name string) (string, bool) {
-	switch name {
-	case "input":
-		return cfg.InputDir, true
-	case "output":
-		return cfg.OutputDir, true
-	case "optimized":
-		return cfg.OptimizedDir, true
-	case "interpolated":
-		return cfg.InterpolatedDir, true
-	}
-	return "", false
+	dir, ok := cfg.StageDirs()[name]
+	return dir, ok
 }
 
 // dirToSourceName is the inverse of resolveFolder: maps an absolute directory
 // path back to its logical name. Returns "" for unknown paths.
 func dirToSourceName(cfg config.Config, dir string) string {
-	switch filepath.Clean(dir) {
-	case filepath.Clean(cfg.InputDir):
-		return "input"
-	case filepath.Clean(cfg.OutputDir):
-		return "output"
-	case filepath.Clean(cfg.OptimizedDir):
-		return "optimized"
-	case filepath.Clean(cfg.InterpolatedDir):
-		return "interpolated"
+	clean := filepath.Clean(dir)
+	for name, d := range cfg.StageDirs() {
+		if filepath.Clean(d) == clean {
+			return name
+		}
 	}
 	return ""
 }

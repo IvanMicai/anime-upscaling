@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
+  Combine,
   Film,
   Maximize2,
   Play,
@@ -17,6 +18,8 @@ import { Button } from "@/components/ui/button";
 import { FilePicker } from "@/components/file-picker";
 import { OperationFields } from "@/components/operation-fields";
 import { ResultPreview } from "@/components/result-preview";
+import { MergeFields, MERGE_DEFAULTS } from "@/components/merge-fields";
+import { MergePreviewPanel } from "@/components/merge-preview-panel";
 import { createJob, getPipelines, getSettings, runPipeline } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { FOLDER_COLORS, type FolderKey } from "@/lib/file-utils";
@@ -25,6 +28,7 @@ import {
   type CreateJobRequest,
   type GPUVendor,
   type JobType,
+  type MergeConfig,
   type Pipeline,
   type PipelineOperationType,
   type PipelineStep,
@@ -35,6 +39,7 @@ const JOB_TYPES: {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
+  { value: "merge", label: "Merge", icon: Combine },
   { value: "upscale", label: "Upscale", icon: Maximize2 },
   { value: "interpolate", label: "Interpolate", icon: Film },
   { value: "optimize", label: "Optimize", icon: Sliders },
@@ -43,7 +48,7 @@ const JOB_TYPES: {
 
 // Labels come from FOLDER_COLORS so the source buttons stay in sync with the
 // file-picker legend tags (e.g. "output" reads "Upscaling", not "Output").
-const SOURCE_OPTS = (["input", "output", "interpolated", "optimized"] as FolderKey[]).map(
+const SOURCE_OPTS = (["input", "merged", "output", "interpolated", "optimized"] as FolderKey[]).map(
   (value) => ({ value, label: FOLDER_COLORS[value].label }),
 );
 
@@ -62,6 +67,10 @@ export default function NewJobPage() {
   const [cfg, setCfg] = useState<PipelineStep>(OPERATION_DEFAULTS.upscale);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
 
+  const [mergeCfg, setMergeCfg] = useState<MergeConfig>(MERGE_DEFAULTS);
+  const [selectedDirs, setSelectedDirs] = useState<string[]>([]);
+  const [mergeLanguages, setMergeLanguages] = useState<string[]>([]);
+
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [browsePath, setBrowsePath] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
@@ -79,6 +88,10 @@ export default function NewJobPage() {
   }, []);
 
   const isPipelineSelected = selectedPipelineId !== null;
+  const isMerge = !isPipelineSelected && type === "merge";
+  // Merging what is already merged makes no sense; every other stage is fair.
+  const sourceOpts = isMerge ? SOURCE_OPTS.filter((o) => o.value !== "merged") : SOURCE_OPTS;
+  const selectionCount = selectedFiles.length + selectedDirs.length;
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId);
   const showFields =
     !isPipelineSelected &&
@@ -93,7 +106,8 @@ export default function NewJobPage() {
     setSelectedPipelineId(null);
     setType(t);
     setSource("input");
-    if (t !== "check") setCfg(OPERATION_DEFAULTS[t]);
+    setSelectedDirs([]);
+    if (t !== "check" && t !== "merge") setCfg(OPERATION_DEFAULTS[t]);
   }
 
   function handleSelectPipeline(id: string) {
@@ -108,6 +122,20 @@ export default function NewJobPage() {
       source: source !== "input" ? source : undefined,
       path: browsePath || undefined,
     };
+    if (type === "merge") {
+      // Whole folders win over single files: "two folders" is the unit of a
+      // merge, and mixing both would make the pairing hard to predict.
+      return {
+        ...base,
+        files: selectedDirs.length > 0 ? undefined : files,
+        paths: selectedDirs.length > 0 && files ? selectedDirs : undefined,
+        merge_video: mergeCfg.video,
+        merge_tick: mergeCfg.tick,
+        merge_gap_fill: mergeCfg.gapFill,
+        merge_force: mergeCfg.force || undefined,
+        merge_default_audio: mergeCfg.defaultAudio || undefined,
+      };
+    }
     if (type === "upscale") {
       return {
         ...base,
@@ -246,7 +274,7 @@ export default function NewJobPage() {
             <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               O que fazer?
             </label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
               {JOB_TYPES.map((t) => {
                 const active = !isPipelineSelected && type === t.value;
                 const Icon = t.icon;
@@ -301,8 +329,8 @@ export default function NewJobPage() {
             <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Pasta de Origem
             </label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {SOURCE_OPTS.map((opt) => {
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {sourceOpts.map((opt) => {
                 const active = source === opt.value;
                 const colors = FOLDER_COLORS[opt.value];
                 return (
@@ -328,6 +356,14 @@ export default function NewJobPage() {
             </div>
           </div>
 
+          {isMerge && (
+            <MergeFields
+              config={mergeCfg}
+              onChange={(patch) => setMergeCfg((prev) => ({ ...prev, ...patch }))}
+              languages={mergeLanguages}
+            />
+          )}
+
           {showFields && (
             <OperationFields
               operation={type as PipelineOperationType}
@@ -345,6 +381,15 @@ export default function NewJobPage() {
               steps={selectedPipeline.steps}
               fileCount={selectedFiles.length}
             />
+          ) : type === "merge" ? (
+            <div className="rounded-md border border-border p-4 text-sm">
+              <div className="font-medium">Resultado</div>
+              <p className="mt-1 text-muted-foreground">
+                Um <code>.mkv</code> por par em <span className="text-pink-400">Merged</span>: vídeo e
+                áudio originais copiados sem recodificar + a segunda faixa sincronizada (AAC), com o
+                veredito da sincronia nos metadados. CPU · FFmpeg.
+              </p>
+            </div>
           ) : type === "check" ? (
             <ResultPreview steps={[]} fileCount={selectedFiles.length} isCheck />
           ) : (
@@ -394,15 +439,25 @@ export default function NewJobPage() {
             </Button>
             <Button
               onClick={() => submit(selectedFiles)}
-              disabled={submitting || selectedFiles.length === 0}
+              disabled={submitting || (isMerge ? selectionCount === 0 : selectedFiles.length === 0)}
             >
               <Play className="size-4" />
-              Run Selected ({selectedFiles.length})
+              Run Selected ({isMerge ? selectionCount : selectedFiles.length})
             </Button>
           </div>
         </div>
 
         {error && <p className="text-sm text-red-400">{error}</p>}
+
+        {isMerge && step === 2 && (
+          <MergePreviewPanel
+            source={source}
+            path={browsePath}
+            files={selectedFiles}
+            dirs={selectedDirs}
+            onLanguages={setMergeLanguages}
+          />
+        )}
 
         <div className="h-[calc(100vh-12rem)] min-h-0">
           <FilePicker
@@ -411,6 +466,8 @@ export default function NewJobPage() {
             dir={source}
             path={browsePath}
             onPathChange={setBrowsePath}
+            selectedDirs={isMerge ? selectedDirs : undefined}
+            onDirsChange={isMerge ? setSelectedDirs : undefined}
           />
         </div>
       </div>

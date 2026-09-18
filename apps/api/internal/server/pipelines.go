@@ -163,7 +163,7 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 	}
 	sourceDir, ok := resolveFolder(cfg, req.Source)
 	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source (must be input, output, interpolated, or optimized)"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid source (must be input, merged, output, interpolated, or optimized)"})
 		return
 	}
 	if !files.SafeRelDir(req.Path) {

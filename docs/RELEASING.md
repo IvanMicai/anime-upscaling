@@ -84,7 +84,7 @@ Prepare `.env` as usual:
 
 ```bash
 cp .env.example .env
-mkdir -p data/input data/output data/optimized data/interpolated data/temp
+mkdir -p data/input data/merged data/output data/optimized data/interpolated data/temp
 ```
 
 Add the image namespace and desired release tag to `.env`:

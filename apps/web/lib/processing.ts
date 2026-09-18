@@ -7,6 +7,7 @@ import type { FolderKey } from "./file-utils";
  * The `output` column is labelled "Upscaling" in FOLDER_COLORS.
  */
 export const OP_TO_COLUMN: Record<string, FolderKey | null> = {
+  merge: "merged",
   upscale: "output",
   interpolate: "interpolated",
   optimize: "optimized",
@@ -16,6 +17,7 @@ export const OP_TO_COLUMN: Record<string, FolderKey | null> = {
 
 /** Friendly label per operation. */
 export const OP_LABEL: Record<string, string> = {
+  merge: "Merging",
   upscale: "Upscaling",
   interpolate: "Interpolating",
   optimize: "Optimizing",

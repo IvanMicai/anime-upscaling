@@ -12,6 +12,7 @@ import type {
   RunPipelineRequest,
   Settings,
   SystemStatus,
+  MergePreview,
 } from "./types";
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -43,6 +44,20 @@ export function getFiles(dir: string = "input", path: string = "", refresh = fal
 
 export function createJob(req: CreateJobRequest): Promise<CreateJobResponse> {
   return fetchJSON<CreateJobResponse>("/api/jobs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+// The pairing a merge job WOULD do, without starting it.
+export function previewMerge(req: {
+  source?: string;
+  path?: string;
+  files?: string[];
+  paths?: string[];
+}): Promise<MergePreview> {
+  return fetchJSON<MergePreview>("/api/merge/preview", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),

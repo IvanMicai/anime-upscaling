@@ -1,10 +1,58 @@
 # Dual audio
 
-`animeup dualaudio` joins the **video of one release** with the **dubbed audio of
-another** into a single `.mkv` with both tracks, keeping the dub in sync.
+A dual-audio merge joins the **video of one release** with the **audio of
+another** into a single `.mkv` with both tracks, keeping the second one in sync.
 
 The typical case: a clean web release in the original language, and an older TV
 rip that carries the dub you actually want to hear.
+
+## In the app: the Merge job
+
+**Create Job → Merge.** Pick two folders (each holding one language), or any list
+of files, and the app pairs them **by name**:
+
+```
+input/Show/EN/ep01.en.mkv    ┐
+input/Show/PT/ep01.pt-br.mp4 ┘→  merged/Show/ep01.mkv
+```
+
+Same name, different language tag. The tag is the last segment before the
+extension and comes from a closed list (`en`, `pt-br`, `ja`, `es-la`, …) —
+release names are full of short segments that are not languages (`web`, `x264`,
+`v2`), and guessing from shape would pair `show.web.mkv` with `show.bd.mkv`. The
+file picker shows the pairing **before** the job runs: what becomes what, what is
+already merged, and what is left without a partner and why.
+
+| Setting | What it does |
+| --- | --- |
+| **Vídeo** | *Automático* keeps the picture with more pixels (bitrate breaks ties). It is a measure, not a judgement — an AI upscale has 4× the pixels of its clean source and may look worse — so the picture can also be chosen by language. |
+| **Verificar a sincronia a cada** | The tick: how often the rebuilt track is checked against the video's own audio (1–30 s). Finer finds shorter out-of-sync stretches and takes longer. The window stays 10 s whatever the tick — a shorter one does not hold enough score to lock — so a finer tick means more overlapping checks, and a run of disagreeing checks only counts as evidence once it holds two that do not overlap. |
+| **Buracos** | What plays where the other track has no content: the video's own audio (default) or silence. |
+| **Faixa de áudio padrão** | Default: the language that did *not* supply the video — the one the merge was done for. |
+| **Gravar mesmo sem sincronia garantida** | Off by default: a pair that fails the gate is not written and the log says why. |
+
+The result lands in **`merged/`**, a stage folder like the others: it is a valid
+source for upscale, interpolate, optimize, check and saved pipelines.
+
+### The verdict travels with the file
+
+The sync verdict is written into the file's own container tags, so anything that
+lists the file can say how good the sync is without measuring it again. The file
+explorer shows it in the tooltip of the Merged column:
+
+```
+DUALAUDIO_SYNC         = {"v":1,"status":"ok","residual_ms":1.2,"p95_ms":9.5,
+                          "in_place":591,"checked":612,"off_s":0,"coverage":0.954,
+                          "segments":9,"gaps":6,"tick_s":2,"video":"en"}
+DUALAUDIO_SYNC_SUMMARY = ok — residual 1 ms, 591/612 checks in place (97%), 0 s off, every 2 s
+```
+
+`status` is `ok`, or `review` for a file written with the gate overridden.
+
+## From the command line
+
+`animeup dualaudio` does the same alignment, plus pairing **by audio content**
+for releases whose episode numbers do not line up (see below):
 
 ```bash
 animeup dualaudio match --base-dir /media/en --dub-dir /media/pt --out mapping.json
@@ -164,12 +212,12 @@ refused pair can be filled in by hand.
 - **Dub-only content.** Audio that exists only in the dub has no picture to go
   with and is dropped. If a dub carries much of it, swap the roles of `base` and
   `dub`.
-- **Pipeline operation / UI.** This is a CLI command. Saved pipelines process one
-  file through one stage folder at a time, while dual audio takes two
-  directories and a season-wide pairing step that benefits from review. Wiring it
-  in needs decisions this change does not make: where the dub source lives, a
-  stage folder for the output, how resume treats it, and a UI to inspect and
-  correct `mapping.json`.
+- **Pairing by audio in the app.** The Merge job pairs by name. Pairing by audio
+  content (`dualaudio match`) — needed when two releases number their episodes
+  differently — is CLI-only: it fingerprints every file first and its result
+  wants reviewing, which the app has no screen for yet.
+- **Merge as a saved-pipeline step.** A pipeline takes one file through one stage
+  at a time; a merge consumes two files. `merged/` is a pipeline *source* instead.
 
 ## Resource use
 

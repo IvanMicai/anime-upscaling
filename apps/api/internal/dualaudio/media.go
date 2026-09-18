@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -62,6 +63,35 @@ func (t Tools) Duration(ctx context.Context, path string) (float64, error) {
 	return d, nil
 }
 
+// VideoStats reads the first video stream's size and the container bitrate.
+func (t Tools) VideoStats(ctx context.Context, path string) (VideoStats, error) {
+	out, err := t.run(ctx, t.FFprobe, nil, "-v", "error", "-select_streams", "v:0",
+		"-show_entries", "stream=width,height:format=bit_rate", "-of", "default=nw=1", path)
+	if err != nil {
+		return VideoStats{}, err
+	}
+	var v VideoStats
+	for _, line := range strings.Split(string(out), "\n") {
+		k, val, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok {
+			continue
+		}
+		n, _ := strconv.ParseInt(val, 10, 64)
+		switch k {
+		case "width":
+			v.Width = int(n)
+		case "height":
+			v.Height = int(n)
+		case "bit_rate":
+			v.Bitrate = n
+		}
+	}
+	if v.Width == 0 || v.Height == 0 {
+		return v, fmt.Errorf("no video stream in %s", path)
+	}
+	return v, nil
+}
+
 func (t Tools) hasSubtitles(ctx context.Context, path string) bool {
 	out, err := t.run(ctx, t.FFprobe, nil, "-v", "error", "-select_streams", "s",
 		"-show_entries", "stream=index", "-of", "csv=p=0", path)
@@ -89,6 +119,7 @@ type MuxOptions struct {
 	DubLang, DubTitle   string
 	Bitrate             string
 	DubIsDefault        bool
+	Tags                map[string]string // container-level tags
 }
 
 // Mux writes base video + base audio (both stream-copied) plus the rebuilt dub
@@ -116,6 +147,14 @@ func (t Tools) Mux(ctx context.Context, basePath string, dub []int16, outPath st
 		"-metadata:s:a:1", "language="+o.DubLang, "-metadata:s:a:1", "title="+o.DubTitle)
 	if subs {
 		args = append(args, "-c:s", "copy")
+	}
+	tagKeys := make([]string, 0, len(o.Tags))
+	for k := range o.Tags {
+		tagKeys = append(tagKeys, k)
+	}
+	sort.Strings(tagKeys)
+	for _, k := range tagKeys {
+		args = append(args, "-metadata", k+"="+o.Tags[k])
 	}
 	if o.DubIsDefault {
 		args = append(args, "-disposition:a:0", "0", "-disposition:a:1", "default")

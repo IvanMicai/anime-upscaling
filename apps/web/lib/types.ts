@@ -1,4 +1,4 @@
-export type JobType = "upscale" | "optimize" | "check" | "interpolate" | "custom_pipeline";
+export type JobType = "upscale" | "optimize" | "check" | "interpolate" | "merge" | "custom_pipeline";
 
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -69,6 +69,7 @@ export interface Job {
   threads?: number;
   pipeline_name?: string;
   pipeline_steps?: PipelineStep[];
+  merge?: MergeJobInfo;
   files: string[];
   progress: JobProgress;
   created_at: string;
@@ -81,6 +82,68 @@ export interface LogEntry {
   index: number;
   message: string;
   time: string;
+}
+
+// Sync verdict a merged (dual-audio) file carries in its own container tags.
+export interface SyncInfo {
+  v: number;
+  status: "ok" | "review" | "fail";
+  residual_ms: number;
+  p95_ms: number;
+  in_place: number;
+  checked: number;
+  off_s: number;
+  coverage: number;
+  segments: number;
+  gaps: number;
+  tick_s: number;
+  video?: string;
+  notes?: string[];
+}
+
+export interface MergeLanguage {
+  tag: string;
+  iso3: string;
+  title: string;
+}
+
+export interface MergePair {
+  a: string;
+  b: string;
+  lang_a: MergeLanguage;
+  lang_b: MergeLanguage;
+  output: string;
+  exists?: boolean;
+}
+
+export interface MergeUnpaired {
+  file: string;
+  reason: string;
+}
+
+export interface MergePreview {
+  pairs: MergePair[];
+  unpaired: MergeUnpaired[];
+}
+
+export type MergeGapFill = "base" | "silence";
+
+export interface MergeConfig {
+  video: string; // "auto" or a language tag
+  tick: number; // seconds between sync checks
+  gapFill: MergeGapFill;
+  force: boolean;
+  defaultAudio: string; // "" = the language that did not supply the video
+}
+
+export interface MergeJobInfo {
+  video: string;
+  tick_sec: number;
+  gap_fill: MergeGapFill;
+  force?: boolean;
+  default_audio?: string;
+  pairs: MergePair[];
+  unpaired?: MergeUnpaired[];
 }
 
 export interface AudioTrack {
@@ -107,10 +170,12 @@ export interface VideoFile {
   has_optimized?: boolean;
   has_input?: boolean;
   has_interpolated?: boolean;
+  has_merged?: boolean;
   upscaled_size?: number;
   optimized_size?: number;
   input_size?: number;
   interpolated_size?: number;
+  merged_size?: number;
   upscaled_width?: number;
   upscaled_height?: number;
   optimized_width?: number;
@@ -119,11 +184,14 @@ export interface VideoFile {
   input_height?: number;
   interpolated_width?: number;
   interpolated_height?: number;
+  merged_width?: number;
+  merged_height?: number;
   frame_rate?: number;
   input_frame_rate?: number;
   upscaled_frame_rate?: number;
   optimized_frame_rate?: number;
   interpolated_frame_rate?: number;
+  merged_frame_rate?: number;
   audio?: AudioTrack[];
   subtitles?: SubtitleTrack[];
   input_audio?: AudioTrack[];
@@ -134,6 +202,10 @@ export interface VideoFile {
   optimized_subtitles?: SubtitleTrack[];
   interpolated_audio?: AudioTrack[];
   interpolated_subtitles?: SubtitleTrack[];
+  merged_audio?: AudioTrack[];
+  merged_subtitles?: SubtitleTrack[];
+  sync?: SyncInfo;
+  merged_sync?: SyncInfo;
 }
 
 export interface DirectorySizes {
@@ -141,6 +213,7 @@ export interface DirectorySizes {
   output: number;
   optimized: number;
   interpolated: number;
+  merged: number;
 }
 
 export interface FilesResponse {
@@ -155,8 +228,16 @@ export interface FilesResponse {
 export interface CreateJobRequest {
   type: JobType;
   files?: string[];
-  source?: "input" | "output" | "optimized" | "interpolated";
+  source?: "input" | "merged" | "output" | "optimized" | "interpolated";
   path?: string;
+  // Merge: `paths` selects whole folders; files are then paired by name
+  // (name.pt-br.mp4 + name.en.mp4 -> name.mkv).
+  paths?: string[];
+  merge_video?: string;
+  merge_tick?: number;
+  merge_gap_fill?: MergeGapFill;
+  merge_force?: boolean;
+  merge_default_audio?: string;
   // Upscale
   scale?: 2 | 3 | 4;
   processor?: UpscaleProcessor;
@@ -207,7 +288,7 @@ export type PipelineOperationType =
   | "cleanup";
 
 // Stage folders a cleanup step can delete from. "output" is the upscaled stage.
-export type CleanupFolder = "input" | "output" | "interpolated" | "optimized";
+export type CleanupFolder = "input" | "merged" | "output" | "interpolated" | "optimized";
 
 export type QualityPreset = "ultra" | "alta" | "media" | "baixa";
 
@@ -431,6 +512,6 @@ export interface UpdatePipelineRequest {
 
 export interface RunPipelineRequest {
   files?: string[];
-  source?: "input" | "output" | "optimized" | "interpolated";
+  source?: "input" | "merged" | "output" | "optimized" | "interpolated";
   path?: string;
 }
