@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"anime-upscaling/internal/config"
+	"anime-upscaling/internal/dualaudio"
 )
 
 // needsSanitize returns true if the filename contains characters that
@@ -937,6 +938,9 @@ type SubtitleTrack struct {
 	Codec    string `json:"codec,omitempty"`
 }
 
+// SyncInfo is the dual-audio sync verdict a merged file carries in its tags.
+type SyncInfo = dualaudio.SyncInfo
+
 // VideoProbeResult holds full metadata from ffprobe.
 type VideoProbeResult struct {
 	Width     int
@@ -944,11 +948,15 @@ type VideoProbeResult struct {
 	FrameRate float64
 	Audio     []AudioTrack
 	Subtitles []SubtitleTrack
+	Sync      *SyncInfo // nil unless the file carries a dual-audio verdict
 }
 
 // ffprobeJSON mirrors the JSON output of ffprobe -show_entries stream=... -of json
 type ffprobeJSON struct {
 	Streams []ffprobeStream `json:"streams"`
+	Format  struct {
+		Tags map[string]string `json:"tags,omitempty"`
+	} `json:"format"`
 }
 
 type ffprobeStream struct {
@@ -969,6 +977,7 @@ func (r *Runner) ProbeFullMetadata(ctx context.Context, absPath string) (VideoPr
 		"-v", "error",
 		"-show_entries", "stream=index,codec_type,codec_name,width,height,channels,r_frame_rate",
 		"-show_entries", "stream_tags=language,title",
+		"-show_entries", "format_tags",
 		"-of", "json",
 		absPath,
 	)
@@ -984,6 +993,9 @@ func (r *Runner) ProbeFullMetadata(ctx context.Context, absPath string) (VideoPr
 	}
 
 	var result VideoProbeResult
+	if sync, ok := dualaudio.ParseSyncInfo(probe.Format.Tags); ok {
+		result.Sync = sync
+	}
 	for _, s := range probe.Streams {
 		switch s.CodecType {
 		case "video":

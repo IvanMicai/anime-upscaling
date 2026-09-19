@@ -19,9 +19,11 @@ type SourceEntry struct {
 	FrameRate float64                `json:"frame_rate,omitempty"`
 	Audio     []runner.AudioTrack    `json:"audio,omitempty"`
 	Subtitles []runner.SubtitleTrack `json:"subtitles,omitempty"`
+	Sync      *runner.SyncInfo       `json:"sync,omitempty"`
 }
 
-const currentCacheVersion = 4
+// Bumped to 5: entries gained Sync and the merged stage.
+const currentCacheVersion = 5
 
 type cacheEnvelope struct {
 	Version int       `json:"version"`
@@ -33,6 +35,27 @@ type FileStatus struct {
 	Output       *SourceEntry `json:"output"`
 	Optimize     *SourceEntry `json:"optimize"`
 	Interpolated *SourceEntry `json:"interpolated,omitempty"`
+	Merged       *SourceEntry `json:"merged,omitempty"`
+}
+
+// Slot returns the entry for a cache label ("input", "output", "optimize",
+// "interpolated", "merged"), or nil for an unknown label. Going through it keeps
+// the set of stages in ONE place: the builder used to repeat a four-way switch
+// in four spots, and every new stage meant finding them all.
+func (s *FileStatus) Slot(label string) **SourceEntry {
+	switch label {
+	case "input":
+		return &s.Input
+	case "output":
+		return &s.Output
+	case "optimize":
+		return &s.Optimize
+	case "interpolated":
+		return &s.Interpolated
+	case "merged":
+		return &s.Merged
+	}
+	return nil
 }
 
 type CacheData map[string]FileStatus
@@ -80,6 +103,7 @@ func BuildFileStatusCache(cfg config.Config) error {
 		{"output", cfg.OutputDir},
 		{"optimize", cfg.OptimizedDir},
 		{"interpolated", cfg.InterpolatedDir},
+		{"merged", cfg.MergedDir},
 	}
 
 	// Scan all directories recursively and index by map for O(1) lookup.
@@ -115,46 +139,15 @@ func BuildFileStatusCache(cfg config.Config) error {
 				continue
 			}
 
-			// Check if cached entry matches
-			var oldEntry *SourceEntry
-			switch d.label {
-			case "input":
-				oldEntry = oldStatus.Input
-			case "output":
-				oldEntry = oldStatus.Output
-			case "optimize":
-				oldEntry = oldStatus.Optimize
-			case "interpolated":
-				oldEntry = oldStatus.Interpolated
-			}
-
-			if oldEntry != nil && oldEntry.Size == size {
-				// Size matches — reuse cached resolution
-				entry := *oldEntry
-				switch d.label {
-				case "input":
-					status.Input = &entry
-				case "output":
-					status.Output = &entry
-				case "optimize":
-					status.Optimize = &entry
-				case "interpolated":
-					status.Interpolated = &entry
-				}
+			slot := status.Slot(d.label)
+			if old := oldStatus.Slot(d.label); old != nil && *old != nil && (*old).Size == size {
+				// Size matches — reuse the cached metadata.
+				entry := **old
+				*slot = &entry
 			} else {
-				// New or changed — need ffprobe
+				// New or changed — needs ffprobe.
 				needProbe[d.label] = append(needProbe[d.label], name)
-				entry := SourceEntry{Size: size}
-				switch d.label {
-				case "input":
-					status.Input = &entry
-				case "output":
-					status.Output = &entry
-				case "optimize":
-					status.Optimize = &entry
-				case "interpolated":
-					status.Interpolated = &entry
-				}
+				*slot = &SourceEntry{Size: size}
 			}
 		}
 
@@ -192,39 +185,10 @@ func BuildFileStatusCache(cfg config.Config) error {
 		for label, resMap := range results {
 			for name, res := range resMap {
 				status := newCache[name]
-				switch label {
-				case "input":
-					if status.Input != nil {
-						status.Input.Width = res.Width
-						status.Input.Height = res.Height
-						status.Input.FrameRate = res.FrameRate
-						status.Input.Audio = res.Audio
-						status.Input.Subtitles = res.Subtitles
-					}
-				case "output":
-					if status.Output != nil {
-						status.Output.Width = res.Width
-						status.Output.Height = res.Height
-						status.Output.FrameRate = res.FrameRate
-						status.Output.Audio = res.Audio
-						status.Output.Subtitles = res.Subtitles
-					}
-				case "optimize":
-					if status.Optimize != nil {
-						status.Optimize.Width = res.Width
-						status.Optimize.Height = res.Height
-						status.Optimize.FrameRate = res.FrameRate
-						status.Optimize.Audio = res.Audio
-						status.Optimize.Subtitles = res.Subtitles
-					}
-				case "interpolated":
-					if status.Interpolated != nil {
-						status.Interpolated.Width = res.Width
-						status.Interpolated.Height = res.Height
-						status.Interpolated.FrameRate = res.FrameRate
-						status.Interpolated.Audio = res.Audio
-						status.Interpolated.Subtitles = res.Subtitles
-					}
+				if slot := status.Slot(label); slot != nil && *slot != nil {
+					e := *slot
+					e.Width, e.Height, e.FrameRate = res.Width, res.Height, res.FrameRate
+					e.Audio, e.Subtitles, e.Sync = res.Audio, res.Subtitles, res.Sync
 				}
 				newCache[name] = status
 			}

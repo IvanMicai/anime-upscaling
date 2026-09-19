@@ -23,19 +23,24 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
   const [removing, setRemoving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const active = job.status === "running" || job.status === "queued";
 
   async function handleCancel() {
     setCancelling(true);
+    setCancelError(null);
     try {
       await cancelJob(job.id);
       onCancelled();
-    } catch {
-      // ignore — poll will catch up
+      setCancelConfirmOpen(false);
+    } catch (e) {
+      // A cancel that fails MUST say so. Swallowing it left a merge of 82
+      // running after the button was pressed: nothing on screen changed, so it
+      // read as "cancel does not work" rather than "the request failed".
+      setCancelError(e instanceof Error ? e.message : "request failed");
     } finally {
       setCancelling(false);
-      setCancelConfirmOpen(false);
     }
   }
 
@@ -94,7 +99,11 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
         open={cancelConfirmOpen}
         onOpenChange={setCancelConfirmOpen}
         title="Cancel job?"
-        description="This job is still active. Cancelling stops processing; progress on unfinished files will be lost."
+        description={
+          cancelError
+            ? `Could not cancel: ${cancelError}. The job is still running.`
+            : "This job is still active. Cancelling stops processing; progress on unfinished files will be lost."
+        }
         confirmLabel="Cancel job"
         cancelLabel="Keep running"
         destructive

@@ -365,12 +365,7 @@ func RunCustomPipelineForFile(
 			}
 			name := filepath.Base(filename)
 
-			folderDirs := map[string]string{
-				"input":        cfg.InputDir,
-				"output":       cfg.OutputDir,
-				"interpolated": cfg.InterpolatedDir,
-				"optimized":    cfg.OptimizedDir,
-			}
+			folderDirs := cfg.StageDirs()
 			// Only attempt folders where the file actually exists, so stages this
 			// file never passed through don't produce noisy "no such file" errors.
 			var present []string
@@ -384,7 +379,7 @@ func RunCustomPipelineForFile(
 			if len(present) > 0 {
 				_, errs := files.DeleteFiles(
 					[]files.DeleteItem{{Name: name, Path: dir, Folders: present}},
-					cfg.InputDir, cfg.OutputDir, cfg.OptimizedDir, cfg.InterpolatedDir, cfg.VideoExts,
+					folderDirs, cfg.VideoExts,
 				)
 				for _, e := range errs {
 					onEvent(logger.JobLog{Source: "PIPELINE", Level: "STEP", Index: index, Message: "Limpeza: " + e, Time: time.Now()})
@@ -421,6 +416,7 @@ func dirToSource(cfg config.Config, dir string) string {
 		{cfg.InputDir, "input"},
 		{cfg.OutputDir, "output"},
 		{cfg.InterpolatedDir, "interpolated"},
+		{cfg.MergedDir, "merged"},
 		{cfg.OptimizedDir, "optimized"},
 	} {
 		if filepath.Clean(pair.dir) == absDir || strings.HasSuffix(absDir, "/"+pair.name) {

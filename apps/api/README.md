@@ -33,7 +33,7 @@ List video files in a directory.
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `dir` | string | `"input"` | One of `input`, `output`, `interpolated`, `optimized` |
+| `dir` | string | `"input"` | One of `input`, `merged`, `output`, `interpolated`, `optimized` |
 
 **Response 200:**
 
@@ -47,7 +47,7 @@ List video files in a directory.
 **Response 400:**
 
 ```json
-{ "error": "invalid dir: must be input, output, optimized, or interpolated" }
+{ "error": "invalid dir: must be input, merged, output, interpolated, or optimized" }
 ```
 
 **Example:**
@@ -100,9 +100,9 @@ Create a new job.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | string | yes | `"upscale"`, `"interpolate"`, `"optimize"`, or `"check"` |
+| `type` | string | yes | `"upscale"`, `"interpolate"`, `"optimize"`, `"check"`, or `"merge"` |
 | `files` | string[] | no | Filenames from the selected source. If empty, uses all videos in that source |
-| `source` | string | no | One of `input`, `output`, `interpolated`, `optimized`; defaults to `input` |
+| `source` | string | no | One of `input`, `merged`, `output`, `interpolated`, `optimized`; defaults to `input` (a `merge` cannot read from `merged`) |
 | `frame_rate` | number | no | Optimize-only frame-rate divisor: `1` original, `2` half, or `4` quarter |
 
 ```json
@@ -342,6 +342,7 @@ curl -X POST http://localhost:4751/api/jobs/j_1708540800_1a2b/cancel
 | `interpolate` | Frame interpolation using video2x/RIFE | GPU queue |
 | `optimize` | Compression/transcode using ffmpeg | FFmpeg queue or GPU queue when hardware encode is enabled |
 | `check` | Integrity check using full ffmpeg decode | FFmpeg queue |
+| `merge` | Dual audio: join two releases of an episode, keeping both audio tracks in sync | FFmpeg queue |
 
 ### Upscale
 
@@ -350,6 +351,43 @@ curl -X POST http://localhost:4751/api/jobs/j_1708540800_1a2b/cancel
 - Scale: 2x
 - Output: `{BaseDir}/output/`
 - Skips files that already exist in output
+
+### Merge
+
+Pairs files by **name** — same name, different language tag (`ep01.pt-br.mp4` +
+`ep01.en.mkv` → `merged/ep01.mkv`) — and writes one file with the better picture
+and both audio tracks. Details and the reasoning: [docs/DUAL-AUDIO.md](../../docs/DUAL-AUDIO.md).
+
+What to merge, in order of precedence: `paths` (every video under each folder —
+the "two folders" case), `files` (an explicit list, may span folders), or neither
+(every video under `source`/`path`).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `paths` | string[] | — | Folders, relative to `source` |
+| `merge_video` | string | `"auto"` | `"auto"` (more pixels, then bitrate) or the language tag whose file supplies the picture |
+| `merge_tick` | number | `5` | Seconds between sync checks, `1`–`30` |
+| `merge_gap_fill` | string | `"base"` | What plays where the other track has no content: `"base"` (the video's own audio) or `"silence"` |
+| `merge_default_audio` | string | — | Language tag of the default track; empty = the language that did not supply the video |
+| `merge_force` | boolean | `false` | Write the file even when the sync could not be guaranteed |
+
+- Output: `{BaseDir}/merged/`, in the common ancestor folder of the pair. Skips pairs already merged.
+- A pair that fails the sync gate is **not written**; the log says why. With `merge_force` it is written and says so in its tags.
+- The verdict is stored in the file (`DUALAUDIO_SYNC` container tag) and returned by `GET /api/files` as `sync` / `merged_sync`.
+- ~1 GB of RAM and ~40–60 s per episode, CPU only.
+
+`POST /api/merge/preview` takes `source`, `path`, `files`, `paths` and returns
+`{ pairs, unpaired }` — the pairing a job would do, without starting it.
+
+Two endpoints support choosing the picture by eye:
+
+- `GET /api/merge/locate?source=&a=&b=&t=` — where time `t` (seconds) of file `a`
+  falls in file `b`, found by audio: `{ location: { t_a, t_b, lag, confidence,
+  matched }, a: { width, height, bitrate, duration }, b: {…} }`. The same scene
+  is not at the same timestamp in two releases. `matched: false` means it could
+  not be found and `t_b` falls back to `t`.
+- `GET /api/merge/frame?source=&file=&t=` — one frame as `image/png` (lossless,
+  so the comparison is not judging JPEG artefacts).
 
 ### Optimize
 

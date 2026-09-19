@@ -67,6 +67,9 @@ the Compose network.
 - File explorer with natural-sort episode ordering across deep folder trees.
 - Configurable concurrency: GPU streams and FFmpeg worker count per host.
 - Optional hardware-encoded output (NVIDIA / AMD / Intel) for `optimize` jobs.
+- Dual audio: merge two releases of an episode into one file with the better
+  picture and both audio tracks, synced segment by segment; the sync verdict is
+  written into the file and shown in the file explorer ([docs](docs/DUAL-AUDIO.md)).
 - Docker Compose deployment with a generic default and an NVIDIA GPU overlay.
 - Portainer-friendly stack file for one-click deploys on home servers.
 - Storybook for the UI component library (`apps/web`).
@@ -139,6 +142,7 @@ Each job — and each step inside a pipeline — has an operation type:
 
 | Operation | What it does |
 | --- | --- |
+| `merge` | Joins two releases of the same episode — `name.pt-br.mp4` + `name.en.mp4` → `merged/name.mkv` — keeping the better picture and both audio tracks in sync. See [Dual audio](docs/DUAL-AUDIO.md). |
 | `upscale` | Runs video2x with the chosen processor + model + scale. |
 | `interpolate` | Runs RIFE to multiply the frame rate (2x, 3x, 4x…). |
 | `optimize` | Re-encodes with the chosen codec, CRF preset and audio settings. |
@@ -174,7 +178,7 @@ run on a GPU:
 
 ```bash
 cp .env.example .env
-mkdir -p data/input data/output data/optimized data/interpolated data/temp
+mkdir -p data/input data/merged data/output data/optimized data/interpolated data/temp
 ```
 
 Edit `.env` before exposing the app outside your machine. Generate the secret
@@ -290,6 +294,7 @@ rendered from the files below — see [`site/`](site/README.md).
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Deployment guide](docs/DEPLOYMENT.md)
+- [Dual audio](docs/DUAL-AUDIO.md)
 - [Releasing guide](docs/RELEASING.md)
 - [API reference](apps/api/README.md)
 - [App notes](apps/web/README.md)

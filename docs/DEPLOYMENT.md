@@ -28,7 +28,7 @@ From the repository root:
 
 ```bash
 cp .env.example .env
-mkdir -p data/input data/output data/optimized data/interpolated data/temp
+mkdir -p data/input data/merged data/output data/optimized data/interpolated data/temp
 ```
 
 Generate a session secret:
