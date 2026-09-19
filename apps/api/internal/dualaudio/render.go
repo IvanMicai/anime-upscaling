@@ -135,6 +135,18 @@ type Validation struct {
 	OffSec  float64
 	TickSec float64  // spacing between checks
 	Offs    []Offset // feed these to Alignment.AddCandidates
+	// Runs groups those same windows into the stretches OffSec counts. A run
+	// says WHERE the error is and what lag it implies, which is what moving a
+	// misplaced seam needs; the flat Offs cannot say where one ends.
+	Runs []OffRun
+}
+
+// OffRun is a stretch of neighbouring, confident validation windows that agree
+// with each other and disagree with zero.
+type OffRun struct {
+	Start, End float64 // base timeline, seconds; End includes the last window
+	Lag        float64 // median disagreement across the run
+	Windows    int
 }
 
 const (
@@ -225,9 +237,16 @@ func Validate(rendered []int16, base *Features, segs []Segment, minConf, tickSec
 
 	var run []Offset
 	flush := func() {
-		if len(run) >= minRun {
-			v.OffSec += run[len(run)-1].BaseTime - run[0].BaseTime + validateWinSec
+		if len(run) < minRun {
+			return
 		}
+		v.OffSec += run[len(run)-1].BaseTime - run[0].BaseTime + validateWinSec
+		lags := make([]float64, len(run))
+		for i, o := range run {
+			lags[i] = o.Lag
+		}
+		v.Runs = append(v.Runs, OffRun{Start: run[0].BaseTime,
+			End: run[len(run)-1].BaseTime + validateWinSec, Lag: median(lags), Windows: len(run)})
 	}
 	for _, o := range confident {
 		off := math.Abs(o.Lag) > hitToleranceSec

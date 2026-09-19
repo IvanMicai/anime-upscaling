@@ -381,3 +381,80 @@ func TestGrade(t *testing.T) {
 		}
 	}
 }
+
+// A seam 30 s early, with both lags already right, is invisible to the solver:
+// re-solving returns the same map, so the refine loop spins without improving.
+// It was worth 35 s at 0.33 s off in one Pokemon episode, graded "review" every
+// round. The validation says where the cut is; seamMove is what reads it.
+func TestSeamMoveReadsAMisplacedSeam(t *testing.T) {
+	// The Pokemon episode, to the second: the solver switched at 1194 s, the
+	// cut is past 1230, and six confident windows in between all say 0.33 s.
+	segs := []Segment{
+		{BaseStart: 790, BaseEnd: 1194, Lag: 10.87},
+		{BaseStart: 1194, BaseEnd: 1262, Lag: 11.18},
+	}
+	i, at, ok := seamMove(segs, OffRun{Start: 1195, End: 1230, Lag: -0.33, Windows: 6})
+	if !ok {
+		t.Fatal("run not read as a misplaced seam")
+	}
+	if i != 0 || math.Abs(at-1230) > 0.01 {
+		t.Errorf("seam = segment %d at %.1f s, want segment 0 at 1230", i, at)
+	}
+}
+
+// The mirror case: the run closes a segment and belongs to the next one.
+func TestSeamMoveHandlesARunThatClosesASegment(t *testing.T) {
+	segs := []Segment{
+		{BaseStart: 0, BaseEnd: 600, Lag: 1.0},
+		{BaseStart: 600, BaseEnd: 1200, Lag: 5.0},
+	}
+	i, at, ok := seamMove(segs, OffRun{Start: 560, End: 600, Lag: 4.0, Windows: 6})
+	if !ok || i != 0 || math.Abs(at-560) > 0.01 {
+		t.Errorf("seam = segment %d at %.1f s (ok=%v), want segment 0 at 560", i, at, ok)
+	}
+}
+
+func TestSeamMoveLeavesUnrelatedRunsAlone(t *testing.T) {
+	segs := []Segment{
+		{BaseStart: 0, BaseEnd: 600, Lag: 1.0},
+		{BaseStart: 600, BaseEnd: 1200, Lag: 5.0},
+	}
+	cases := map[string]OffRun{
+		// Implied lag is nobody's: a real fault, and moving a seam would bury it.
+		"implied lag matches no neighbour": {Start: 605, End: 640, Lag: -2.0, Windows: 6},
+		// Starts well inside the segment, so a misplaced seam is not the fault.
+		"run does not touch either edge": {Start: 800, End: 835, Lag: -4.0, Windows: 6},
+		// Would leave nothing of the segment it moves into.
+		"would collapse a segment": {Start: 601, End: 1199.5, Lag: -4.0, Windows: 6},
+	}
+	for name, r := range cases {
+		if i, at, ok := seamMove(segs, r); ok {
+			t.Errorf("%s: moved segment %d to %.1f s, want no move", name, i, at)
+		}
+	}
+}
+
+// SnapSeams edits the map in place and keeps the lags. A FALLING lag is used so
+// the seam lands exactly where the evidence puts it: a rising one hands the
+// join to refineBoundary, which is the existing, separately tested path.
+func TestSnapSeamsMovesTheJoinAndKeepsLags(t *testing.T) {
+	al := &Alignment{
+		BaseDuration: 1300,
+		Segments: []Segment{
+			{BaseStart: 790, BaseEnd: 1194, Lag: 11.18},
+			{BaseStart: 1194, BaseEnd: 1262, Lag: 10.87},
+		},
+	}
+	if !al.SnapSeams(nil, nil, []OffRun{{Start: 1195, End: 1230, Lag: 0.31, Windows: 6}}) {
+		t.Fatal("seam did not move")
+	}
+	if got := al.Segments[0].BaseEnd; math.Abs(got-1230) > 0.01 {
+		t.Errorf("join at %.1f s, want 1230", got)
+	}
+	if al.Segments[1].BaseStart != al.Segments[0].BaseEnd {
+		t.Error("segments left with a hole the lag does not call for")
+	}
+	if al.Segments[0].Lag != 11.18 || al.Segments[1].Lag != 10.87 {
+		t.Error("lags changed; only the seam may move")
+	}
+}

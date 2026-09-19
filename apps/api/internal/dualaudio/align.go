@@ -72,6 +72,103 @@ func (a *Alignment) addCandidate(lagFrames int, basePos float64) {
 	c.lo, c.hi, c.votes = math.Min(c.lo, basePos), math.Max(c.hi, basePos), c.votes+1
 }
 
+// Seam repair tuning. A run must OPEN (or close) the segment it sits in — a run
+// starting well inside one is a different fault, not a misplaced seam.
+const (
+	seamSnapSlackSec = validateWinSec
+	seamMinSegSec    = 1.0
+)
+
+// SnapSeams moves a seam the solver put in the wrong place, using validation
+// evidence the refinement itself cannot reach.
+//
+// refineBoundary searches +-15 s around where the Viterbi path switched. When
+// the switch is further off than that the true cut is outside the search and no
+// amount of refining finds it: one Pokemon episode had the seam 30 s early and
+// wrote 35 s at 0.33 s off, graded "review" every round without ever improving.
+//
+// The validation knows where it is. A run of confident windows that opens a
+// segment, all disagreeing by the same amount, whose IMPLIED lag (the segment's
+// lag plus the disagreement) is a NEIGHBOUR's lag, is that neighbour's stretch
+// sitting on the wrong side of the seam. Moving the seam past the run and
+// re-refining from there puts the cut inside reach.
+//
+// Only seams move. No lag is invented, and a seam that would leave either side
+// shorter than a second is refused. Reports whether anything moved.
+func (a *Alignment) SnapSeams(base, dub *Features, runs []OffRun) bool {
+	moved := false
+	for _, r := range runs {
+		if i, t, ok := seamMove(a.Segments, r); ok {
+			a.moveSeam(base, dub, i, t)
+			moved = true
+		}
+	}
+	if moved {
+		a.Gaps, a.Coverage = gapsAndCoverage(a.Segments, a.BaseDuration)
+	}
+	return moved
+}
+
+// seamMove reads a run as a seam in the wrong place: it returns the index of
+// the segment that should END at t. ok is false when the run is some other
+// fault — the decision, kept apart from the audio so it can be reasoned about
+// on the map alone.
+func seamMove(segs []Segment, r OffRun) (int, float64, bool) {
+	i := -1
+	for k, s := range segs {
+		if s.BaseStart <= r.Start && r.Start < s.BaseEnd {
+			i = k
+			break
+		}
+	}
+	if i < 0 {
+		return 0, 0, false
+	}
+	implied := segs[i].Lag + r.Lag
+	var j int
+	var t float64
+	switch {
+	// The run OPENS this segment and its implied lag is the previous one's:
+	// the stretch belongs before the seam, so the seam moves past the run.
+	case i > 0 && math.Abs(implied-segs[i-1].Lag) <= mergeLagSec &&
+		r.Start-segs[i].BaseStart <= seamSnapSlackSec && r.End < segs[i].BaseEnd:
+		j, t = i-1, r.End
+	// The run CLOSES this segment and belongs to the next one.
+	case i+1 < len(segs) && math.Abs(implied-segs[i+1].Lag) <= mergeLagSec &&
+		segs[i].BaseEnd-r.End <= seamSnapSlackSec && r.Start > segs[i].BaseStart:
+		j, t = i, r.Start
+	default:
+		return 0, 0, false
+	}
+	if t <= segs[j].BaseStart+seamMinSegSec || t >= segs[j+1].BaseEnd-seamMinSegSec {
+		return 0, 0, false
+	}
+	return j, t, true
+}
+
+// moveSeam puts the join between segments i and i+1 at t. When the lag rises
+// the base holds content the dub lacks, so refineBoundary places the hole.
+//
+// The refinement is BOUNDED by t, and that bound is the whole point: its window
+// reaches 15 s past the join it is given, which is far enough to walk straight
+// back onto the stretch the validation just proved belongs to the other side —
+// measured doing exactly that, returning the seam to 1194 s after evidence put
+// it at 1230. Where the two disagree the validation wins: it read the rebuilt
+// track, the change point only scores the sources.
+func (a *Alignment) moveSeam(base, dub *Features, i int, t float64) {
+	x, y := &a.Segments[i], &a.Segments[i+1]
+	later := t > x.BaseEnd
+	x.BaseEnd, y.BaseStart = t, t
+	if y.Lag-x.Lag <= 0.05 {
+		return
+	}
+	endA, startB := refineBoundary(base, dub, *x, *y, a.wm)
+	if (later && endA < t) || (!later && endA > t) {
+		return // walked back over the evidence; keep the seam where it is
+	}
+	x.BaseEnd, y.BaseStart = endA, startB
+}
+
 // AddCandidates feeds validation findings back into the solver. A confident
 // residual of +0.14 s over a stretch says the right lag there is the segment's
 // lag + 0.14. A segment too short for the coarse sweep (30 s windows every 10 s)

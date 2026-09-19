@@ -202,6 +202,23 @@ func Refine(al *Alignment, baseFeat, dubFeat *Features, dubPCM, basePCM []int16,
 		}
 	}
 	al.Segments, al.Gaps, al.Coverage = bestSegs, bestGaps, bestCov
+
+	// The loop can only offer the solver new LAGS. A seam in the wrong place
+	// with both lags already correct is invisible to it — re-solving returns the
+	// same map — so that case is tried separately, and kept only if it validates
+	// better. Segments are copied first: SnapSeams edits in place, and bestSegs
+	// is the rollback.
+	al.Segments = append([]Segment(nil), bestSegs...)
+	if al.SnapSeams(baseFeat, dubFeat, best.Runs) {
+		out := Render(al, dubPCM, basePCM, fill)
+		if v := Validate(out, baseFeat, al.Segments, minConf, tickSec); betterThan(v, best) {
+			rendered, best = out, v
+		} else {
+			al.Segments, al.Gaps, al.Coverage = bestSegs, bestGaps, bestCov
+		}
+	} else {
+		al.Segments = bestSegs
+	}
 	return rendered, best
 }
 
