@@ -72,11 +72,20 @@ func (a *Alignment) addCandidate(lagFrames int, basePos float64) {
 	c.lo, c.hi, c.votes = math.Min(c.lo, basePos), math.Max(c.hi, basePos), c.votes+1
 }
 
-// Seam repair tuning. A run must OPEN (or close) the segment it sits in — a run
-// starting well inside one is a different fault, not a misplaced seam.
+// Seam repair tuning. A run must reach the edge the segment shares with the
+// neighbour it names — a run floating in the middle is a different fault.
 const (
 	seamSnapSlackSec = validateWinSec
 	seamMinSegSec    = 1.0
+	seamAbsorbShare  = 0.9
+	// Matching an implied lag against a neighbour's is a MEASUREMENT, so the
+	// ruler is the validation's own "in place" (60 ms), not mergeLagSec. That
+	// one exists to fold segments whose lags are equal to the alignment's
+	// precision (20 ms) — using it here refused two real repairs: one off by
+	// 56 ms, and one by 21 ms, half a millisecond past the threshold. Both
+	// would land inside 60 ms after the move, which is what the validation
+	// itself calls in place.
+	seamLagTolSec = hitToleranceSec
 )
 
 // SnapSeams moves a seam the solver put in the wrong place, using validation
@@ -85,23 +94,24 @@ const (
 // refineBoundary searches +-15 s around where the Viterbi path switched. When
 // the switch is further off than that the true cut is outside the search and no
 // amount of refining finds it: one Pokemon episode had the seam 30 s early and
-// wrote 35 s at 0.33 s off, graded "review" every round without ever improving.
+// wrote 35 s at 0.33 s off, graded "review" every round without improving.
 //
-// The validation knows where it is. A run of confident windows that opens a
-// segment, all disagreeing by the same amount, whose IMPLIED lag (the segment's
-// lag plus the disagreement) is a NEIGHBOUR's lag, is that neighbour's stretch
-// sitting on the wrong side of the seam. Moving the seam past the run and
-// re-refining from there puts the cut inside reach.
+// The validation knows where it is. A run of confident windows that reaches one
+// end of a segment, all disagreeing by the same amount, whose IMPLIED lag (the
+// segment's lag plus the disagreement) is a NEIGHBOUR's lag, is that
+// neighbour's stretch on the wrong side of the seam. When the run covers the
+// segment almost entirely the segment is spurious and the neighbour absorbs it.
 //
-// Only seams move. No lag is invented, and a seam that would leave either side
-// shorter than a second is refused. Reports whether anything moved.
+// Only seams move. No lag is invented. Reports whether anything moved.
 func (a *Alignment) SnapSeams(base, dub *Features, runs []OffRun) bool {
 	moved := false
 	for _, r := range runs {
-		if i, t, ok := seamMove(a.Segments, r); ok {
-			a.moveSeam(base, dub, i, t)
-			moved = true
+		f, ok := seamFixFor(a.Segments, r)
+		if !ok {
+			continue
 		}
+		a.applySeamFix(base, dub, f)
+		moved = true
 	}
 	if moved {
 		a.Gaps, a.Coverage = gapsAndCoverage(a.Segments, a.BaseDuration)
@@ -109,62 +119,88 @@ func (a *Alignment) SnapSeams(base, dub *Features, runs []OffRun) bool {
 	return moved
 }
 
-// seamMove reads a run as a seam in the wrong place: it returns the index of
-// the segment that should END at t. ok is false when the run is some other
-// fault — the decision, kept apart from the audio so it can be reasoned about
-// on the map alone.
-func seamMove(segs []Segment, r OffRun) (int, float64, bool) {
-	i := -1
+// seamFix reassigns a stretch from one segment to a neighbour.
+type seamFix struct {
+	Seg, Nb  int     // the segment losing ground, and the one gaining it
+	Boundary float64 // where the join goes
+	Absorb   bool    // the whole segment goes; Seg is removed
+}
+
+// seamFixFor reads a run as a misplaced seam. Kept apart from the audio so it
+// can be reasoned about on the map alone.
+func seamFixFor(segs []Segment, r OffRun) (seamFix, bool) {
+	// Located by OVERLAP, not by the run's start: a validation window is 10 s
+	// long whatever the tick, so at a fine tick the first off windows begin
+	// before the seam and the start alone lands on the wrong segment.
+	i, best := -1, 0.0
 	for k, s := range segs {
-		if s.BaseStart <= r.Start && r.Start < s.BaseEnd {
-			i = k
-			break
+		if ov := math.Min(r.End, s.BaseEnd) - math.Max(r.Start, s.BaseStart); ov > best {
+			i, best = k, ov
 		}
 	}
 	if i < 0 {
-		return 0, 0, false
+		return seamFix{}, false
 	}
-	implied := segs[i].Lag + r.Lag
-	var j int
-	var t float64
-	switch {
-	// The run OPENS this segment and its implied lag is the previous one's:
-	// the stretch belongs before the seam, so the seam moves past the run.
-	case i > 0 && math.Abs(implied-segs[i-1].Lag) <= mergeLagSec &&
-		r.Start-segs[i].BaseStart <= seamSnapSlackSec && r.End < segs[i].BaseEnd:
-		j, t = i-1, r.End
-	// The run CLOSES this segment and belongs to the next one.
-	case i+1 < len(segs) && math.Abs(implied-segs[i+1].Lag) <= mergeLagSec &&
-		segs[i].BaseEnd-r.End <= seamSnapSlackSec && r.Start > segs[i].BaseStart:
-		j, t = i, r.Start
-	default:
-		return 0, 0, false
+	seg := segs[i]
+	span := seg.BaseEnd - seg.BaseStart
+	if span <= 0 {
+		return seamFix{}, false
 	}
-	if t <= segs[j].BaseStart+seamMinSegSec || t >= segs[j+1].BaseEnd-seamMinSegSec {
-		return 0, 0, false
+	implied := seg.Lag + r.Lag
+	absorb := best >= seamAbsorbShare*span
+
+	// Opening case: the stretch belongs to the segment BEFORE this one.
+	if i > 0 && math.Abs(implied-segs[i-1].Lag) <= seamLagTolSec &&
+		r.Start-seg.BaseStart <= seamSnapSlackSec {
+		if absorb {
+			return seamFix{Seg: i, Nb: i - 1, Boundary: seg.BaseEnd, Absorb: true}, true
+		}
+		if b := r.End; b > seg.BaseStart && b <= seg.BaseEnd-seamMinSegSec {
+			return seamFix{Seg: i, Nb: i - 1, Boundary: b}, true
+		}
+		return seamFix{}, false
 	}
-	return j, t, true
+	// Closing case: it belongs to the segment AFTER this one.
+	if i+1 < len(segs) && math.Abs(implied-segs[i+1].Lag) <= seamLagTolSec &&
+		seg.BaseEnd-r.End <= seamSnapSlackSec {
+		if absorb {
+			return seamFix{Seg: i, Nb: i + 1, Boundary: seg.BaseStart, Absorb: true}, true
+		}
+		if b := r.Start; b < seg.BaseEnd && b >= seg.BaseStart+seamMinSegSec {
+			return seamFix{Seg: i, Nb: i + 1, Boundary: b}, true
+		}
+	}
+	return seamFix{}, false
 }
 
-// moveSeam puts the join between segments i and i+1 at t. When the lag rises
-// the base holds content the dub lacks, so refineBoundary places the hole.
-//
-// The refinement is BOUNDED by t, and that bound is the whole point: its window
-// reaches 15 s past the join it is given, which is far enough to walk straight
-// back onto the stretch the validation just proved belongs to the other side —
-// measured doing exactly that, returning the seam to 1194 s after evidence put
-// it at 1230. Where the two disagree the validation wins: it read the rebuilt
-// track, the change point only scores the sources.
-func (a *Alignment) moveSeam(base, dub *Features, i int, t float64) {
+// applySeamFix rewrites the map. When the lag rises the base holds content the
+// dub lacks, so refineBoundary places the hole — but BOUNDED by the evidence:
+// its window reaches 15 s past the join it is given, far enough to walk back
+// onto the stretch the validation just ruled on. Measured doing exactly that,
+// returning a seam to 1194 s after evidence had put it at 1230.
+func (a *Alignment) applySeamFix(base, dub *Features, f seamFix) {
+	if f.Absorb {
+		if f.Nb < f.Seg {
+			a.Segments[f.Nb].BaseEnd = f.Boundary
+		} else {
+			a.Segments[f.Nb].BaseStart = f.Boundary
+		}
+		a.Segments = append(a.Segments[:f.Seg], a.Segments[f.Seg+1:]...)
+		return
+	}
+	i := f.Seg
+	if f.Nb < f.Seg {
+		i = f.Nb
+	}
 	x, y := &a.Segments[i], &a.Segments[i+1]
-	later := t > x.BaseEnd
-	x.BaseEnd, y.BaseStart = t, t
+	later := f.Boundary > x.BaseEnd
+	x.BaseEnd, y.BaseStart = f.Boundary, f.Boundary
 	if y.Lag-x.Lag <= 0.05 {
 		return
 	}
 	endA, startB := refineBoundary(base, dub, *x, *y, a.wm)
-	if (later && endA < t) || (!later && endA > t) {
-		return // walked back over the evidence; keep the seam where it is
+	if (later && endA < f.Boundary) || (!later && endA > f.Boundary) {
+		return
 	}
 	x.BaseEnd, y.BaseStart = endA, startB
 }

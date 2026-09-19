@@ -159,6 +159,10 @@ func dualaudioAnalyze(ctx context.Context, t dualaudio.Tools, args []string) err
 	base := fs.String("base", "", "file that provides the video")
 	dub := fs.String("dub", "", "file that provides the dubbed audio")
 	dubStream := fs.Int("dub-stream", 0, "audio stream index inside --dub")
+	// Without this the CLI cannot reproduce a job's verdict: the app defaults to
+	// a 1 s tick and analyze to 5 s, and the number of validation windows the
+	// grade is computed over changes with it.
+	tick := fs.Float64("tick", 0, "seconds between sync checks (0 = default)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -167,6 +171,7 @@ func dualaudioAnalyze(ctx context.Context, t dualaudio.Tools, args []string) err
 	}
 	j := jobDefaults("base", "por", "Português (BR)")
 	j.BasePath, j.DubPath, j.DubStream = *base, *dub, *dubStream
+	j.TickSec = *tick
 	res, err := dualaudio.Process(ctx, t, j)
 	if err != nil {
 		return err

@@ -384,37 +384,62 @@ func TestGrade(t *testing.T) {
 
 // A seam 30 s early, with both lags already right, is invisible to the solver:
 // re-solving returns the same map, so the refine loop spins without improving.
-// It was worth 35 s at 0.33 s off in one Pokemon episode, graded "review" every
-// round. The validation says where the cut is; seamMove is what reads it.
-func TestSeamMoveReadsAMisplacedSeam(t *testing.T) {
-	// The Pokemon episode, to the second: the solver switched at 1194 s, the
-	// cut is past 1230, and six confident windows in between all say 0.33 s.
+// It was worth 35 s at 0.33 s off in one Pokemon episode. The validation says
+// where the cut is; seamFixFor is what reads it.
+func TestSeamFixMovesAJoinTheSolverPutTooEarly(t *testing.T) {
 	segs := []Segment{
 		{BaseStart: 790, BaseEnd: 1194, Lag: 10.87},
 		{BaseStart: 1194, BaseEnd: 1262, Lag: 11.18},
 	}
-	i, at, ok := seamMove(segs, OffRun{Start: 1195, End: 1230, Lag: -0.33, Windows: 6})
-	if !ok {
-		t.Fatal("run not read as a misplaced seam")
-	}
-	if i != 0 || math.Abs(at-1230) > 0.01 {
-		t.Errorf("seam = segment %d at %.1f s, want segment 0 at 1230", i, at)
+	f, ok := seamFixFor(segs, OffRun{Start: 1195, End: 1230, Lag: -0.33, Windows: 6})
+	if !ok || f.Absorb || f.Seg != 1 || f.Nb != 0 || math.Abs(f.Boundary-1230) > 0.01 {
+		t.Errorf("fix = %+v (ok=%v), want segment 1 giving up to 1230 s", f, ok)
 	}
 }
 
-// The mirror case: the run closes a segment and belongs to the next one.
-func TestSeamMoveHandlesARunThatClosesASegment(t *testing.T) {
+// The tick decides how wide the run is, and at 1 s it covered the whole
+// segment: moving the join would have left 0.5 s of it, under the floor, so the
+// repair refused and that episode kept its 37 s off. A segment the run covers
+// end to end is not misplaced, it is spurious — the neighbour takes it.
+func TestSeamFixAbsorbsASegmentTheRunCoversWhole(t *testing.T) {
 	segs := []Segment{
-		{BaseStart: 0, BaseEnd: 600, Lag: 1.0},
-		{BaseStart: 600, BaseEnd: 1200, Lag: 5.0},
+		{BaseStart: 790, BaseEnd: 1194.3, Lag: 10.87},
+		{BaseStart: 1194.3, BaseEnd: 1232.5, Lag: 11.18},
+		{BaseStart: 1232.5, BaseEnd: 1262, Lag: 11.14},
 	}
-	i, at, ok := seamMove(segs, OffRun{Start: 560, End: 600, Lag: 4.0, Windows: 6})
-	if !ok || i != 0 || math.Abs(at-560) > 0.01 {
-		t.Errorf("seam = segment %d at %.1f s (ok=%v), want segment 0 at 560", i, at, ok)
+	f, ok := seamFixFor(segs, OffRun{Start: 1195, End: 1232, Lag: -0.33, Windows: 28})
+	if !ok || !f.Absorb || f.Seg != 1 || f.Nb != 0 {
+		t.Fatalf("fix = %+v (ok=%v), want segment 1 absorbed by 0", f, ok)
+	}
+	al := &Alignment{BaseDuration: 1300, Segments: append([]Segment(nil), segs...)}
+	al.applySeamFix(nil, nil, f)
+	if len(al.Segments) != 2 {
+		t.Fatalf("segments = %d, want the spurious one gone: %+v", len(al.Segments), al.Segments)
+	}
+	if got := al.Segments[0].BaseEnd; math.Abs(got-1232.5) > 0.01 {
+		t.Errorf("neighbour ends at %.1f s, want 1232.5", got)
+	}
+	if al.Segments[0].Lag != 10.87 || al.Segments[1].Lag != 11.14 {
+		t.Error("lags changed; only seams may move")
 	}
 }
 
-func TestSeamMoveLeavesUnrelatedRunsAlone(t *testing.T) {
+// The run is placed by OVERLAP: a validation window is 10 s long whatever the
+// tick, so the first off windows of a misplaced stretch start BEFORE the seam.
+// Reading the run's start alone lands on the previous segment, where the
+// implied lag matches nothing and the repair silently does not fire.
+func TestSeamFixLocatesTheRunByOverlapNotItsStart(t *testing.T) {
+	segs := []Segment{
+		{BaseStart: 0, BaseEnd: 1194, Lag: 10.87},
+		{BaseStart: 1194, BaseEnd: 1262, Lag: 11.18},
+	}
+	f, ok := seamFixFor(segs, OffRun{Start: 1188, End: 1230, Lag: -0.33, Windows: 40})
+	if !ok || f.Seg != 1 {
+		t.Errorf("fix = %+v (ok=%v), want the run read against segment 1", f, ok)
+	}
+}
+
+func TestSeamFixLeavesUnrelatedRunsAlone(t *testing.T) {
 	segs := []Segment{
 		{BaseStart: 0, BaseEnd: 600, Lag: 1.0},
 		{BaseStart: 600, BaseEnd: 1200, Lag: 5.0},
@@ -422,39 +447,33 @@ func TestSeamMoveLeavesUnrelatedRunsAlone(t *testing.T) {
 	cases := map[string]OffRun{
 		// Implied lag is nobody's: a real fault, and moving a seam would bury it.
 		"implied lag matches no neighbour": {Start: 605, End: 640, Lag: -2.0, Windows: 6},
-		// Starts well inside the segment, so a misplaced seam is not the fault.
-		"run does not touch either edge": {Start: 800, End: 835, Lag: -4.0, Windows: 6},
-		// Would leave nothing of the segment it moves into.
-		"would collapse a segment": {Start: 601, End: 1199.5, Lag: -4.0, Windows: 6},
+		// Reaches neither end, so a misplaced seam is not what is wrong.
+		"run floats in the middle": {Start: 800, End: 835, Lag: -4.0, Windows: 6},
 	}
 	for name, r := range cases {
-		if i, at, ok := seamMove(segs, r); ok {
-			t.Errorf("%s: moved segment %d to %.1f s, want no move", name, i, at)
+		if f, ok := seamFixFor(segs, r); ok {
+			t.Errorf("%s: got %+v, want no fix", name, f)
 		}
 	}
 }
 
-// SnapSeams edits the map in place and keeps the lags. A FALLING lag is used so
-// the seam lands exactly where the evidence puts it: a rising one hands the
-// join to refineBoundary, which is the existing, separately tested path.
-func TestSnapSeamsMovesTheJoinAndKeepsLags(t *testing.T) {
-	al := &Alignment{
-		BaseDuration: 1300,
-		Segments: []Segment{
-			{BaseStart: 790, BaseEnd: 1194, Lag: 11.18},
-			{BaseStart: 1194, BaseEnd: 1262, Lag: 10.87},
-		},
+// The tolerance is the validation's "in place", not the alignment's precision.
+// Two real repairs were refused for using the latter: 56 ms out, and 21 ms out
+// — half a millisecond past a 20.5 ms threshold.
+func TestSeamFixToleratesMeasurementError(t *testing.T) {
+	segs := []Segment{
+		{BaseStart: 929.5, BaseEnd: 1228.5, Lag: 10.56},
+		{BaseStart: 1228.5, BaseEnd: 1252.0, Lag: 10.05},
+		{BaseStart: 1252.2, BaseEnd: 1294.8, Lag: 10.25},
 	}
-	if !al.SnapSeams(nil, nil, []OffRun{{Start: 1195, End: 1230, Lag: 0.31, Windows: 6}}) {
-		t.Fatal("seam did not move")
+	// Implied 10.05 + 0.256 = 10.306, against the next segment's 10.25: 56 ms.
+	f, ok := seamFixFor(segs, OffRun{Start: 1232, End: 1252, Lag: 0.256, Windows: 11})
+	if !ok || f.Seg != 1 || f.Nb != 2 || math.Abs(f.Boundary-1232) > 0.01 {
+		t.Errorf("fix = %+v (ok=%v), want segment 1 giving 1232 s on to segment 2", f, ok)
 	}
-	if got := al.Segments[0].BaseEnd; math.Abs(got-1230) > 0.01 {
-		t.Errorf("join at %.1f s, want 1230", got)
-	}
-	if al.Segments[1].BaseStart != al.Segments[0].BaseEnd {
-		t.Error("segments left with a hole the lag does not call for")
-	}
-	if al.Segments[0].Lag != 11.18 || al.Segments[1].Lag != 10.87 {
-		t.Error("lags changed; only the seam may move")
+	// Beyond the validation's own tolerance it must still refuse: that is a
+	// real fault, and moving a seam would bury it.
+	if f, ok := seamFixFor(segs, OffRun{Start: 1232, End: 1252, Lag: 0.5, Windows: 11}); ok {
+		t.Errorf("accepted a %0.f ms disagreement: %+v", 500.0, f)
 	}
 }
