@@ -19,6 +19,7 @@ export function MergePreviewPanel({
   files,
   dirs,
   onLanguages,
+  onFirstPair,
   video,
   onPickVideo,
 }: {
@@ -27,6 +28,9 @@ export function MergePreviewPanel({
   files: string[];
   dirs: string[];
   onLanguages: (tags: string[]) => void;
+  // A representative pair, for the job-level picture choice. The whole season
+  // comes from the same two releases, so one pair answers for all of them.
+  onFirstPair?: (pair: MergePair | null) => void;
   // Which file supplies the picture ("auto" or a language tag), and how to
   // change it — set from the picture comparison.
   video: string;
@@ -57,10 +61,12 @@ export function MergePreviewPanel({
             tags.add(pair.lang_b.tag);
           }
           onLanguages([...tags].sort());
+          onFirstPair?.(p.pairs[0] ?? null);
         })
         .catch((e) => {
           if (stale) return;
           setPreview(null);
+          onFirstPair?.(null);
           setError(e instanceof Error ? e.message : "Falha ao calcular os pares");
         });
     }, 250);

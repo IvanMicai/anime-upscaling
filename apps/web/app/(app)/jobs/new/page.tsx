@@ -20,6 +20,7 @@ import { OperationFields } from "@/components/operation-fields";
 import { ResultPreview } from "@/components/result-preview";
 import { MergeFields, MERGE_DEFAULTS } from "@/components/merge-fields";
 import { MergePreviewPanel } from "@/components/merge-preview-panel";
+import { MergeVideoChoice } from "@/components/merge-video-choice";
 import { createJob, getPipelines, getSettings, runPipeline } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { FOLDER_COLORS, type FolderKey } from "@/lib/file-utils";
@@ -29,6 +30,7 @@ import {
   type GPUVendor,
   type JobType,
   type MergeConfig,
+  type MergePair,
   type Pipeline,
   type PipelineOperationType,
   type PipelineStep,
@@ -52,12 +54,18 @@ const SOURCE_OPTS = (["input", "merged", "output", "interpolated", "optimized"] 
   (value) => ({ value, label: FOLDER_COLORS[value].label }),
 );
 
-type WizardStep = 1 | 2;
+type WizardStep = 1 | 2 | 3;
 
-const STEPS: { n: WizardStep; label: string }[] = [
+// The merge settings are a THIRD step, after the files. Asked before them the
+// only answer available is "Automático": the language options are read from the
+// selection, so at step 1 there is nothing to choose from — and "Automático"
+// keeps whichever picture has more pixels, which is how a whole season came out
+// of an AI upscale with a burnt-in watermark.
+const STEPS_BASE: { n: WizardStep; label: string }[] = [
   { n: 1, label: "Configurar" },
   { n: 2, label: "Selecionar arquivos" },
 ];
+const STEP_MERGE: { n: WizardStep; label: string } = { n: 3, label: "Ajustes do merge" };
 
 export default function NewJobPage() {
   const router = useRouter();
@@ -70,6 +78,7 @@ export default function NewJobPage() {
   const [mergeCfg, setMergeCfg] = useState<MergeConfig>(MERGE_DEFAULTS);
   const [selectedDirs, setSelectedDirs] = useState<string[]>([]);
   const [mergeLanguages, setMergeLanguages] = useState<string[]>([]);
+  const [mergeFirstPair, setMergeFirstPair] = useState<MergePair | null>(null);
 
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [browsePath, setBrowsePath] = useState<string>("");
@@ -89,6 +98,7 @@ export default function NewJobPage() {
 
   const isPipelineSelected = selectedPipelineId !== null;
   const isMerge = !isPipelineSelected && type === "merge";
+  const steps = isMerge ? [...STEPS_BASE, STEP_MERGE] : STEPS_BASE;
   // Merging what is already merged makes no sense; every other stage is fair.
   const sourceOpts = isMerge ? SOURCE_OPTS.filter((o) => o.value !== "merged") : SOURCE_OPTS;
   const selectionCount = selectedFiles.length + selectedDirs.length;
@@ -221,7 +231,7 @@ export default function NewJobPage() {
 
         {/* Wizard stepper */}
         <nav className="flex items-center gap-2 text-sm" aria-label="Etapas">
-          {STEPS.map((s, i) => {
+          {steps.map((s, i) => {
             const active = step === s.n;
             const done = step > s.n;
             // Only allow jumping to a step that's already been reached.
@@ -356,14 +366,6 @@ export default function NewJobPage() {
             </div>
           </div>
 
-          {isMerge && (
-            <MergeFields
-              config={mergeCfg}
-              onChange={(patch) => setMergeCfg((prev) => ({ ...prev, ...patch }))}
-              languages={mergeLanguages}
-            />
-          )}
-
           {showFields && (
             <OperationFields
               operation={type as PipelineOperationType}
@@ -430,20 +432,29 @@ export default function NewJobPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => submit()}
-              disabled={submitting}
-            >
-              {submitting ? "Criando..." : "Run All"}
-            </Button>
-            <Button
-              onClick={() => submit(selectedFiles)}
-              disabled={submitting || (isMerge ? selectionCount === 0 : selectedFiles.length === 0)}
-            >
-              <Play className="size-4" />
-              Run Selected ({isMerge ? selectionCount : selectedFiles.length})
-            </Button>
+            {isMerge ? (
+              <Button onClick={() => setStep(3)} disabled={selectionCount === 0}>
+                Ajustes do merge ({selectionCount})
+                <ChevronRight className="size-4" />
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => submit()}
+                  disabled={submitting}
+                >
+                  {submitting ? "Criando..." : "Run All"}
+                </Button>
+                <Button
+                  onClick={() => submit(selectedFiles)}
+                  disabled={submitting || selectedFiles.length === 0}
+                >
+                  <Play className="size-4" />
+                  Run Selected ({selectedFiles.length})
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -456,6 +467,7 @@ export default function NewJobPage() {
             files={selectedFiles}
             dirs={selectedDirs}
             onLanguages={setMergeLanguages}
+            onFirstPair={setMergeFirstPair}
             video={mergeCfg.video}
             onPickVideo={(video) => setMergeCfg((prev) => ({ ...prev, video }))}
           />
@@ -473,6 +485,51 @@ export default function NewJobPage() {
           />
         </div>
       </div>
+
+      {/* Step 3 — Merge settings. Only here are the languages known. */}
+      {isMerge && (
+        <div className={cn("flex flex-col gap-5", step !== 3 && "hidden")}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setStep(2)}
+              className="text-muted-foreground"
+            >
+              <ChevronLeft className="size-4" />
+              Voltar
+            </Button>
+            <Button
+              onClick={() => submit(selectedFiles)}
+              disabled={submitting || selectionCount === 0}
+            >
+              <Play className="size-4" />
+              {submitting ? "Criando..." : `Rodar (${selectionCount})`}
+            </Button>
+          </div>
+
+          {error && <p className="text-sm text-red-400">{error}</p>}
+
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">Qual versão dá a imagem</h3>
+            <MergeVideoChoice
+              source={source}
+              pair={mergeFirstPair}
+              video={mergeCfg.video}
+              onPick={(video) => setMergeCfg((prev) => ({ ...prev, video }))}
+            />
+          </section>
+
+          <section className="space-y-3 border-t border-border pt-5">
+            <h3 className="text-sm font-semibold">Sincronia e faixas</h3>
+            <MergeFields
+              config={mergeCfg}
+              onChange={(patch) => setMergeCfg((prev) => ({ ...prev, ...patch }))}
+              languages={mergeLanguages}
+            />
+          </section>
+        </div>
+      )}
     </div>
   );
 }
