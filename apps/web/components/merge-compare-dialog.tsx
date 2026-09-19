@@ -47,6 +47,7 @@ export function MergeCompareDialog({
   pair,
   onPick,
   frameUrl = mergeFrameUrl,
+  initialTime,
 }: {
   // Where a frame comes from; overridable so stories can show pictures without
   // an API (an <img> request does not go through the fetch mock).
@@ -56,8 +57,11 @@ export function MergeCompareDialog({
   source: string;
   pair: MergePair;
   onPick: (languageTag: string) => void;
+  // Opening from a sample frame should land on THAT frame, not on the generic
+  // first look: the sample is what made the person want a closer look.
+  initialTime?: number;
 }) {
-  const [time, setTime] = useState(FIRST_LOOK_SEC);
+  const [time, setTime] = useState(initialTime ?? FIRST_LOOK_SEC);
   const [scrub, setScrub] = useState<number | null>(null);
   // The answer is stored WITH the request it belongs to. "Still locating" and
   // "frames still loading" are then derived instead of being flags an effect
@@ -69,6 +73,11 @@ export function MergeCompareDialog({
   const [zoomAt, setZoomAt] = useState<{ x: number; y: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+
+  // Reopening on a different sample must move: `time` survives the close.
+  useEffect(() => {
+    if (open && initialTime != null) setTime(initialTime);
+  }, [open, initialTime]);
 
   const requestKey = `${source}|${pair.a}|${pair.b}|${time}`;
   useEffect(() => {
@@ -116,7 +125,8 @@ export function MergeCompareDialog({
         <DialogHeader>
           <DialogTitle>Comparar imagem</DialogTitle>
           <DialogDescription>
-            O mesmo momento nos dois arquivos, achado pelo áudio. Arraste a divisória; duplo clique dá zoom.
+            O mesmo momento nos dois arquivos, achado pelo áudio. Mova o mouse para varrer a
+            divisória; duplo clique dá zoom no ponto.
           </DialogDescription>
         </DialogHeader>
 
@@ -129,7 +139,12 @@ export function MergeCompareDialog({
             e.currentTarget.setPointerCapture(e.pointerId);
             moveSplit(e.clientX);
           }}
-          onPointerMove={(e) => dragging.current && moveSplit(e.clientX)}
+          // A mouse just moves the divider — there is nothing to grab and no
+          // reason to make someone find a 1 px line to compare two pictures.
+          // Touch keeps the drag: there is no hover to follow there.
+          onPointerMove={(e) => {
+            if (e.pointerType === "mouse" || dragging.current) moveSplit(e.clientX);
+          }}
           onPointerUp={() => (dragging.current = false)}
           onDoubleClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();

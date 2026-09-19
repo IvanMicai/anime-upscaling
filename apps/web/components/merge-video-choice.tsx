@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, TriangleAlert } from "lucide-react";
+import { Loader2, TriangleAlert, ZoomIn } from "lucide-react";
+import { MergeCompareDialog } from "@/components/merge-compare-dialog";
 import { Button } from "@/components/ui/button";
 import { locateMergeFrame, mergeFrameUrl } from "@/lib/api";
 import type { MergePair, MergeVideoInfo } from "@/lib/types";
@@ -52,6 +53,10 @@ export function MergeVideoChoice({
   const [info, setInfo] = useState<{ a?: MergeVideoInfo; b?: MergeVideoInfo }>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Which sample is open side by side. The thumbnails are small on purpose —
+  // an upscale's tells do not survive a 4 cm wide picture — so every one of
+  // them opens the full comparison at its own moment.
+  const [zoomTime, setZoomTime] = useState<number | null>(null);
 
   useEffect(() => {
     if (!pair) return;
@@ -161,20 +166,29 @@ export function MergeVideoChoice({
                       </div>
                     ))
                   : samples.map((s, i) => (
-                      <figure key={i} className="relative">
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setZoomTime(s.ta)}
+                        title="Abrir comparação neste momento"
+                        className="group relative cursor-zoom-in overflow-hidden rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={frameUrl(source, c.file, c.side === "a" ? s.ta : s.tb)}
                           alt={`${c.tag} em ${Math.round(c.side === "a" ? s.ta : s.tb)} s`}
-                          className="aspect-[4/3] w-full rounded object-cover"
+                          className="aspect-[4/3] w-full object-cover transition-transform group-hover:scale-105"
                           loading="lazy"
                         />
+                        <span className="absolute inset-0 hidden items-center justify-center bg-black/40 group-hover:flex">
+                          <ZoomIn className="size-5 text-white" />
+                        </span>
                         {!s.matched && (
-                          <figcaption className="absolute inset-x-0 bottom-0 rounded-b bg-black/70 px-1 py-0.5 text-[10px] text-amber-400">
+                          <span className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-0.5 text-[10px] text-amber-400">
                             sem casar
-                          </figcaption>
+                          </span>
                         )}
-                      </figure>
+                      </button>
                     ))}
               </div>
 
@@ -191,8 +205,23 @@ export function MergeVideoChoice({
         })}
       </div>
 
+      {zoomTime != null && (
+        <MergeCompareDialog
+          open
+          onOpenChange={(o) => !o && setZoomTime(null)}
+          source={source}
+          pair={pair}
+          initialTime={zoomTime}
+          onPick={(tag) => {
+            onPick(tag);
+            setZoomTime(null);
+          }}
+        />
+      )}
+
       <p className="text-xs text-muted-foreground">
-        Olhe uma linha fina — contorno de personagem, texto na tela — a 100%. Mais pixels não é mais
+        Clique em qualquer quadro para abrir a comparação: o mouse varre a divisória entre as duas
+        imagens e o duplo clique dá zoom. Olhe uma linha fina — contorno de personagem, texto na tela — a 100%. Mais pixels não é mais
         detalhe: uma cópia já upscalada tem quatro vezes a contagem da fonte limpa e costuma ficar
         pior.
       </p>
