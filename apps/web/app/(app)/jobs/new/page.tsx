@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
-  Combine,
   Film,
   Maximize2,
   Play,
@@ -18,67 +17,52 @@ import { Button } from "@/components/ui/button";
 import { FilePicker } from "@/components/file-picker";
 import { OperationFields } from "@/components/operation-fields";
 import { ResultPreview } from "@/components/result-preview";
-import { MergeFields, MERGE_DEFAULTS } from "@/components/merge-fields";
-import { MergePreviewPanel } from "@/components/merge-preview-panel";
-import { MergeVideoChoice } from "@/components/merge-video-choice";
+import {
+  SourceFolderPicker,
+  WizardStepper,
+  sourceLabel as folderLabel,
+  type WizardStep,
+} from "@/components/job-wizard";
 import { createJob, getPipelines, getSettings, runPipeline } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { FOLDER_COLORS, type FolderKey } from "@/lib/file-utils";
+import type { FolderKey } from "@/lib/file-utils";
 import {
   OPERATION_DEFAULTS,
   type CreateJobRequest,
   type GPUVendor,
   type JobType,
-  type MergeConfig,
-  type MergePair,
   type Pipeline,
   type PipelineOperationType,
   type PipelineStep,
 } from "@/lib/types";
 
+// Merge is not here: it has its own area (/merge/new), and its settings share
+// nothing with these.
+type UpscalingJobType = Exclude<JobType, "custom_pipeline" | "merge">;
+
 const JOB_TYPES: {
-  value: Exclude<JobType, "custom_pipeline">;
+  value: UpscalingJobType;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
-  { value: "merge", label: "Merge", icon: Combine },
   { value: "upscale", label: "Upscale", icon: Maximize2 },
   { value: "interpolate", label: "Interpolate", icon: Film },
   { value: "optimize", label: "Optimize", icon: Sliders },
   { value: "check", label: "Check", icon: ShieldCheck },
 ];
 
-// Labels come from FOLDER_COLORS so the source buttons stay in sync with the
-// file-picker legend tags (e.g. "output" reads "Upscaling", not "Output").
-const SOURCE_OPTS = (["input", "merged", "output", "interpolated", "optimized"] as FolderKey[]).map(
-  (value) => ({ value, label: FOLDER_COLORS[value].label }),
-);
-
-type WizardStep = 1 | 2 | 3;
-
-// The merge settings are a THIRD step, after the files. Asked before them the
-// only answer available is "Automático": the language options are read from the
-// selection, so at step 1 there is nothing to choose from — and "Automático"
-// keeps whichever picture has more pixels, which is how a whole season came out
-// of an AI upscale with a burnt-in watermark.
-const STEPS_BASE: { n: WizardStep; label: string }[] = [
+const STEPS: { n: WizardStep; label: string }[] = [
   { n: 1, label: "Configurar" },
   { n: 2, label: "Selecionar arquivos" },
 ];
-const STEP_MERGE: { n: WizardStep; label: string } = { n: 3, label: "Ajustes do merge" };
 
 export default function NewJobPage() {
   const router = useRouter();
   const [step, setStep] = useState<WizardStep>(1);
-  const [type, setType] = useState<JobType>("upscale");
+  const [type, setType] = useState<UpscalingJobType>("upscale");
   const [source, setSource] = useState<FolderKey>("input");
   const [cfg, setCfg] = useState<PipelineStep>(OPERATION_DEFAULTS.upscale);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
-
-  const [mergeCfg, setMergeCfg] = useState<MergeConfig>(MERGE_DEFAULTS);
-  const [selectedDirs, setSelectedDirs] = useState<string[]>([]);
-  const [mergeLanguages, setMergeLanguages] = useState<string[]>([]);
-  const [mergeFirstPair, setMergeFirstPair] = useState<MergePair | null>(null);
 
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [browsePath, setBrowsePath] = useState<string>("");
@@ -97,11 +81,6 @@ export default function NewJobPage() {
   }, []);
 
   const isPipelineSelected = selectedPipelineId !== null;
-  const isMerge = !isPipelineSelected && type === "merge";
-  const steps = isMerge ? [...STEPS_BASE, STEP_MERGE] : STEPS_BASE;
-  // Merging what is already merged makes no sense; every other stage is fair.
-  const sourceOpts = isMerge ? SOURCE_OPTS.filter((o) => o.value !== "merged") : SOURCE_OPTS;
-  const selectionCount = selectedFiles.length + selectedDirs.length;
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId);
   const showFields =
     !isPipelineSelected &&
@@ -110,14 +89,13 @@ export default function NewJobPage() {
   const typeLabel = isPipelineSelected
     ? (selectedPipeline?.name ?? "Pipeline")
     : (JOB_TYPES.find((t) => t.value === type)?.label ?? type);
-  const sourceLabel = SOURCE_OPTS.find((s) => s.value === source)?.label ?? source;
+  const sourceLabel = folderLabel(source);
 
-  function handleSelectType(t: Exclude<JobType, "custom_pipeline">) {
+  function handleSelectType(t: UpscalingJobType) {
     setSelectedPipelineId(null);
     setType(t);
     setSource("input");
-    setSelectedDirs([]);
-    if (t !== "check" && t !== "merge") setCfg(OPERATION_DEFAULTS[t]);
+    if (t !== "check") setCfg(OPERATION_DEFAULTS[t]);
   }
 
   function handleSelectPipeline(id: string) {
@@ -132,20 +110,6 @@ export default function NewJobPage() {
       source: source !== "input" ? source : undefined,
       path: browsePath || undefined,
     };
-    if (type === "merge") {
-      // Whole folders win over single files: "two folders" is the unit of a
-      // merge, and mixing both would make the pairing hard to predict.
-      return {
-        ...base,
-        files: selectedDirs.length > 0 ? undefined : files,
-        paths: selectedDirs.length > 0 && files ? selectedDirs : undefined,
-        merge_video: mergeCfg.video,
-        merge_tick: mergeCfg.tick,
-        merge_gap_fill: mergeCfg.gapFill,
-        merge_force: mergeCfg.force || undefined,
-        merge_default_audio: mergeCfg.defaultAudio || undefined,
-      };
-    }
     if (type === "upscale") {
       return {
         ...base,
@@ -224,52 +188,11 @@ export default function NewJobPage() {
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="size-4" />
-            Back to Jobs
+            Back to Upscaling
           </Link>
           <h2 className="mt-2 text-xl font-bold">Create Job</h2>
         </div>
-
-        {/* Wizard stepper */}
-        <nav className="flex items-center gap-2 text-sm" aria-label="Etapas">
-          {steps.map((s, i) => {
-            const active = step === s.n;
-            const done = step > s.n;
-            // Only allow jumping to a step that's already been reached.
-            const clickable = s.n <= step;
-            return (
-              <div key={s.n} className="flex items-center gap-2">
-                {i > 0 && <span className="h-px w-6 bg-border sm:w-8" />}
-                <button
-                  type="button"
-                  onClick={() => clickable && setStep(s.n)}
-                  disabled={!clickable}
-                  aria-current={active ? "step" : undefined}
-                  className={cn(
-                    "flex items-center gap-2 rounded-full border px-3 py-1.5 transition-colors",
-                    active
-                      ? "border-primary/60 bg-primary/10 text-foreground"
-                      : done
-                        ? "border-border text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                        : "border-border text-muted-foreground",
-                    !clickable && "cursor-default",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "flex size-5 items-center justify-center rounded-full text-xs font-semibold",
-                      active || done
-                        ? "bg-primary/20 text-foreground"
-                        : "bg-secondary text-muted-foreground",
-                    )}
-                  >
-                    {s.n}
-                  </span>
-                  <span className="hidden sm:inline">{s.label}</span>
-                </button>
-              </div>
-            );
-          })}
-        </nav>
+        <WizardStepper steps={STEPS} step={step} onStep={setStep} />
       </div>
 
       {/* Step 1 — Configure */}
@@ -284,7 +207,7 @@ export default function NewJobPage() {
             <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               O que fazer?
             </label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {JOB_TYPES.map((t) => {
                 const active = !isPipelineSelected && type === t.value;
                 const Icon = t.icon;
@@ -335,36 +258,7 @@ export default function NewJobPage() {
             )}
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Pasta de Origem
-            </label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-              {sourceOpts.map((opt) => {
-                const active = source === opt.value;
-                const colors = FOLDER_COLORS[opt.value];
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setSource(opt.value)}
-                    aria-pressed={active}
-                    className={cn(
-                      "rounded-md border px-3 py-2 text-sm font-medium transition-colors",
-                      active
-                        ? cn(colors.badge, "ring-2 ring-inset ring-white/20")
-                        : cn(
-                            "border-border bg-transparent hover:bg-secondary/50",
-                            colors.text,
-                          ),
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <SourceFolderPicker value={source} onChange={setSource} />
 
           {showFields && (
             <OperationFields
@@ -383,15 +277,6 @@ export default function NewJobPage() {
               steps={selectedPipeline.steps}
               fileCount={selectedFiles.length}
             />
-          ) : type === "merge" ? (
-            <div className="rounded-md border border-border p-4 text-sm">
-              <div className="font-medium">Resultado</div>
-              <p className="mt-1 text-muted-foreground">
-                Um <code>.mkv</code> por par em <span className="text-pink-400">Merged</span>: vídeo e
-                áudio originais copiados sem recodificar + a segunda faixa sincronizada (AAC), com o
-                veredito da sincronia nos metadados. CPU · FFmpeg.
-              </p>
-            </div>
           ) : type === "check" ? (
             <ResultPreview steps={[]} fileCount={selectedFiles.length} isCheck />
           ) : (
@@ -432,46 +317,24 @@ export default function NewJobPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {isMerge ? (
-              <Button onClick={() => setStep(3)} disabled={selectionCount === 0}>
-                Ajustes do merge ({selectionCount})
-                <ChevronRight className="size-4" />
-              </Button>
-            ) : (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => submit()}
-                  disabled={submitting}
-                >
-                  {submitting ? "Criando..." : "Run All"}
-                </Button>
-                <Button
-                  onClick={() => submit(selectedFiles)}
-                  disabled={submitting || selectedFiles.length === 0}
-                >
-                  <Play className="size-4" />
-                  Run Selected ({selectedFiles.length})
-                </Button>
-              </>
-            )}
+            <Button
+              variant="outline"
+              onClick={() => submit()}
+              disabled={submitting}
+            >
+              {submitting ? "Criando..." : "Run All"}
+            </Button>
+            <Button
+              onClick={() => submit(selectedFiles)}
+              disabled={submitting || selectedFiles.length === 0}
+            >
+              <Play className="size-4" />
+              Run Selected ({selectedFiles.length})
+            </Button>
           </div>
         </div>
 
         {error && <p className="text-sm text-red-400">{error}</p>}
-
-        {isMerge && step === 2 && (
-          <MergePreviewPanel
-            source={source}
-            path={browsePath}
-            files={selectedFiles}
-            dirs={selectedDirs}
-            onLanguages={setMergeLanguages}
-            onFirstPair={setMergeFirstPair}
-            video={mergeCfg.video}
-            onPickVideo={(video) => setMergeCfg((prev) => ({ ...prev, video }))}
-          />
-        )}
 
         <div className="h-[calc(100vh-12rem)] min-h-0">
           <FilePicker
@@ -480,56 +343,9 @@ export default function NewJobPage() {
             dir={source}
             path={browsePath}
             onPathChange={setBrowsePath}
-            selectedDirs={isMerge ? selectedDirs : undefined}
-            onDirsChange={isMerge ? setSelectedDirs : undefined}
           />
         </div>
       </div>
-
-      {/* Step 3 — Merge settings. Only here are the languages known. */}
-      {isMerge && (
-        <div className={cn("flex flex-col gap-5", step !== 3 && "hidden")}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setStep(2)}
-              className="text-muted-foreground"
-            >
-              <ChevronLeft className="size-4" />
-              Voltar
-            </Button>
-            <Button
-              onClick={() => submit(selectedFiles)}
-              disabled={submitting || selectionCount === 0}
-            >
-              <Play className="size-4" />
-              {submitting ? "Criando..." : `Rodar (${selectionCount})`}
-            </Button>
-          </div>
-
-          {error && <p className="text-sm text-red-400">{error}</p>}
-
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold">Qual versão dá a imagem</h3>
-            <MergeVideoChoice
-              source={source}
-              pair={mergeFirstPair}
-              video={mergeCfg.video}
-              onPick={(video) => setMergeCfg((prev) => ({ ...prev, video }))}
-            />
-          </section>
-
-          <section className="space-y-3 border-t border-border pt-5">
-            <h3 className="text-sm font-semibold">Sincronia e faixas</h3>
-            <MergeFields
-              config={mergeCfg}
-              onChange={(patch) => setMergeCfg((prev) => ({ ...prev, ...patch }))}
-              languages={mergeLanguages}
-            />
-          </section>
-        </div>
-      )}
     </div>
   );
 }

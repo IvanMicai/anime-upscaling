@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cancelJob, deleteJob } from "@/lib/api";
 import { formatRelativeTime, jobTypeLabel } from "@/lib/format";
+import { jobAreaHref } from "@/lib/job-routes";
 import { sectionCard } from "@/lib/section";
 import type { Job } from "@/lib/types";
 
@@ -46,7 +47,7 @@ export function JobHeader({ job, onCancelled }: JobHeaderProps) {
 
   async function handleRemove() {
     setRemoving(true);
-    router.push("/");
+    router.push(jobAreaHref(job));
     try {
       await deleteJob(job.id);
     } catch (err) {

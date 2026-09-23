@@ -75,9 +75,12 @@ export function MergeCompareDialog({
   const dragging = useRef(false);
 
   // Reopening on a different sample must move: `time` survives the close.
-  useEffect(() => {
+  // Adjusted during render (not in an effect) so the stale frame never paints.
+  const [openedAt, setOpenedAt] = useState({ open, initialTime });
+  if (openedAt.open !== open || openedAt.initialTime !== initialTime) {
+    setOpenedAt({ open, initialTime });
     if (open && initialTime != null) setTime(initialTime);
-  }, [open, initialTime]);
+  }
 
   const requestKey = `${source}|${pair.a}|${pair.b}|${time}`;
   useEffect(() => {

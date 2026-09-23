@@ -49,10 +49,21 @@ export function MergeVideoChoice({
   onPick: (choice: string) => void;
   frameUrl?: typeof mergeFrameUrl;
 }) {
-  const [samples, setSamples] = useState<Sample[]>([]);
-  const [info, setInfo] = useState<{ a?: MergeVideoInfo; b?: MergeVideoInfo }>({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // The answer is stored WITH the pair it belongs to, so "still loading" is
+  // derived instead of being flags an effect has to reset on every new pair.
+  const pairKey = pair ? `${source}|${pair.a}|${pair.b}` : "";
+  const [result, setResult] = useState<{
+    key: string;
+    samples: Sample[];
+    info: { a?: MergeVideoInfo; b?: MergeVideoInfo };
+    error: string | null;
+    done: boolean;
+  } | null>(null);
+  const current = result?.key === pairKey ? result : null;
+  const samples = current?.samples ?? [];
+  const info = current?.info ?? {};
+  const error = current?.error ?? null;
+  const loading = !!pair && !current?.done;
   // Which sample is open side by side. The thumbnails are small on purpose —
   // an upscale's tells do not survive a 4 cm wide picture — so every one of
   // them opens the full comparison at its own moment.
@@ -61,9 +72,7 @@ export function MergeVideoChoice({
   useEffect(() => {
     if (!pair) return;
     let stale = false;
-    setLoading(true);
-    setError(null);
-    setSamples([]);
+    const key = `${source}|${pair.a}|${pair.b}`;
 
     // One probe to learn the duration, then the real sample points. Each locate
     // is about a second of work, so three is cheap and one is not enough to
@@ -71,7 +80,8 @@ export function MergeVideoChoice({
     locateMergeFrame(source, pair.a, pair.b, FIRST_LOOK_SEC)
       .then(async (first) => {
         if (stale) return;
-        setInfo({ a: first.a, b: first.b });
+        const firstInfo = { a: first.a, b: first.b };
+        setResult({ key, samples: [], info: firstInfo, error: null, done: false });
         const dur = first.a?.duration ?? 0;
         if (dur <= 0) throw new Error("duração desconhecida");
         const points = SAMPLE_POINTS.map((p) => dur * p);
@@ -86,13 +96,18 @@ export function MergeVideoChoice({
               .catch(() => ({ ta: t, tb: t, matched: false })),
           ),
         );
-        if (!stale) setSamples(found);
+        if (!stale) setResult({ key, samples: found, info: firstInfo, error: null, done: true });
       })
       .catch((e) => {
-        if (!stale) setError(e instanceof Error ? e.message : "não foi possível ler os quadros");
-      })
-      .finally(() => {
-        if (!stale) setLoading(false);
+        if (stale) return;
+        const message = e instanceof Error ? e.message : "não foi possível ler os quadros";
+        setResult((prev) => ({
+          key,
+          samples: [],
+          info: prev?.key === key ? prev.info : {},
+          error: message,
+          done: true,
+        }));
       });
 
     return () => {

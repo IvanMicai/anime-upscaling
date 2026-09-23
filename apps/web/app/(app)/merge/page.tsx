@@ -3,13 +3,13 @@
 import { JobsDashboard } from "@/components/jobs-dashboard";
 import { isMergeJob } from "@/lib/job-routes";
 
-export default function UpscalingJobsPage() {
+export default function MergeJobsPage() {
   return (
     <JobsDashboard
-      title="Upscaling"
-      include={(job) => !isMergeJob(job)}
-      newHref="/jobs/new"
-      newLabel="New Job"
+      title="Merge"
+      include={isMergeJob}
+      newHref="/merge/new"
+      newLabel="New Merge"
     />
   );
 }

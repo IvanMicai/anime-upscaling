@@ -25,6 +25,7 @@ import {
   jobTypeLabel,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { jobHref } from "@/lib/job-routes";
 import type { Job, JobStatus } from "@/lib/types";
 
 type FilterKey = "all" | "running" | "queued" | "completed" | "failed";
@@ -208,7 +209,7 @@ export function JobList({
                             aria-label="View job"
                             title="View job"
                           >
-                            <Link href={`/jobs/${job.id}`}>
+                            <Link href={jobHref(job)}>
                               <Eye className="size-4" />
                             </Link>
                           </Button>

@@ -31,8 +31,9 @@ export default function AppLayout({
         </Link>
         <nav className="flex items-center gap-1">
           <NavLink href="/" matchPrefixes={["/jobs"]}>
-            Jobs
+            Upscaling
           </NavLink>
+          <NavLink href="/merge">Merge</NavLink>
           <NavLink href="/pipelines">Pipelines</NavLink>
           <NavLink href="/files">Files</NavLink>
           <NavLink href="/settings">Settings</NavLink>
