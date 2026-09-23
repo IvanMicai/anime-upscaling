@@ -95,6 +95,7 @@ truth).
 | `realesrgan` | `realesr-animevideov3` | 2x · 3x · 4x | Anime video — fastest realesrgan variant |
 | `realesrgan` | `realesrgan-plus-anime` | 4x | Stylised anime — higher quality, slower |
 | `realesrgan` | `realesrgan-plus` | 4x | Live action / photographic content |
+| `realesrgan` | `realesr-generalv3` | 4x | General content — lighter than `realesrgan-plus`; noise level > 0 uses the denoise (`-wdn`) variant |
 | `libplacebo` (Anime4K v4) | `anime4k-v4-a` · `…-a+a` | 2x · 3x · 4x | Lightweight shader — restores fine lines |
 | `libplacebo` (Anime4K v4) | `anime4k-v4-b` · `…-b+b` | 2x · 3x · 4x | Balanced shader — general anime |
 | `libplacebo` (Anime4K v4) | `anime4k-v4-c` · `…-c+a` | 2x · 3x · 4x | Sharp shader — CGI and flat colors |

@@ -49,7 +49,7 @@ quickstart: init
 
 build: build-api build-app
 
-# --platform: video2x base is amd64-only; lets the build run on Apple Silicon.
+# --platform: video2x image is amd64-only; lets the build run on Apple Silicon.
 build-api:
 	docker build --platform=linux/amd64 -t anime-upscaling-api apps/api
 

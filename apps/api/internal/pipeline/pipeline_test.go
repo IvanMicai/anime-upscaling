@@ -43,3 +43,16 @@ func names(list []Pipeline) []string {
 	}
 	return out
 }
+
+// TestValidModelScaleRealESRGANGeneral covers realesr-generalv3, which video2x
+// only ships at 4x (plain and -wdn denoise variants).
+func TestValidModelScaleRealESRGANGeneral(t *testing.T) {
+	if !ValidUpscaleModels["realesr-generalv3"] {
+		t.Fatal("realesr-generalv3 should be a valid upscale model")
+	}
+	for scale, want := range map[int]bool{2: false, 3: false, 4: true} {
+		if got := ValidModelScale("realesr-generalv3", scale); got != want {
+			t.Errorf("ValidModelScale(realesr-generalv3, %d) = %v, want %v", scale, got, want)
+		}
+	}
+}
