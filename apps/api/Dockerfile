@@ -34,7 +34,7 @@ RUN apt-get update \
 # (realesr-generalv3 and its -wdn denoise variant), so we build a pinned master
 # commit instead of using the prebuilt image. This mirrors upstream's own
 # packaging/docker/Dockerfile (Arch Linux, system ncnn/spdlog/boost), so the
-# runtime (Vulkan ICDs, nvidia-utils) matches the 6.4.0 image we used before.
+# Vulkan runtime matches the 6.4.0 image we used before.
 # Packages come from a dated Arch Linux Archive snapshot so rebuilds are
 # reproducible. Bump VIDEO2X_REF, ARCH_TAG (top of file) and ARCH_SNAPSHOT together.
 
@@ -69,10 +69,22 @@ ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json\
 :/usr/share/vulkan/icd.d/radeon_icd.x86_64.json\
 :/usr/share/vulkan/icd.d/intel_icd.x86_64.json\
 :/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+# nvidia-utils is deliberately NOT installed: the NVIDIA Container Toolkit
+# mounts the host driver's userspace libs, and ldconfig points
+# libGLX_nvidia.so.0 at the highest version present. A packaged nvidia-utils
+# newer than the host driver would win and Vulkan would fail to create an
+# instance. We only ship the ICD manifest that nvidia-utils used to provide.
 RUN pacman -Syyuu --noconfirm --needed \
-        nvidia-utils vulkan-radeon vulkan-intel vulkan-swrast \
+        libglvnd vulkan-icd-loader vulkan-radeon vulkan-intel vulkan-swrast \
         ffmpeg ncnn openmp spdlog boost-libs \
- && rm -rf /var/cache/pacman/pkg/*
+ && rm -rf /var/cache/pacman/pkg/* \
+ && printf '%s\n' '{' \
+      '    "file_format_version" : "1.0.1",' \
+      '    "ICD": {' \
+      '        "library_path": "libGLX_nvidia.so.0",' \
+      '        "api_version" : "1.3.0"' \
+      '    }' \
+      '}' > /usr/share/vulkan/icd.d/nvidia_icd.json
 COPY --from=video2x /out/usr/ /usr/
 RUN video2x --version
 WORKDIR /host
