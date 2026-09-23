@@ -11,6 +11,7 @@ import {
   CLEANUP_FOLDER_OPTIONS,
   PROCESSOR_OPTIONS,
   QUALITY_PRESETS,
+  validNoiseLevel,
   type GPUVendor,
   type PipelineOperationType,
   type PipelineStep,
@@ -62,7 +63,14 @@ function stepChips(step: PipelineStep): string[] {
         PROCESSOR_OPTIONS.find((p) => p.value === (step.processor ?? "realesrgan"))
           ?.label ?? "RealESRGAN";
       const chips = [proc, step.model ?? "realesr-animevideov3", `${step.scale ?? 2}×`];
-      if ((step.noise_level ?? 0) > 0) chips.push(`ruído ${step.noise_level}`);
+      // The level that actually applies: a saved pipeline can carry one its
+      // model ignores (Real-ESRGAN without a denoise variant).
+      const noise = validNoiseLevel(
+        step.processor ?? "realesrgan",
+        step.model ?? "realesr-animevideov3",
+        step.noise_level ?? 0,
+      );
+      if (noise > 0) chips.push(`ruído ${noise}`);
       return chips;
     }
     case "interpolate":

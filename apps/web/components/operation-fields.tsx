@@ -10,7 +10,8 @@ import {
 import { OptionButtons } from "@/components/option-buttons";
 import {
   PROCESSOR_OPTIONS,
-  NOISE_LEVEL_OPTIONS,
+  getNoiseLevelOptions,
+  validNoiseLevel,
   RIFE_MODEL_OPTIONS,
   CODEC_OPTIONS,
   PRESET_OPTIONS,
@@ -82,6 +83,7 @@ export function OperationFields({
     const scale = config.scale ?? 2;
     const modelOptions = getModelOptions(processor);
     const validScales = getValidScales(processor, model);
+    const noiseOptions = getNoiseLevelOptions(processor, model);
 
     return (
       <div className="space-y-4">
@@ -102,6 +104,7 @@ export function OperationFields({
                 processor: p,
                 model: defModel,
                 scale: (vs.includes(scale) ? scale : vs[0]) as 2 | 3 | 4,
+                noise_level: validNoiseLevel(p, defModel, config.noise_level ?? 0),
               });
             }}
             options={PROCESSOR_OPTIONS.map((o) => ({
@@ -119,6 +122,7 @@ export function OperationFields({
               onChange({
                 model: v,
                 scale: (vs.includes(scale) ? scale : vs[0]) as 2 | 3 | 4,
+                noise_level: validNoiseLevel(processor, v, config.noise_level ?? 0),
               });
             }}
           >
@@ -142,17 +146,19 @@ export function OperationFields({
             options={SCALE_OPTS.filter((s) => validScales.includes(s.value))}
           />
         </Field>
-        <Field label="Redução de Ruído">
-          <OptionButtons
-            columns={4}
-            value={config.noise_level ?? 0}
-            onChange={(v) => onChange({ noise_level: v })}
-            options={NOISE_LEVEL_OPTIONS.map((o) => ({
-              value: o.value,
-              label: o.label,
-            }))}
-          />
-        </Field>
+        {noiseOptions.length > 0 && (
+          <Field label="Redução de Ruído">
+            <OptionButtons
+              columns={noiseOptions.length}
+              value={validNoiseLevel(processor, model, config.noise_level ?? 0)}
+              onChange={(v) => onChange({ noise_level: v })}
+              options={noiseOptions.map((o) => ({
+                value: o.value,
+                label: o.label,
+              }))}
+            />
+          </Field>
+        )}
       </div>
     );
   }

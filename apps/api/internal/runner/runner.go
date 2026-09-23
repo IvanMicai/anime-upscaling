@@ -186,6 +186,26 @@ type UpscaleOptions struct {
 	NoiseLevel int    // 0=off, 1-3=noise reduction level
 }
 
+// EffectiveNoiseLevel is the noise level actually passed to video2x.
+//
+// Real-ESRGAN rejects anything above 1 ("Noise level must be 0 or 1"), and only
+// realesr-generalv3 has a denoise variant (-wdn), which any level > 0 selects.
+// The other Real-ESRGAN models have no noise variants: video2x 6.4.0 silently
+// ignored the level for them, and saved pipelines still carry levels up to 3,
+// so for those models it is dropped. Real-CUGAN takes the level as given, and
+// libplacebo shaders have no notion of noise. Call it on WithDefaults output.
+func (o UpscaleOptions) EffectiveNoiseLevel() int {
+	switch o.Processor {
+	case "realcugan":
+		return o.NoiseLevel
+	case "realesrgan":
+		if o.Model == "realesr-generalv3" && o.NoiseLevel > 0 {
+			return 1
+		}
+	}
+	return 0
+}
+
 // WithDefaults returns a copy with zero-value fields replaced by defaults.
 func (o UpscaleOptions) WithDefaults() UpscaleOptions {
 	if o.Processor == "" {
@@ -235,8 +255,8 @@ func (r *Runner) Video2x(ctx context.Context, gpuID, streamIdx int, filename, lo
 	case "realcugan":
 		args = append(args, "--realcugan-model", opts.Model)
 	}
-	if opts.NoiseLevel > 0 {
-		args = append(args, "-n", strconv.Itoa(opts.NoiseLevel))
+	if n := opts.EffectiveNoiseLevel(); n > 0 {
+		args = append(args, "-n", strconv.Itoa(n))
 	}
 
 	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin, args...)

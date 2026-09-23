@@ -171,6 +171,9 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 		return
 	}
 
+	// Picked files that are not in the source folder but sit mid-pipeline.
+	var stranded []process.FilePlan
+
 	// Resolve files recursively from sourceDir/path
 	if len(req.Files) == 0 {
 		all, err := files.WalkVideos(filepath.Join(sourceDir, req.Path), cfg.VideoExts)
@@ -187,26 +190,40 @@ func handleRunPipeline(ps *pipeline.Store, jm *JobManager, cfg config.Config, id
 		}
 		files.SortNatural(req.Files)
 	} else {
-		for i, f := range req.Files {
+		inSource := make([]string, 0, len(req.Files))
+		for _, f := range req.Files {
 			if req.Path != "" && !strings.Contains(f, "/") {
 				f = filepath.ToSlash(filepath.Join(req.Path, f))
-				req.Files[i] = f
 			}
 			if !files.SafeVideoRelPath(f, cfg.VideoExts) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid filename: %s", f)})
 				return
 			}
-			if !files.FileExists(filepath.Join(sourceDir, f)) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("file not found in %s/: %s", req.Source, f)})
+			if files.FileExists(filepath.Join(sourceDir, f)) {
+				inSource = append(inSource, f)
+				continue
+			}
+			// Not in the source folder: the picker shows every stage, so this
+			// can be an episode an earlier run left mid-pipeline. Resume it.
+			plan, status := process.LocateStranded(cfg, p.Steps, f)
+			switch status {
+			case process.StrandedResumable:
+				stranded = append(stranded, plan)
+			case process.StrandedFinished:
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("already through this pipeline: %s", f)})
+				return
+			default:
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("file not found in %s/ or in any stage of this pipeline: %s", req.Source, f)})
 				return
 			}
 		}
+		req.Files = inSource
 	}
 
 	// Plan before rejecting an empty selection: a pipeline whose cleanup steps
 	// empty the source folder as it advances can legitimately have nothing left
 	// there while still owing work on files stranded in a later stage.
-	plans := process.PlanPipelineFiles(cfg, p.Steps, sourceDir, req.Path, req.Files)
+	plans := process.WithStranded(process.PlanPipelineFiles(cfg, p.Steps, sourceDir, req.Path, req.Files), stranded)
 	if len(plans) == 0 {
 		label := req.Source
 		if req.Path != "" {

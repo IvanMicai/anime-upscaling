@@ -449,6 +449,32 @@ export const NOISE_LEVEL_OPTIONS = [
   { value: 3, label: "Alto", desc: "Máxima redução, pode perder detalhes finos" },
 ] as const;
 
+/**
+ * Noise levels that mean something for this processor + model. Real-CUGAN takes
+ * 0–3; of the Real-ESRGAN models only realesr-generalv3 has a denoise variant
+ * (-wdn), switched on by any level above 0 (video2x rejects levels above 1 for
+ * Real-ESRGAN). Everything else has no noise setting: an empty list hides the
+ * field, and the API drops the level for those models.
+ */
+export function getNoiseLevelOptions(processor: UpscaleProcessor, model: string) {
+  if (processor === "realcugan") return NOISE_LEVEL_OPTIONS;
+  if (processor === "realesrgan" && model === "realesr-generalv3") {
+    return [
+      { value: 0, label: "Desativado", desc: "Modelo padrão" },
+      { value: 1, label: "Ativado", desc: "Variante com redução de ruído (-wdn)" },
+    ] as const;
+  }
+  return [] as const;
+}
+
+/** Clamps a noise level to what the processor + model accept (see above). */
+export function validNoiseLevel(processor: UpscaleProcessor, model: string, level: number): number {
+  const opts = getNoiseLevelOptions(processor, model);
+  if (opts.length === 0) return 0;
+  const max = opts[opts.length - 1].value;
+  return Math.min(Math.max(level, 0), max);
+}
+
 // Interpolate options
 
 export const RIFE_MODEL_OPTIONS = [

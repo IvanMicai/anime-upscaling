@@ -444,3 +444,63 @@ func TestFirstQueue(t *testing.T) {
 		t.Errorf("vp9 optimize: got %v, want QueueFFmpeg", got)
 	}
 }
+
+// TestLocateStranded covers a file picked in the file picker that is not in the
+// run's source folder. The picker lists every stage, so after a partial run an
+// episode that only exists in output/ is right there to pick; the run used to
+// refuse it ("file not found in merged/") instead of resuming it.
+func TestLocateStranded(t *testing.T) {
+	cfg := testCfg(t)
+	steps := realPipeline()
+
+	write(t, cfg.OutputDir, "ep017.mkv")       // upscaled, awaiting interpolate
+	write(t, cfg.OutputDir, "ep020.mkv")       // left behind in output/ ...
+	write(t, cfg.InterpolatedDir, "ep020.mkv") // ... but already interpolated
+	write(t, cfg.OptimizedDir, "ep001.mkv")    // finished
+
+	cases := []struct {
+		name   string
+		status StrandedStatus
+		start  int
+		dir    string
+	}{
+		// Resumes right after the producing step, like an adopted orphan: the
+		// cleanup that follows it is idempotent.
+		{"ep017.mkv", StrandedResumable, 1, cfg.OutputDir},
+		{"ep020.mkv", StrandedResumable, 3, cfg.InterpolatedDir}, // the furthest stage wins
+		{"ep001.mkv", StrandedFinished, 0, ""},
+		{"ep099.mkv", StrandedMissing, 0, ""},
+	}
+	for _, c := range cases {
+		plan, status := LocateStranded(cfg, steps, c.name)
+		if status != c.status {
+			t.Errorf("%s: status %d, want %d", c.name, status, c.status)
+			continue
+		}
+		if status == StrandedResumable && (plan.StartStep != c.start || plan.InputDir != c.dir || plan.Name != c.name) {
+			t.Errorf("%s: plan %+v, want start %d in %s", c.name, plan, c.start, c.dir)
+		}
+	}
+}
+
+// TestWithStranded checks picked stranded files join the plan once (the
+// planner may already have adopted them as orphans) and in natural order.
+func TestWithStranded(t *testing.T) {
+	plans := []FilePlan{
+		{Name: "S/ep033.mkv", StartStep: 0},
+		{Name: "S/ep017.mkv", StartStep: 2}, // already adopted as an orphan
+	}
+	stranded := []FilePlan{
+		{Name: "S/ep017.mkv", StartStep: 2},
+		{Name: "S/ep018.mkv", StartStep: 4},
+	}
+	got := WithStranded(plans, stranded)
+	var names []string
+	for _, p := range got {
+		names = append(names, p.Name)
+	}
+	want := []string{"S/ep017.mkv", "S/ep018.mkv", "S/ep033.mkv"}
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("names = %v, want %v", names, want)
+	}
+}
