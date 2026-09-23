@@ -345,7 +345,7 @@ curl -X POST http://localhost:4751/api/jobs/j_1708540800_1a2b/cancel
 
 ### Upscale
 
-- Docker image: `ghcr.io/k4yt3x/video2x:6.4.0`
+- video2x: built from source at a pinned commit (see `Dockerfile`)
 - Model: `realesr-animevideov3`
 - Scale: 2x
 - Output: `{BaseDir}/output/`

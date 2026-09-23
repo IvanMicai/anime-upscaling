@@ -301,6 +301,7 @@ export const REALESRGAN_MODELS = [
   { value: "realesr-animevideov3", label: "Anime Video v3", desc: "Otimizado para vídeos de anime (recomendado)", scales: [2, 3, 4] as const },
   { value: "realesrgan-plus-anime", label: "Plus Anime", desc: "Otimizado para imagens de anime (4x apenas)", scales: [4] as const },
   { value: "realesrgan-plus", label: "Plus", desc: "Modelo genérico para qualquer conteúdo (4x apenas)", scales: [4] as const },
+  { value: "realesr-generalv3", label: "General v3", desc: "General-purpose, lighter than Plus; noise reduction switches to the denoise variant (4x only)", scales: [4] as const },
 ] as const;
 
 export const LIBPLACEBO_SHADERS = [
