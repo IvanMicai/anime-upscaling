@@ -1,4 +1,4 @@
-export type JobType = "upscale" | "optimize" | "check" | "interpolate" | "custom_pipeline";
+export type JobType = "upscale" | "optimize" | "check" | "interpolate" | "merge" | "custom_pipeline";
 
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -69,6 +69,7 @@ export interface Job {
   threads?: number;
   pipeline_name?: string;
   pipeline_steps?: PipelineStep[];
+  merge?: MergeJobInfo;
   files: string[];
   progress: JobProgress;
   created_at: string;
@@ -81,6 +82,91 @@ export interface LogEntry {
   index: number;
   message: string;
   time: string;
+}
+
+// Sync verdict a merged (dual-audio) file carries in its own container tags.
+export interface SyncInfo {
+  v: number;
+  status: "ok" | "review" | "fail";
+  residual_ms: number;
+  p95_ms: number;
+  in_place: number;
+  checked: number;
+  off_s: number;
+  coverage: number;
+  segments: number;
+  gaps: number;
+  tick_s: number;
+  video?: string;
+  notes?: string[];
+}
+
+export interface MergeLanguage {
+  tag: string;
+  iso3: string;
+  title: string;
+}
+
+export interface MergePair {
+  a: string;
+  b: string;
+  lang_a: MergeLanguage;
+  lang_b: MergeLanguage;
+  output: string;
+  exists?: boolean;
+}
+
+export interface MergeUnpaired {
+  file: string;
+  reason: string;
+}
+
+export interface MergePreview {
+  pairs: MergePair[];
+  unpaired: MergeUnpaired[];
+}
+
+// Where a point of file A falls in file B (found by audio), for comparing the
+// picture of the two: the same scene is not at the same timestamp in both.
+export interface MergeLocation {
+  t_a: number;
+  t_b: number;
+  lag: number;
+  confidence: number;
+  matched: boolean;
+}
+
+export interface MergeVideoInfo {
+  width: number;
+  height: number;
+  bitrate: number;
+  duration: number;
+}
+
+export interface MergeLocateResponse {
+  location: MergeLocation;
+  a?: MergeVideoInfo;
+  b?: MergeVideoInfo;
+}
+
+export type MergeGapFill = "base" | "silence";
+
+export interface MergeConfig {
+  video: string; // "auto" or a language tag
+  tick: number; // seconds between sync checks
+  gapFill: MergeGapFill;
+  force: boolean;
+  defaultAudio: string; // "" = the language that did not supply the video
+}
+
+export interface MergeJobInfo {
+  video: string;
+  tick_sec: number;
+  gap_fill: MergeGapFill;
+  force?: boolean;
+  default_audio?: string;
+  pairs: MergePair[];
+  unpaired?: MergeUnpaired[];
 }
 
 export interface AudioTrack {
@@ -107,10 +193,12 @@ export interface VideoFile {
   has_optimized?: boolean;
   has_input?: boolean;
   has_interpolated?: boolean;
+  has_merged?: boolean;
   upscaled_size?: number;
   optimized_size?: number;
   input_size?: number;
   interpolated_size?: number;
+  merged_size?: number;
   upscaled_width?: number;
   upscaled_height?: number;
   optimized_width?: number;
@@ -119,11 +207,14 @@ export interface VideoFile {
   input_height?: number;
   interpolated_width?: number;
   interpolated_height?: number;
+  merged_width?: number;
+  merged_height?: number;
   frame_rate?: number;
   input_frame_rate?: number;
   upscaled_frame_rate?: number;
   optimized_frame_rate?: number;
   interpolated_frame_rate?: number;
+  merged_frame_rate?: number;
   audio?: AudioTrack[];
   subtitles?: SubtitleTrack[];
   input_audio?: AudioTrack[];
@@ -134,6 +225,10 @@ export interface VideoFile {
   optimized_subtitles?: SubtitleTrack[];
   interpolated_audio?: AudioTrack[];
   interpolated_subtitles?: SubtitleTrack[];
+  merged_audio?: AudioTrack[];
+  merged_subtitles?: SubtitleTrack[];
+  sync?: SyncInfo;
+  merged_sync?: SyncInfo;
 }
 
 export interface DirectorySizes {
@@ -141,6 +236,7 @@ export interface DirectorySizes {
   output: number;
   optimized: number;
   interpolated: number;
+  merged: number;
 }
 
 export interface FilesResponse {
@@ -155,8 +251,16 @@ export interface FilesResponse {
 export interface CreateJobRequest {
   type: JobType;
   files?: string[];
-  source?: "input" | "output" | "optimized" | "interpolated";
+  source?: "input" | "merged" | "output" | "optimized" | "interpolated";
   path?: string;
+  // Merge: `paths` selects whole folders; files are then paired by name
+  // (name.pt-br.mp4 + name.en.mp4 -> name.mkv).
+  paths?: string[];
+  merge_video?: string;
+  merge_tick?: number;
+  merge_gap_fill?: MergeGapFill;
+  merge_force?: boolean;
+  merge_default_audio?: string;
   // Upscale
   scale?: 2 | 3 | 4;
   processor?: UpscaleProcessor;
@@ -207,7 +311,7 @@ export type PipelineOperationType =
   | "cleanup";
 
 // Stage folders a cleanup step can delete from. "output" is the upscaled stage.
-export type CleanupFolder = "input" | "output" | "interpolated" | "optimized";
+export type CleanupFolder = "input" | "merged" | "output" | "interpolated" | "optimized";
 
 export type QualityPreset = "ultra" | "alta" | "media" | "baixa";
 
@@ -301,6 +405,7 @@ export const REALESRGAN_MODELS = [
   { value: "realesr-animevideov3", label: "Anime Video v3", desc: "Otimizado para vídeos de anime (recomendado)", scales: [2, 3, 4] as const },
   { value: "realesrgan-plus-anime", label: "Plus Anime", desc: "Otimizado para imagens de anime (4x apenas)", scales: [4] as const },
   { value: "realesrgan-plus", label: "Plus", desc: "Modelo genérico para qualquer conteúdo (4x apenas)", scales: [4] as const },
+  { value: "realesr-generalv3", label: "General v3", desc: "General-purpose, lighter than Plus; noise reduction switches to the denoise variant (4x only)", scales: [4] as const },
 ] as const;
 
 export const LIBPLACEBO_SHADERS = [
@@ -343,6 +448,32 @@ export const NOISE_LEVEL_OPTIONS = [
   { value: 2, label: "Médio", desc: "Redução moderada de ruído" },
   { value: 3, label: "Alto", desc: "Máxima redução, pode perder detalhes finos" },
 ] as const;
+
+/**
+ * Noise levels that mean something for this processor + model. Real-CUGAN takes
+ * 0–3; of the Real-ESRGAN models only realesr-generalv3 has a denoise variant
+ * (-wdn), switched on by any level above 0 (video2x rejects levels above 1 for
+ * Real-ESRGAN). Everything else has no noise setting: an empty list hides the
+ * field, and the API drops the level for those models.
+ */
+export function getNoiseLevelOptions(processor: UpscaleProcessor, model: string) {
+  if (processor === "realcugan") return NOISE_LEVEL_OPTIONS;
+  if (processor === "realesrgan" && model === "realesr-generalv3") {
+    return [
+      { value: 0, label: "Desativado", desc: "Modelo padrão" },
+      { value: 1, label: "Ativado", desc: "Variante com redução de ruído (-wdn)" },
+    ] as const;
+  }
+  return [] as const;
+}
+
+/** Clamps a noise level to what the processor + model accept (see above). */
+export function validNoiseLevel(processor: UpscaleProcessor, model: string, level: number): number {
+  const opts = getNoiseLevelOptions(processor, model);
+  if (opts.length === 0) return 0;
+  const max = opts[opts.length - 1].value;
+  return Math.min(Math.max(level, 0), max);
+}
 
 // Interpolate options
 
@@ -431,6 +562,6 @@ export interface UpdatePipelineRequest {
 
 export interface RunPipelineRequest {
   files?: string[];
-  source?: "input" | "output" | "optimized" | "interpolated";
+  source?: "input" | "merged" | "output" | "optimized" | "interpolated";
   path?: string;
 }

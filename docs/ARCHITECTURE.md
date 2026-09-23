@@ -219,6 +219,7 @@ The `/data` volume holds both media and JSON state. Directories are defined in
 | Directory        | Holds                                              |
 | ---------------- | -------------------------------------------------- |
 | `input/`         | Source files you drop in                           |
+| `merged/`        | Dual-audio merges (`merge` jobs); a valid source for every other step |
 | `output/`        | Upscale results                                    |
 | `interpolated/`  | Frame-interpolation (RIFE) results                 |
 | `optimized/`     | Final re-encodes                                   |
@@ -259,9 +260,12 @@ and surfaced as `Progress.Containers[source]`, keyed by worker label
 
 ## 9. The ffmpeg overlay decision
 
-The API image is built `FROM ghcr.io/k4yt3x/video2x:6.4.0`, which bundles an
-older `ffmpeg` whose `libx265` is prone to thread-pool `SIGSEGV`s on some inputs.
-Rather than fork video2x, the [`Dockerfile`](../apps/api/Dockerfile) fetches
+The API image builds `video2x` from source at a pinned upstream commit (the
+last release, 6.4.0, lacks the `realesr-generalv3` models), following
+upstream's own Arch Linux container recipe with packages from a dated Arch
+Linux Archive snapshot. The distro `ffmpeg` it links against is not what the
+API invokes: the 6.4.0-era build had a `libx265` prone to thread-pool
+`SIGSEGV`s on some inputs, so the [`Dockerfile`](../apps/api/Dockerfile) fetches
 a current static GPL build (libx265 + nvenc) from BtbN and copies `ffmpeg`/
 `ffprobe` into `/usr/local/bin`, which precedes `/usr/bin` on `PATH`. The API
 looks up `ffmpeg`/`ffprobe` by name, so it resolves to the newer binaries with no
@@ -308,7 +312,7 @@ that kills the process *after* it has finished the actual work.
 │   │   │   ├── files/        listing, natural sort, safe paths
 │   │   │   ├── cache/        file-status cache (resolution/track metadata)
 │   │   │   └── config/       env + persisted settings
-│   │   └── Dockerfile        video2x base + ffmpeg overlay
+│   │   └── Dockerfile        video2x (source build) + ffmpeg overlay
 │   └── web/                 Next.js dashboard (App Router)
 │       ├── app/api/[...path] server-side proxy + auth gate
 │       ├── components/       UI + Storybook stories

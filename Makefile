@@ -15,6 +15,7 @@ all: build
 
 init: gen-secrets
 	@mkdir -p "$(HOST_PROCESS_DIR)/input" \
+		"$(HOST_PROCESS_DIR)/merged" \
 		"$(HOST_PROCESS_DIR)/output" \
 		"$(HOST_PROCESS_DIR)/optimized" \
 		"$(HOST_PROCESS_DIR)/interpolated" \
@@ -48,7 +49,7 @@ quickstart: init
 
 build: build-api build-app
 
-# --platform: video2x base is amd64-only; lets the build run on Apple Silicon.
+# --platform: video2x image is amd64-only; lets the build run on Apple Silicon.
 build-api:
 	docker build --platform=linux/amd64 -t anime-upscaling-api apps/api
 
@@ -77,7 +78,8 @@ dev:
 	$(MAKE) dev-api & $(MAKE) dev-app & wait
 
 dev-api:
-	@mkdir -p "$(PROCESS_DIR)/input" "$(PROCESS_DIR)/output" "$(PROCESS_DIR)/optimized" \
+	@mkdir -p "$(PROCESS_DIR)/input" "$(PROCESS_DIR)/merged" "$(PROCESS_DIR)/output" \
+		"$(PROCESS_DIR)/optimized" \
 		"$(PROCESS_DIR)/interpolated" "$(PROCESS_DIR)/temp"
 	cd apps/api && go run ./cmd/animeup serve
 

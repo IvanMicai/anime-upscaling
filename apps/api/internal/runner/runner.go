@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"anime-upscaling/internal/config"
+	"anime-upscaling/internal/dualaudio"
 )
 
 // needsSanitize returns true if the filename contains characters that
@@ -185,6 +186,26 @@ type UpscaleOptions struct {
 	NoiseLevel int    // 0=off, 1-3=noise reduction level
 }
 
+// EffectiveNoiseLevel is the noise level actually passed to video2x.
+//
+// Real-ESRGAN rejects anything above 1 ("Noise level must be 0 or 1"), and only
+// realesr-generalv3 has a denoise variant (-wdn), which any level > 0 selects.
+// The other Real-ESRGAN models have no noise variants: video2x 6.4.0 silently
+// ignored the level for them, and saved pipelines still carry levels up to 3,
+// so for those models it is dropped. Real-CUGAN takes the level as given, and
+// libplacebo shaders have no notion of noise. Call it on WithDefaults output.
+func (o UpscaleOptions) EffectiveNoiseLevel() int {
+	switch o.Processor {
+	case "realcugan":
+		return o.NoiseLevel
+	case "realesrgan":
+		if o.Model == "realesr-generalv3" && o.NoiseLevel > 0 {
+			return 1
+		}
+	}
+	return 0
+}
+
 // WithDefaults returns a copy with zero-value fields replaced by defaults.
 func (o UpscaleOptions) WithDefaults() UpscaleOptions {
 	if o.Processor == "" {
@@ -234,8 +255,8 @@ func (r *Runner) Video2x(ctx context.Context, gpuID, streamIdx int, filename, lo
 	case "realcugan":
 		args = append(args, "--realcugan-model", opts.Model)
 	}
-	if opts.NoiseLevel > 0 {
-		args = append(args, "-n", strconv.Itoa(opts.NoiseLevel))
+	if n := opts.EffectiveNoiseLevel(); n > 0 {
+		args = append(args, "-n", strconv.Itoa(n))
 	}
 
 	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin, args...)
@@ -937,6 +958,9 @@ type SubtitleTrack struct {
 	Codec    string `json:"codec,omitempty"`
 }
 
+// SyncInfo is the dual-audio sync verdict a merged file carries in its tags.
+type SyncInfo = dualaudio.SyncInfo
+
 // VideoProbeResult holds full metadata from ffprobe.
 type VideoProbeResult struct {
 	Width     int
@@ -944,11 +968,15 @@ type VideoProbeResult struct {
 	FrameRate float64
 	Audio     []AudioTrack
 	Subtitles []SubtitleTrack
+	Sync      *SyncInfo // nil unless the file carries a dual-audio verdict
 }
 
 // ffprobeJSON mirrors the JSON output of ffprobe -show_entries stream=... -of json
 type ffprobeJSON struct {
 	Streams []ffprobeStream `json:"streams"`
+	Format  struct {
+		Tags map[string]string `json:"tags,omitempty"`
+	} `json:"format"`
 }
 
 type ffprobeStream struct {
@@ -969,6 +997,7 @@ func (r *Runner) ProbeFullMetadata(ctx context.Context, absPath string) (VideoPr
 		"-v", "error",
 		"-show_entries", "stream=index,codec_type,codec_name,width,height,channels,r_frame_rate",
 		"-show_entries", "stream_tags=language,title",
+		"-show_entries", "format_tags",
 		"-of", "json",
 		absPath,
 	)
@@ -984,6 +1013,9 @@ func (r *Runner) ProbeFullMetadata(ctx context.Context, absPath string) (VideoPr
 	}
 
 	var result VideoProbeResult
+	if sync, ok := dualaudio.ParseSyncInfo(probe.Format.Tags); ok {
+		result.Sync = sync
+	}
 	for _, s := range probe.Streams {
 		switch s.CodecType {
 		case "video":

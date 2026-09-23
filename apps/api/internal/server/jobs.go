@@ -11,6 +11,7 @@ import (
 
 	"anime-upscaling/internal/cache"
 	"anime-upscaling/internal/config"
+	"anime-upscaling/internal/dualaudio"
 	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/logger"
 	"anime-upscaling/internal/pipeline"
@@ -60,6 +61,7 @@ type Job struct {
 	PixFmt            string                  `json:"pix_fmt,omitempty"`
 	AudioCodec        string                  `json:"audio_codec,omitempty"`
 	UseGPU            bool                    `json:"use_gpu,omitempty"`
+	Merge             *MergeParams            `json:"merge,omitempty"`
 	PipelineName      string                  `json:"pipeline_name,omitempty"`
 	PipelineSteps     []pipeline.PipelineStep `json:"pipeline_steps,omitempty"`
 	Files             []string                `json:"files"`
@@ -72,8 +74,22 @@ type Job struct {
 	mu                sync.Mutex
 }
 
+// MergeParams are the settings and the resolved pairs of a merge job. Files on
+// the job holds the OUTPUT names, one per pair, so progress lines up with what
+// will appear in the merged folder.
+type MergeParams struct {
+	Video        string               `json:"video"`
+	TickSec      float64              `json:"tick_sec"`
+	GapFill      string               `json:"gap_fill"`
+	Force        bool                 `json:"force,omitempty"`
+	DefaultAudio string               `json:"default_audio,omitempty"`
+	Pairs        []dualaudio.NamePair `json:"pairs"`
+	Unpaired     []dualaudio.Unpaired `json:"unpaired,omitempty"`
+}
+
 // StartJobParams holds all parameters for creating and starting a job.
 type StartJobParams struct {
+	Merge             *MergeParams
 	Type              string
 	Files             []string
 	Source            string
@@ -206,6 +222,7 @@ func (j *Job) snapshot() Job {
 		PixFmt:            j.PixFmt,
 		AudioCodec:        j.AudioCodec,
 		UseGPU:            j.UseGPU,
+		Merge:             j.Merge,
 		PipelineName:      j.PipelineName,
 		PipelineSteps:     j.PipelineSteps,
 		Files:             j.Files,
@@ -246,6 +263,7 @@ func (j *Job) snapshotWithLogs() Job {
 		PixFmt:            j.PixFmt,
 		AudioCodec:        j.AudioCodec,
 		UseGPU:            j.UseGPU,
+		Merge:             j.Merge,
 		PipelineName:      j.PipelineName,
 		PipelineSteps:     j.PipelineSteps,
 		Files:             j.Files,
@@ -393,6 +411,8 @@ func skipOutputDir(jobType string, cfg config.Config) string {
 		return cfg.OptimizedDir
 	case "interpolate":
 		return cfg.InterpolatedDir
+	case "merge":
+		return cfg.MergedDir
 	}
 	return ""
 }
@@ -427,6 +447,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 		PixFmt:            p.PixFmt,
 		AudioCodec:        p.AudioCodec,
 		UseGPU:            p.UseGPU,
+		Merge:             p.Merge,
 		Files:             p.Files,
 		Progress:          JobProgress{Total: len(p.Files)},
 		CreatedAt:         time.Now().UTC(),
@@ -551,6 +572,33 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				}
 			}
 
+		case "merge":
+			// A selected file that found no partner is not a failure of the job,
+			// but the user has to see it: it is a file they expected to merge.
+			for _, u := range p.Merge.Unpaired {
+				onEvent(logger.JobLog{Source: "PIPELINE", Level: "STEP", Message: "Sem par: " + u.File + " (" + u.Reason + ")", Time: time.Now()})
+			}
+			byOutput := make(map[string]dualaudio.NamePair, len(p.Merge.Pairs))
+			for _, pr := range p.Merge.Pairs {
+				byOutput[pr.Output] = pr
+			}
+			opt := process.MergeOptions{Video: p.Merge.Video, TickSec: p.Merge.TickSec,
+				GapFill: dualaudio.GapFill(p.Merge.GapFill), Force: p.Merge.Force, DefaultAudio: p.Merge.DefaultAudio}
+			for i, f := range toProcess {
+				wg.Add(1)
+				idx := i + 1
+				pair := byOutput[f]
+				if err := m.ffmpegQ.Submit(ctx, func(slot int) {
+					defer wg.Done()
+					job.setRunningOnce()
+					ffSrc := runner.FFmpegSource(slot, cfg.FFmpegStreams)
+					process.MergeFile(ctx, cfg, pair, idx, p.SourceDir, ffSrc, opt, onEvent, onProgress)
+				}); err != nil {
+					wg.Done()
+					break // ctx cancelled
+				}
+			}
+
 		case "check":
 			jobSource := p.Source
 			for i, f := range p.Files {
@@ -594,6 +642,17 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 		wg.Wait()
 
 		job.finish(ctx)
+
+		// A merge writes its sync verdict into the new file, and the file list
+		// reads verdicts from the cache — which otherwise only refreshes every ten
+		// minutes. Without this the file shows up with no verdict, the one thing
+		// the merge was run for. The rebuild is incremental: only new files are
+		// probed.
+		if p.Type == "merge" && job.snapshot().Progress.Completed > 0 {
+			if err := cache.BuildFileStatusCache(cfg); err != nil {
+				fmt.Printf("Warning: cache rebuild after merge failed: %v\n", err)
+			}
+		}
 	}()
 
 	return job

@@ -13,6 +13,7 @@ type Config struct {
 	OutputDir       string
 	OptimizedDir    string
 	InterpolatedDir string
+	MergedDir       string
 	TempDir         string
 	LogFile         string
 	UserID          int
@@ -53,6 +54,7 @@ func NewConfig() Config {
 		OutputDir:       baseDir + "/output",
 		OptimizedDir:    baseDir + "/optimized",
 		InterpolatedDir: baseDir + "/interpolated",
+		MergedDir:       baseDir + "/merged",
 		TempDir:         baseDir + "/temp",
 		LogFile:         baseDir + "/process.log",
 		UserID:          os.Getuid(),
@@ -106,4 +108,21 @@ func envVendor(key, def string) string {
 		return def
 	}
 	return v
+}
+
+// StageFolders is the ordered list of stage folder names, as used in the API
+// (`dir=`, `source=`, delete `folders`).
+var StageFolders = []string{"input", "merged", "output", "interpolated", "optimized"}
+
+// StageDirs maps every stage folder name to its directory. It is the single
+// place that knows the set of stages: handlers that used to spell the folders
+// out one by one had to be found and edited for each new stage.
+func (c Config) StageDirs() map[string]string {
+	return map[string]string{
+		"input":        c.InputDir,
+		"merged":       c.MergedDir,
+		"output":       c.OutputDir,
+		"interpolated": c.InterpolatedDir,
+		"optimized":    c.OptimizedDir,
+	}
 }

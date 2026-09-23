@@ -192,3 +192,28 @@ func TestIsSanitizeArtifact(t *testing.T) {
 		}
 	}
 }
+
+// TestEffectiveNoiseLevel pins what reaches video2x's -n. Real-ESRGAN rejects
+// levels above 1, and saved pipelines carry up to 3 from before that check.
+func TestEffectiveNoiseLevel(t *testing.T) {
+	cases := []struct {
+		processor, model string
+		level, want      int
+	}{
+		{"realesrgan", "realesr-animevideov3", 3, 0},
+		{"realesrgan", "realesrgan-plus-anime", 1, 0},
+		{"realesrgan", "realesr-generalv3", 0, 0},
+		{"realesrgan", "realesr-generalv3", 1, 1},
+		{"realesrgan", "realesr-generalv3", 3, 1},
+		{"realcugan", "models-se", 3, 3},
+		{"realcugan", "models-se", 0, 0},
+		{"libplacebo", "anime4k-v4-a", 2, 0},
+		{"", "", 3, 0}, // defaults to realesr-animevideov3
+	}
+	for _, c := range cases {
+		o := UpscaleOptions{Processor: c.processor, Model: c.model, NoiseLevel: c.level}.WithDefaults()
+		if got := o.EffectiveNoiseLevel(); got != c.want {
+			t.Errorf("%s/%s level %d: got %d, want %d", c.processor, c.model, c.level, got, c.want)
+		}
+	}
+}
