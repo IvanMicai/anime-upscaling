@@ -1,36 +1,32 @@
 "use client";
 
-import { useParams, usePathname } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useCallback } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { usePoll } from "@/lib/use-poll";
 import { useLogStream } from "@/lib/use-log-stream";
 import { getJob } from "@/lib/api";
-import { jobAreaHref } from "@/lib/job-routes";
 import { JobHeader } from "@/components/job-header";
 import { ProgressBar } from "@/components/progress-bar";
 import { WorkerGauge } from "@/components/worker-gauge";
 import { LogViewer } from "@/components/log-viewer";
 
-/** Job detail. Served at /jobs/[id] and /merge/[id]; the back link follows the job's area. */
 export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
   const fetcher = useCallback(() => getJob(id), [id]);
   const { data: job, error, refresh } = usePoll(fetcher, 2000);
   const { logs, connected } = useLogStream(id);
-  const pathname = usePathname();
-  const fallbackBack = pathname.startsWith("/merge/") ? "/merge" : "/";
 
   if (error) {
     return (
       <div className="space-y-4">
         <Link
-          href={fallbackBack}
+          href="/"
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Back to {fallbackBack === "/merge" ? "Merge" : "Upscaling"}
+          Back to Jobs
         </Link>
         <p className="text-red-400">Error: {error}</p>
       </div>
@@ -48,11 +44,11 @@ export default function JobDetailPage() {
   return (
     <div className="space-y-4">
       <Link
-        href={jobAreaHref(job)}
+        href="/"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
-        Back to {jobAreaHref(job) === "/merge" ? "Merge" : "Upscaling"}
+        Back to Jobs
       </Link>
       <JobHeader job={job} onCancelled={refresh} />
       <ProgressBar progress={job.progress} />

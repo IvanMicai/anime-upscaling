@@ -30,9 +30,12 @@ export default function AppLayout({
           </span>
         </Link>
         <nav className="flex items-center gap-1">
+          {/* Jobs holds the list and every job's detail; Upscaling and Merge
+              are the two creation pages, whose settings share nothing. */}
           <NavLink href="/" matchPrefixes={["/jobs"]}>
-            Upscaling
+            Jobs
           </NavLink>
+          <NavLink href="/upscaling">Upscaling</NavLink>
           <NavLink href="/merge">Merge</NavLink>
           <NavLink href="/pipelines">Pipelines</NavLink>
           <NavLink href="/files">Files</NavLink>

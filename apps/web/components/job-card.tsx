@@ -12,7 +12,6 @@ import {
   jobPercent,
   jobTypeLabel,
 } from "@/lib/format";
-import { jobHref } from "@/lib/job-routes";
 import type { Job } from "@/lib/types";
 
 export function JobCard({
@@ -31,7 +30,7 @@ export function JobCard({
 
   return (
     <Link
-      href={jobHref(job)}
+      href={`/jobs/${job.id}`}
       className="block min-w-0 rounded-lg border bg-card/50 p-4 transition-colors hover:bg-card"
     >
       <div className="flex items-center justify-between gap-2">
