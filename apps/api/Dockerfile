@@ -88,10 +88,11 @@ hfa2k 4xHFA2k 4576ed5c2fc5fa250d3c3d585ef02248f26abdfc1867088078f501fe71e5d61e 8
 EOF
 
 FROM arch
+# Arch installs the Mesa manifests without the .x86_64 suffix Debian/Ubuntu use.
 ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json\
-:/usr/share/vulkan/icd.d/radeon_icd.x86_64.json\
-:/usr/share/vulkan/icd.d/intel_icd.x86_64.json\
-:/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+:/usr/share/vulkan/icd.d/radeon_icd.json\
+:/usr/share/vulkan/icd.d/intel_icd.json\
+:/usr/share/vulkan/icd.d/lvp_icd.json
 # nvidia-utils is deliberately NOT installed: the NVIDIA Container Toolkit
 # mounts the host driver's userspace libs, and ldconfig points
 # libGLX_nvidia.so.0 at the highest version present. A packaged nvidia-utils
