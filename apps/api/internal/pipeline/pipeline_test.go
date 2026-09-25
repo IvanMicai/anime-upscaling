@@ -1,7 +1,9 @@
 package pipeline
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -53,6 +55,39 @@ func TestValidModelScaleRealESRGANGeneral(t *testing.T) {
 	for scale, want := range map[int]bool{2: false, 3: false, 4: true} {
 		if got := ValidModelScale("realesr-generalv3", scale); got != want {
 			t.Errorf("ValidModelScale(realesr-generalv3, %d) = %v, want %v", scale, got, want)
+		}
+	}
+}
+
+// communityModels are the RRDBNet models the Dockerfile downloads and adds to
+// video2x's allow-list; all of them are 4x only.
+var communityModels = []string{"nomos8ksc", "lsdirplusc", "nmkd-siax", "hfa2k"}
+
+func TestValidModelScaleCommunityModels(t *testing.T) {
+	for _, model := range communityModels {
+		for scale, want := range map[int]bool{2: false, 3: false, 4: true} {
+			if got := ValidModelScale(model, scale); got != want {
+				t.Errorf("ValidModelScale(%s, %d) = %v, want %v", model, scale, got, want)
+			}
+		}
+	}
+}
+
+// TestDockerfileShipsCommunityModels keeps the image in step with the API: a
+// model accepted here but missing from video2x's allow-list or the model
+// download fails every job that picks it.
+func TestDockerfileShipsCommunityModels(t *testing.T) {
+	data, err := os.ReadFile("../../Dockerfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dockerfile := string(data)
+	for _, model := range communityModels {
+		if !strings.Contains(dockerfile, `STR("`+model+`")`) {
+			t.Errorf("Dockerfile does not add %s to video2x's model allow-list", model)
+		}
+		if !strings.Contains(dockerfile, "\n"+model+" ") {
+			t.Errorf("Dockerfile does not download the %s model files", model)
 		}
 	}
 }

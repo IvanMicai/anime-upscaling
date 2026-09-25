@@ -96,6 +96,10 @@ truth).
 | `realesrgan` | `realesrgan-plus-anime` | 4x | Stylised anime — higher quality, slower |
 | `realesrgan` | `realesrgan-plus` | 4x | Live action / photographic content |
 | `realesrgan` | `realesr-generalv3` | 4x | General content — lighter than `realesrgan-plus`; noise level > 0 uses the denoise (`-wdn`) variant |
+| `realesrgan` | `nomos8ksc` | 4x | Live action / film — realistic detail, removes compression and blur |
+| `realesrgan` | `lsdirplusc` | 4x | Live action / film — `realesrgan-plus` fine-tuned on real photos, strong on compressed sources |
+| `realesrgan` | `nmkd-siax` | 4x | Clean or lightly compressed sources — faithful, adds little invented texture |
+| `realesrgan` | `hfa2k` | 4x | Anime films — trained on frames from modern anime movies |
 | `libplacebo` (Anime4K v4) | `anime4k-v4-a` · `…-a+a` | 2x · 3x · 4x | Lightweight shader — restores fine lines |
 | `libplacebo` (Anime4K v4) | `anime4k-v4-b` · `…-b+b` | 2x · 3x · 4x | Balanced shader — general anime |
 | `libplacebo` (Anime4K v4) | `anime4k-v4-c` · `…-c+a` | 2x · 3x · 4x | Sharp shader — CGI and flat colors |
@@ -108,6 +112,9 @@ truth).
 
 - **RealESRGAN** — pure neural upscaler. Best raw quality for anime video,
   highest VRAM cost.
+  For live action and films, try `nomos8ksc` or `lsdirplusc`; they are 4x
+  only, so add an Optimize step with a target resolution to land at 1080p or
+  4K instead of keeping the full 4x frame.
 - **Anime4K (libplacebo)** — GPU shaders, very fast and lightweight, runs
   comfortably alongside other workloads. Good when you need to upscale a whole
   season overnight.
@@ -316,6 +323,9 @@ This project stands on the shoulders of giants. The processing pipeline wraps:
 | [Real-CUGAN](https://github.com/bilibili/ailab/tree/main/Real-CUGAN) | RealCUGAN models | bilibili/ailab |
 | [RIFE](https://github.com/megvii-research/ECCV2022-RIFE) | Frame interpolation | megvii-research/ECCV2022-RIFE |
 | [rife-ncnn-vulkan](https://github.com/nihui/rife-ncnn-vulkan) | RIFE Vulkan runtime | nihui/rife-ncnn-vulkan |
+| [4xNomos8kSC, 4xLSDIRplusC, 4xHFA2k](https://github.com/Phhofm/models) | Community RRDBNet models by Phhofm (CC-BY-4.0) | Phhofm/models |
+| [4x_NMKD-Siax_200k](https://openmodeldb.info/models/4x-NMKD-Siax-CX) | Community RRDBNet model by NMKD (WTFPL) | openmodeldb.info |
+| [upscayl/custom-models](https://github.com/upscayl/custom-models) | ncnn conversions of the community models | upscayl/custom-models |
 | [Next.js](https://nextjs.org/) | Web app framework | vercel/next.js |
 | [shadcn/ui](https://ui.shadcn.com/) | UI component library | shadcn-ui/ui |
 | [Go](https://go.dev/) | API runtime | go.dev |

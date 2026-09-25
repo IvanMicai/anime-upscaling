@@ -67,6 +67,11 @@ var ModelScaleCompat = map[string]map[int]bool{
 	"realesrgan-plus-anime": {4: true},
 	"realesrgan-plus":       {4: true},
 	"realesr-generalv3":     {4: true}, // noise_level > 0 selects the -wdn (denoise) variant
+	// Community RRDBNet models baked into the image (see the Dockerfile), 4x only
+	"nomos8ksc":  {4: true},
+	"lsdirplusc": {4: true},
+	"nmkd-siax":  {4: true},
+	"hfa2k":      {4: true},
 	// libplacebo (shaders work with any scale)
 	"anime4k-v4-a":     {2: true, 3: true, 4: true},
 	"anime4k-v4-a+a":   {2: true, 3: true, 4: true},

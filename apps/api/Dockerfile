@@ -56,6 +56,9 @@ RUN git clone https://github.com/k4yt3x/video2x.git /src \
         third_party/librealesrgan_ncnn_vulkan \
         third_party/librealcugan_ncnn_vulkan \
         third_party/librife_ncnn_vulkan \
+ && sed -i 's|STR("realesr-generalv3"),|&\n        STR("nomos8ksc"), STR("lsdirplusc"), STR("nmkd-siax"), STR("hfa2k"),|' \
+        tools/video2x/src/validators.cpp \
+ && grep -q 'STR("nmkd-siax")' tools/video2x/src/validators.cpp \
  && cmake -B build -S . \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr \
@@ -63,6 +66,26 @@ RUN git clone https://github.com/k4yt3x/video2x.git /src \
  && cmake --build build --config Release --parallel \
  && DESTDIR=/out cmake --install build \
  && test -f /out/usr/share/video2x/models/realesrgan/realesr-generalv3-x4.bin
+
+# ---- extra Real-ESRGAN (RRDBNet) models for live action and anime films ----
+# ncnn conversions from upscayl/custom-models (pinned commit, checksummed),
+# renamed to video2x's <model>-x<scale> layout. The sed above adds the same
+# names to video2x's model allow-list. Licenses: Nomos8kSC, LSDIRplusC and
+# HFA2k by Phhofm are CC-BY-4.0; NMKD Siax is WTFPL (credited in the README).
+ARG CUSTOM_MODELS_REF=4b6d2cfa59c7442af115dfc6e50fd8d7d40b96ef
+RUN set -e; dest=/out/usr/share/video2x/models/realesrgan; \
+    base="https://raw.githubusercontent.com/upscayl/custom-models/${CUSTOM_MODELS_REF}/models"; \
+    while read -r name src sum_param sum_bin; do \
+      curl -fsSL "$base/$src.param" -o "$dest/$name-x4.param"; \
+      curl -fsSL "$base/$src.bin" -o "$dest/$name-x4.bin"; \
+      echo "$sum_param  $dest/$name-x4.param" | sha256sum -c -; \
+      echo "$sum_bin  $dest/$name-x4.bin" | sha256sum -c -; \
+    done <<'EOF'
+nomos8ksc 4xNomos8kSC 4576ed5c2fc5fa250d3c3d585ef02248f26abdfc1867088078f501fe71e5d61e da16e3880d87b177b7c6b659bbd880f8a101b868eb9ebc08d69eaa6d3edc4517
+lsdirplusc 4xLSDIRplusC 4576ed5c2fc5fa250d3c3d585ef02248f26abdfc1867088078f501fe71e5d61e 6df18c714bb7d4ac63ca8a1fb1f1b2712fe3ef5a4b36f09bfa9b827da167ae81
+nmkd-siax 4x_NMKD-Siax_200k 519bffb4912e295155d3cb5d6a29639d217ccca55f80962d8f677ef777a65b7a b2abdffa30fb15be752ac681e0c0edf8b543745c33a989aadc9d7d3394dd3110
+hfa2k 4xHFA2k 4576ed5c2fc5fa250d3c3d585ef02248f26abdfc1867088078f501fe71e5d61e 8a135402b4f39286121b76abb47601a6b7b7e8d4f3e999a5aaa45ed277824fb4
+EOF
 
 FROM arch
 ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json\

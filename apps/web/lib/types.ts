@@ -406,6 +406,10 @@ export const REALESRGAN_MODELS = [
   { value: "realesrgan-plus-anime", label: "Plus Anime", desc: "Otimizado para imagens de anime (4x apenas)", scales: [4] as const },
   { value: "realesrgan-plus", label: "Plus", desc: "Modelo genérico para qualquer conteúdo (4x apenas)", scales: [4] as const },
   { value: "realesr-generalv3", label: "General v3", desc: "General-purpose, lighter than Plus; noise reduction switches to the denoise variant (4x only)", scales: [4] as const },
+  { value: "nomos8ksc", label: "Nomos8kSC", desc: "Live action / film: realistic detail, removes compression and blur (4x only, slow)", scales: [4] as const },
+  { value: "lsdirplusc", label: "LSDIR+C", desc: "Live action / film: Plus fine-tuned on real photos, strong on compressed sources (4x only, slow)", scales: [4] as const },
+  { value: "nmkd-siax", label: "NMKD Siax", desc: "Clean or lightly compressed sources: faithful, adds little invented texture (4x only, slow)", scales: [4] as const },
+  { value: "hfa2k", label: "HFA2k", desc: "Anime films: trained on frames from modern anime movies, removes compression (4x only, slow)", scales: [4] as const },
 ] as const;
 
 export const LIBPLACEBO_SHADERS = [
