@@ -11,6 +11,7 @@ import (
 	"anime-upscaling/internal/config"
 	"anime-upscaling/internal/files"
 	"anime-upscaling/internal/logger"
+	"anime-upscaling/internal/queue"
 	"anime-upscaling/internal/runner"
 )
 
@@ -97,27 +98,11 @@ func UpscaleFile(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID
 		return false
 	}
 
-	logFile := gpuLogPath(cfg, gpuID, streamIdx)
-	err = r.Video2x(ctx, gpuID, streamIdx, filename, logFile, scale, opts, effInputDir, tempOutputDir, gpuProgress)
 	tempOutPath := filepath.Join(tempOutputDir, filename)
-
-	// glslang's PoolAlloc assertion (an upstream video2x/ncnn-vulkan bug) can
-	// abort the process during Vulkan teardown after the output is already
-	// written, or kill it mid-run during shader compilation. Salvage the
-	// first case; retry once for the second.
-	if err != nil && ctx.Err() == nil {
-		if salvageSignaledRun(err, logFile, tempOutPath) {
-			onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Recuperando %s: video2x morreu em signal mas output foi escrito por completo", filename), Time: time.Now()})
-			err = nil
-		} else if sig, signaled := runner.SignalFromError(err); signaled {
-			onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Tentativa 1 morreu com signal %s; repetindo upscale: %s", sig, filename), Time: time.Now()})
-			_ = os.Remove(tempOutPath)
-			err = r.Video2x(ctx, gpuID, streamIdx, filename, logFile, scale, opts, effInputDir, tempOutputDir, gpuProgress)
-			if err != nil && salvageSignaledRun(err, logFile, tempOutPath) {
-				onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Recuperando %s na 2ª tentativa: video2x morreu em signal mas output foi escrito por completo", filename), Time: time.Now()})
-				err = nil
-			}
-		}
+	if opts.Processor == "seedvr2" {
+		err = upscaleSeedVR2(ctx, cfg, r, gpuID, streamIdx, filename, index, opts, inputDir, effInputDir, tempOutPath, source, onEvent, gpuProgress)
+	} else {
+		err = upscaleVideo2x(ctx, cfg, r, gpuID, streamIdx, filename, index, scale, opts, effInputDir, tempOutputDir, tempOutPath, source, onEvent, gpuProgress)
 	}
 
 	if err != nil {
@@ -150,4 +135,91 @@ func gpuLogPath(cfg config.Config, gpuID, streamIdx int) string {
 		return fmt.Sprintf("%s/gpu%d.log", cfg.BaseDir, gpuID)
 	}
 	return fmt.Sprintf("%s/gpu%d-s%d.log", cfg.BaseDir, gpuID, streamIdx)
+}
+
+// gpuShares arbitrates how much of each GPU the running upscale/interpolate
+// processes use; see queue.GPUShares. Shared by every job in the process.
+var gpuShares = queue.NewGPUShares()
+
+// upscaleVideo2x runs one video2x upscale into tempOutPath, with the salvage
+// and retry handling for its known teardown crashes.
+func upscaleVideo2x(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID, streamIdx int, filename string, index, scale int, opts runner.UpscaleOptions, effInputDir, tempOutputDir, tempOutPath, source string, onEvent func(logger.JobLog), gpuProgress func(runner.Progress)) error {
+	release, err := gpuShares.Acquire(ctx, gpuID, 1, cfg.StreamsPerGPU)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	logFile := gpuLogPath(cfg, gpuID, streamIdx)
+	err = r.Video2x(ctx, gpuID, streamIdx, filename, logFile, scale, opts, effInputDir, tempOutputDir, gpuProgress)
+
+	// glslang's PoolAlloc assertion (an upstream video2x/ncnn-vulkan bug) can
+	// abort the process during Vulkan teardown after the output is already
+	// written, or kill it mid-run during shader compilation. Salvage the
+	// first case; retry once for the second.
+	if err != nil && ctx.Err() == nil {
+		if salvageSignaledRun(err, logFile, tempOutPath) {
+			onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Recuperando %s: video2x morreu em signal mas output foi escrito por completo", filename), Time: time.Now()})
+			err = nil
+		} else if sig, signaled := runner.SignalFromError(err); signaled {
+			onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Tentativa 1 morreu com signal %s; repetindo upscale: %s", sig, filename), Time: time.Now()})
+			_ = os.Remove(tempOutPath)
+			err = r.Video2x(ctx, gpuID, streamIdx, filename, logFile, scale, opts, effInputDir, tempOutputDir, gpuProgress)
+			if err != nil && salvageSignaledRun(err, logFile, tempOutPath) {
+				onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("Recuperando %s na 2ª tentativa: video2x morreu em signal mas output foi escrito por completo", filename), Time: time.Now()})
+				err = nil
+			}
+		}
+	}
+	return err
+}
+
+// upscaleSeedVR2 runs SeedVR2 on the (normalized) input and muxes its video
+// with the audio, subtitles, attachments and chapters of the original input
+// into tempOutPath. SeedVR2 fills the GPU, so it takes the whole GPU share.
+func upscaleSeedVR2(ctx context.Context, cfg config.Config, r *runner.Runner, gpuID, streamIdx int, filename string, index int, opts runner.UpscaleOptions, inputDir, effInputDir, tempOutPath, source string, onEvent func(logger.JobLog), gpuProgress func(runner.Progress)) error {
+	if !r.SeedVR2Available() {
+		return fmt.Errorf("SeedVR2 is not installed in this image; use the API image built with --target seedvr2")
+	}
+	opts = opts.WithDefaults()
+
+	if err := r.SeedVR2FetchModels(ctx, opts.Model, cfg.BaseDir+"/seedvr2-download.log", gpuProgress); err != nil {
+		return fmt.Errorf("download SeedVR2 weights: %w", err)
+	}
+
+	release, err := gpuShares.Acquire(ctx, gpuID, cfg.StreamsPerGPU, cfg.StreamsPerGPU)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	videoDir := filepath.Join(cfg.TempDir, "seedvr2")
+	if err := os.MkdirAll(videoDir, 0755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", videoDir, err)
+	}
+	video := filepath.Join(videoDir, fmt.Sprintf("gpu%d-s%d.mp4", gpuID, streamIdx))
+	defer func() { _ = os.Remove(video) }()
+
+	src := filepath.Join(effInputDir, filename)
+	totalFrames, _ := r.ProbeFrameCount(ctx, src)
+	logFile := gpuLogPath(cfg, gpuID, streamIdx)
+
+	tuning := r.SeedVR2Tuning(opts.Model)
+	err = r.SeedVR2(ctx, gpuID, streamIdx, src, video, logFile, opts, tuning, totalFrames, gpuProgress)
+	if err != nil && ctx.Err() == nil && runner.IsCUDAOutOfMemory(err) {
+		safe := runner.SafeSeedVR2Tuning(opts.Model)
+		onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: fmt.Sprintf("SeedVR2 ran out of GPU memory; retrying with batch %d and %d swapped blocks: %s", safe.BatchSize, safe.BlocksToSwap, filename), Time: time.Now()})
+		_ = os.Remove(video)
+		err = r.SeedVR2(ctx, gpuID, streamIdx, src, video, logFile, opts, safe, totalFrames, gpuProgress)
+	}
+	if err != nil {
+		return err
+	}
+	if !files.FileExists(video) {
+		return fmt.Errorf("SeedVR2 exited without writing %s", video)
+	}
+
+	// Mux from the original input, not the normalized copy: normalization
+	// only changes the picture and does not carry attachments or chapters.
+	return r.MuxSeedVR2Output(ctx, video, filepath.Join(inputDir, filename), tempOutPath, gpuProgress)
 }

@@ -91,3 +91,33 @@ func TestDockerfileShipsCommunityModels(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateUpscale(t *testing.T) {
+	cases := []struct {
+		name                 string
+		processor, model     string
+		scale, noise, height int
+		wantErr              string
+	}{
+		{"defaults", "", "", 2, 0, 0, ""},
+		{"realesrgan 4x", "realesrgan", "realesrgan-plus", 4, 0, 0, ""},
+		{"bad scale for model", "realesrgan", "realesrgan-plus", 2, 0, 0, "does not support scale"},
+		{"bad scale", "realesrgan", "", 5, 0, 0, "scale must be"},
+		{"bad noise", "realcugan", "models-se", 2, 4, 0, "noise_level"},
+		{"unknown processor", "topaz", "", 2, 0, 0, "invalid processor"},
+		{"seedvr2 defaults", "seedvr2", "", 2, 0, 0, ""},
+		{"seedvr2 ignores scale", "seedvr2", "seedvr2-7b-sharp", 0, 0, 2160, ""},
+		{"seedvr2 bad height", "seedvr2", "seedvr2-3b", 2, 0, 1000, "target_height"},
+		{"seedvr2 with a video2x model", "seedvr2", "realesrgan-plus", 4, 0, 0, "not a SeedVR2 model"},
+		{"seedvr2 model on video2x", "realesrgan", "seedvr2-7b", 4, 0, 0, "needs the seedvr2 processor"},
+	}
+	for _, c := range cases {
+		err := ValidateUpscale(c.processor, c.model, c.scale, c.noise, c.height)
+		switch {
+		case c.wantErr == "" && err != nil:
+			t.Errorf("%s: unexpected error %v", c.name, err)
+		case c.wantErr != "" && (err == nil || !strings.Contains(err.Error(), c.wantErr)):
+			t.Errorf("%s: error = %v, want one containing %q", c.name, err, c.wantErr)
+		}
+	}
+}

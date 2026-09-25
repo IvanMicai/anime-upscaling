@@ -127,7 +127,9 @@ In Portainer:
    `HOST_PROCESS_DIR` and `PROCESS_DIR` should match so the host and container
    see the media directory at the same path. Optionally override `APP_PORT`,
    `API_PORT`, `IMAGE_TAG`, `GPU_COUNT`, `STREAMS_PER_GPU`, `FFMPEG_STREAMS`,
-   or `GPU_VENDOR`.
+   or `GPU_VENDOR`. For SeedVR2 set `API_IMAGE_TAG=seedvr2` (the API image
+   with SeedVR2; the app image keeps `IMAGE_TAG`) and raise `API_MEM_LIMIT`
+   (about 16 GB per GPU running SeedVR2).
 
 4. Deploy the stack. The web app is reachable on `APP_PORT` (default `4750`);
    the API stays internal to the stack network.

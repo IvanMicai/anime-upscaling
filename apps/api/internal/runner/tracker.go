@@ -75,10 +75,19 @@ func StopByJobID(jobID string) int {
 func signalAll(cmds []*exec.Cmd) int {
 	killed := 0
 	for _, cmd := range cmds {
-		if cmd.Process != nil {
-			if err := cmd.Process.Signal(syscall.SIGTERM); err == nil {
-				killed++
-			}
+		if cmd.Process == nil {
+			continue
+		}
+		var err error
+		if cmd.SysProcAttr != nil && cmd.SysProcAttr.Setpgid {
+			// Leader of its own group (SeedVR2): signal the whole group so its
+			// ffmpeg encoder child stops too.
+			err = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		} else {
+			err = cmd.Process.Signal(syscall.SIGTERM)
+		}
+		if err == nil {
+			killed++
 		}
 	}
 	return killed

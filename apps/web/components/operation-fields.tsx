@@ -21,6 +21,8 @@ import {
   CLEANUP_FOLDER_OPTIONS,
   getModelOptions,
   getValidScales,
+  DEFAULT_MODEL,
+  SEEDVR2_HEIGHT_OPTIONS,
 } from "@/lib/types";
 import type {
   CleanupFolder,
@@ -28,6 +30,7 @@ import type {
   PipelineOperationType,
   PipelineStep,
   QualityPreset,
+  SeedVR2Height,
   UpscaleProcessor,
 } from "@/lib/types";
 
@@ -71,19 +74,28 @@ export function OperationFields({
   config,
   onChange,
   gpuVendor = "",
+  seedvr2Available = false,
 }: {
   operation: PipelineOperationType;
   config: PipelineStep;
   onChange: (patch: Partial<PipelineStep>) => void;
   gpuVendor?: GPUVendor;
+  /** Offer SeedVR2 only when the API image ships it (see Settings). */
+  seedvr2Available?: boolean;
 }) {
   if (operation === "upscale") {
     const processor = config.processor ?? "realesrgan";
-    const model = config.model ?? "realesr-animevideov3";
+    const model = config.model ?? DEFAULT_MODEL[processor];
     const scale = config.scale ?? 2;
     const modelOptions = getModelOptions(processor);
     const validScales = getValidScales(processor, model);
     const noiseOptions = getNoiseLevelOptions(processor, model);
+    const isSeedVR2 = processor === "seedvr2";
+    // Keep SeedVR2 listed on a step that already uses it, so a saved pipeline
+    // opened against an image without it still shows its processor.
+    const processorOptions = PROCESSOR_OPTIONS.filter(
+      (o) => o.value !== "seedvr2" || seedvr2Available || isSeedVR2,
+    );
 
     return (
       <div className="space-y-4">
@@ -93,21 +105,18 @@ export function OperationFields({
             value={processor}
             onChange={(v) => {
               const p = v as UpscaleProcessor;
-              const defModel =
-                p === "libplacebo"
-                  ? "anime4k-v4-a"
-                  : p === "realcugan"
-                    ? "models-se"
-                    : "realesr-animevideov3";
+              const defModel = DEFAULT_MODEL[p];
               const vs = getValidScales(p, defModel);
               onChange({
                 processor: p,
                 model: defModel,
-                scale: (vs.includes(scale) ? scale : vs[0]) as 2 | 3 | 4,
+                // SeedVR2 has no scale; keep the old one for switching back.
+                scale: (vs.length === 0 || vs.includes(scale) ? scale : vs[0]) as 2 | 3 | 4,
                 noise_level: validNoiseLevel(p, defModel, config.noise_level ?? 0),
+                target_height: p === "seedvr2" ? (config.target_height ?? 1080) : undefined,
               });
             }}
-            options={PROCESSOR_OPTIONS.map((o) => ({
+            options={processorOptions.map((o) => ({
               value: o.value,
               label: o.label,
               desc: o.desc,
@@ -121,7 +130,7 @@ export function OperationFields({
               const vs = getValidScales(processor, v);
               onChange({
                 model: v,
-                scale: (vs.includes(scale) ? scale : vs[0]) as 2 | 3 | 4,
+                scale: (vs.length === 0 || vs.includes(scale) ? scale : vs[0]) as 2 | 3 | 4,
                 noise_level: validNoiseLevel(processor, v, config.noise_level ?? 0),
               });
             }}
@@ -138,14 +147,29 @@ export function OperationFields({
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Scale">
-          <OptionButtons
-            columns={3}
-            value={scale}
-            onChange={(v) => onChange({ scale: v as 2 | 3 | 4 })}
-            options={SCALE_OPTS.filter((s) => validScales.includes(s.value))}
-          />
-        </Field>
+        {isSeedVR2 ? (
+          <Field label="Target resolution">
+            <OptionButtons
+              columns={4}
+              value={config.target_height ?? 1080}
+              onChange={(v) => onChange({ target_height: v as SeedVR2Height })}
+              options={SEEDVR2_HEIGHT_OPTIONS}
+            />
+            <p className="text-xs text-muted-foreground">
+              Short side of the output. Takes a whole GPU and runs far below
+              real time; the first run downloads the model weights (several GB).
+            </p>
+          </Field>
+        ) : (
+          <Field label="Scale">
+            <OptionButtons
+              columns={3}
+              value={scale}
+              onChange={(v) => onChange({ scale: v as 2 | 3 | 4 })}
+              options={SCALE_OPTS.filter((s) => validScales.includes(s.value))}
+            />
+          </Field>
+        )}
         {noiseOptions.length > 0 && (
           <Field label="Redução de Ruído">
             <OptionButtons

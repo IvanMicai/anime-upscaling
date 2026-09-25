@@ -15,6 +15,8 @@ export interface Settings {
   ffmpeg_streams: number;
   gpu_count: number;
   gpu_vendor: GPUVendor;
+  /** Whether the API image ships SeedVR2 (built with --target seedvr2). */
+  seedvr2_available?: boolean;
 }
 
 export interface GPUMetric {
@@ -266,6 +268,7 @@ export interface CreateJobRequest {
   processor?: UpscaleProcessor;
   model?: string;
   noise_level?: number;
+  target_height?: SeedVR2Height;
   // Interpolate
   multiplier?: 2 | 3 | 4;
   rife_model?: string;
@@ -315,7 +318,7 @@ export type CleanupFolder = "input" | "merged" | "output" | "interpolated" | "op
 
 export type QualityPreset = "ultra" | "alta" | "media" | "baixa";
 
-export type UpscaleProcessor = "realesrgan" | "libplacebo" | "realcugan";
+export type UpscaleProcessor = "realesrgan" | "libplacebo" | "realcugan" | "seedvr2";
 
 export interface PipelineStep {
   operation: PipelineOperationType;
@@ -323,6 +326,8 @@ export interface PipelineStep {
   processor?: UpscaleProcessor;
   model?: string;
   noise_level?: number;
+  /** SeedVR2 output short side in pixels; SeedVR2 has no scale factor. */
+  target_height?: SeedVR2Height;
   multiplier?: 2 | 3 | 4;
   rife_model?: string;
   scene_thresh?: number;
@@ -399,7 +404,16 @@ export const PROCESSOR_OPTIONS = [
   { value: "realesrgan", label: "RealESRGAN", desc: "IA para super-resolução, melhor para anime" },
   { value: "libplacebo", label: "libplacebo", desc: "Shaders GPU (Anime4K), rápido e customizável" },
   { value: "realcugan", label: "RealCUGAN", desc: "IA otimizada para ilustrações com redução de ruído" },
+  { value: "seedvr2", label: "SeedVR2", desc: "Diffusion video restoration: best for live action and films; very slow, takes a whole GPU" },
 ] as const;
+
+/** Default model per processor, used when the processor changes. */
+export const DEFAULT_MODEL: Record<UpscaleProcessor, string> = {
+  realesrgan: "realesr-animevideov3",
+  libplacebo: "anime4k-v4-a",
+  realcugan: "models-se",
+  seedvr2: "seedvr2-7b",
+};
 
 export const REALESRGAN_MODELS = [
   { value: "realesr-animevideov3", label: "Anime Video v3", desc: "Otimizado para vídeos de anime (recomendado)", scales: [2, 3, 4] as const },
@@ -428,6 +442,23 @@ export const REALCUGAN_MODELS = [
   { value: "models-nose", label: "No Sharpening", desc: "Sem sharpening, resultado mais suave (2x apenas)", scales: [2] as const },
 ] as const;
 
+// SeedVR2 sizes its output by target height instead of a scale factor, so its
+// models list no scales.
+export const SEEDVR2_MODELS = [
+  { value: "seedvr2-7b", label: "7B", desc: "Best quality: restores detail and removes compression (recommended)", scales: [] as const },
+  { value: "seedvr2-7b-sharp", label: "7B Sharp", desc: "7B tuned for crisper detail; can oversharpen", scales: [] as const },
+  { value: "seedvr2-3b", label: "3B", desc: "Faster and lighter, a little less detail", scales: [] as const },
+] as const;
+
+export type SeedVR2Height = 720 | 1080 | 1440 | 2160;
+
+export const SEEDVR2_HEIGHT_OPTIONS: { value: SeedVR2Height; label: string }[] = [
+  { value: 720, label: "720p" },
+  { value: 1080, label: "1080p" },
+  { value: 1440, label: "1440p" },
+  { value: 2160, label: "4K" },
+];
+
 export const SCALE_LABELS: Record<number, string> = {
   2: "2x — Dobra a resolução",
   3: "3x — Triplica a resolução",
@@ -437,6 +468,7 @@ export const SCALE_LABELS: Record<number, string> = {
 export function getModelOptions(processor: UpscaleProcessor) {
   return processor === "libplacebo" ? LIBPLACEBO_SHADERS
     : processor === "realcugan" ? REALCUGAN_MODELS
+    : processor === "seedvr2" ? SEEDVR2_MODELS
     : REALESRGAN_MODELS;
 }
 

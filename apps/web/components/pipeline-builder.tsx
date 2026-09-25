@@ -28,13 +28,17 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gpuVendor, setGpuVendor] = useState<GPUVendor>("");
+  const [seedvr2Available, setSeedvr2Available] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
 
   const steps = items.map((it) => it.step);
 
   useEffect(() => {
     getSettings()
-      .then((s) => setGpuVendor(s.gpu_vendor ?? ""))
+      .then((s) => {
+        setGpuVendor(s.gpu_vendor ?? "");
+        setSeedvr2Available(s.seedvr2_available ?? false);
+      })
       .catch(() => {});
   }, []);
 
@@ -133,6 +137,7 @@ export function PipelineBuilder({ pipeline: existing }: PipelineBuilderProps) {
             totalSteps={steps.length}
             allSteps={steps}
             gpuVendor={gpuVendor}
+            seedvr2Available={seedvr2Available}
             onChange={(s) => updateStep(i, s)}
             onRemove={() => removeStep(i)}
             onMoveUp={() => moveStep(i, i - 1)}

@@ -4,6 +4,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -29,6 +30,14 @@ type Config struct {
 	StreamsPerGPU int
 	FFmpegStreams int
 	GPUVendor     string // "" | "nvidia" | "amd" | "intel"
+
+	// SeedVR2 runtime (only present in the image built with --target seedvr2).
+	SeedVR2Dir      string // venv + CLI checkout (SEEDVR2_DIR)
+	SeedVR2ModelDir string // downloaded weights, kept across restarts
+	// Memory tuning; 0 / -1 keep the per-model defaults.
+	SeedVR2BatchSize    int      // SEEDVR2_BATCH_SIZE, 4n+1
+	SeedVR2BlocksToSwap int      // SEEDVR2_BLOCKS_TO_SWAP, -1 = default
+	SeedVR2ExtraArgs    []string // SEEDVR2_EXTRA_ARGS, appended to the CLI
 }
 
 func NewConfig() Config {
@@ -69,6 +78,12 @@ func NewConfig() Config {
 		StreamsPerGPU:   envInt("STREAMS_PER_GPU", 1),
 		FFmpegStreams:   envInt("FFMPEG_STREAMS", 1),
 		GPUVendor:       envVendor("GPU_VENDOR", ""),
+
+		SeedVR2Dir:          envString("SEEDVR2_DIR", "/opt/seedvr2"),
+		SeedVR2ModelDir:     baseDir + "/models/seedvr2",
+		SeedVR2BatchSize:    envSeedVR2BatchSize("SEEDVR2_BATCH_SIZE"),
+		SeedVR2BlocksToSwap: envIntMin("SEEDVR2_BLOCKS_TO_SWAP", -1, 0),
+		SeedVR2ExtraArgs:    strings.Fields(os.Getenv("SEEDVR2_EXTRA_ARGS")),
 	}
 
 	// Overlay persisted runtime settings over env/defaults.
@@ -95,6 +110,33 @@ func envInt(key string, def int) int {
 	n, err := strconv.Atoi(v)
 	if err != nil || n < 1 {
 		return def
+	}
+	return n
+}
+
+func envString(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// envIntMin reads an int that may be as low as minVal (unlike envInt, which
+// requires >= 1); anything unset, unparsable or below minVal yields def.
+func envIntMin(key string, def, minVal int) int {
+	n, err := strconv.Atoi(os.Getenv(key))
+	if err != nil || n < minVal {
+		return def
+	}
+	return n
+}
+
+// envSeedVR2BatchSize reads SEEDVR2_BATCH_SIZE, which the CLI requires to be
+// 4n+1; any other value yields 0 (use the default).
+func envSeedVR2BatchSize(key string) int {
+	n := envIntMin(key, 0, 1)
+	if n%4 != 1 {
+		return 0
 	}
 	return n
 }

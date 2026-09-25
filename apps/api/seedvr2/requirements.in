@@ -1,0 +1,25 @@
+# SeedVR2 runtime dependencies, compiled into requirements.txt with:
+#   uv pip compile seedvr2/requirements.in -o seedvr2/requirements.txt \
+#     --python-version 3.12 --python-platform x86_64-manylinux_2_28 \
+#     --index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://pypi.org/simple \
+#     --index-strategy unsafe-best-match --exclude-newer 2025-12-25
+# (from apps/api; see the seedvr2 stage of the Dockerfile). --exclude-newer
+# holds every package to what existed when the pinned CLI commit was made.
+#
+# Upstream's requirements.txt (numz/ComfyUI-SeedVR2_VideoUpscaler) minus
+# matplotlib (unused by the CLI), with opencv-python swapped for the headless
+# build (no GUI libraries in the image). PyTorch 2.9 with CUDA 12.8 is the
+# newest release upstream targets and has Blackwell (sm_120) kernels.
+torch==2.9.1
+torchvision==0.24.1
+safetensors
+numpy
+tqdm
+psutil
+einops
+omegaconf>=2.3.0
+diffusers>=0.33.1
+peft>=0.17.0
+rotary_embedding_torch>=0.5.3
+opencv-python-headless
+gguf

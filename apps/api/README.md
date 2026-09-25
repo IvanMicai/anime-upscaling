@@ -104,6 +104,11 @@ Create a new job.
 | `files` | string[] | no | Filenames from the selected source. If empty, uses all videos in that source |
 | `source` | string | no | One of `input`, `merged`, `output`, `interpolated`, `optimized`; defaults to `input` (a `merge` cannot read from `merged`) |
 | `frame_rate` | number | no | Optimize-only frame-rate divisor: `1` original, `2` half, or `4` quarter |
+| `processor` | string | no | Upscale-only: `realesrgan` (default), `libplacebo`, `realcugan`, or `seedvr2` |
+| `model` | string | no | Upscale-only model for the processor; see the README's model table |
+| `scale` | number | no | Upscale-only factor `2`, `3` or `4` (default `2`); ignored by `seedvr2` |
+| `noise_level` | number | no | Upscale-only, `0`–`3`; only Real-CUGAN and `realesr-generalv3` use it |
+| `target_height` | number | no | `seedvr2`-only output short side: `720`, `1080` (default), `1440` or `2160` |
 
 ```json
 {
@@ -351,6 +356,14 @@ curl -X POST http://localhost:4751/api/jobs/j_1708540800_1a2b/cancel
 - Scale: 2x
 - Output: `{BaseDir}/output/`
 - Skips files that already exist in output
+
+`processor: "seedvr2"` runs SeedVR2 instead of video2x. It needs the API image
+built with `--target seedvr2` (`GET /api/settings` reports
+`seedvr2_available`), takes the whole GPU it lands on, downloads its weights
+into `{BaseDir}/models/seedvr2` on first use, and muxes the source's audio,
+subtitles, attachments and chapters back into its output. Tuning:
+`SEEDVR2_BATCH_SIZE`, `SEEDVR2_BLOCKS_TO_SWAP`, `SEEDVR2_EXTRA_ARGS` (see
+`.env.example`).
 
 ### Merge
 

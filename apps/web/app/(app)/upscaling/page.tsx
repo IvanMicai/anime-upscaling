@@ -70,13 +70,17 @@ export default function NewUpscalingJobPage() {
   const [error, setError] = useState<string | null>(null);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [gpuVendor, setGpuVendor] = useState<GPUVendor>("");
+  const [seedvr2Available, setSeedvr2Available] = useState(false);
 
   useEffect(() => {
     getPipelines()
       .then(setPipelines)
       .catch(() => setPipelines([]));
     getSettings()
-      .then((s) => setGpuVendor(s.gpu_vendor ?? ""))
+      .then((s) => {
+        setGpuVendor(s.gpu_vendor ?? "");
+        setSeedvr2Available(s.seedvr2_available ?? false);
+      })
       .catch(() => setGpuVendor(""));
   }, []);
 
@@ -117,6 +121,7 @@ export default function NewUpscalingJobPage() {
         processor: cfg.processor,
         model: cfg.model,
         noise_level: cfg.noise_level,
+        target_height: cfg.processor === "seedvr2" ? cfg.target_height : undefined,
       };
     }
     if (type === "interpolate") {
@@ -266,6 +271,7 @@ export default function NewUpscalingJobPage() {
               config={cfg}
               onChange={(patch) => setCfg((prev) => ({ ...prev, ...patch }))}
               gpuVendor={gpuVendor}
+              seedvr2Available={seedvr2Available}
             />
           )}
         </div>

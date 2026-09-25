@@ -54,6 +54,7 @@ type Job struct {
 	Processor         string                  `json:"processor,omitempty"`
 	Model             string                  `json:"model,omitempty"`
 	NoiseLevel        int                     `json:"noise_level,omitempty"`
+	TargetHeight      int                     `json:"target_height,omitempty"`
 	Quality           string                  `json:"quality,omitempty"`
 	Codec             string                  `json:"codec,omitempty"`
 	Preset            string                  `json:"preset,omitempty"`
@@ -106,6 +107,7 @@ type StartJobParams struct {
 	Processor         string
 	Model             string
 	NoiseLevel        int
+	TargetHeight      int
 	Quality           string
 	Codec             string
 	Preset            string
@@ -215,6 +217,7 @@ func (j *Job) snapshot() Job {
 		Processor:         j.Processor,
 		Model:             j.Model,
 		NoiseLevel:        j.NoiseLevel,
+		TargetHeight:      j.TargetHeight,
 		Quality:           j.Quality,
 		Codec:             j.Codec,
 		Preset:            j.Preset,
@@ -256,6 +259,7 @@ func (j *Job) snapshotWithLogs() Job {
 		Processor:         j.Processor,
 		Model:             j.Model,
 		NoiseLevel:        j.NoiseLevel,
+		TargetHeight:      j.TargetHeight,
 		Quality:           j.Quality,
 		Codec:             j.Codec,
 		Preset:            j.Preset,
@@ -440,6 +444,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 		Processor:         p.Processor,
 		Model:             p.Model,
 		NoiseLevel:        p.NoiseLevel,
+		TargetHeight:      p.TargetHeight,
 		Quality:           p.Quality,
 		Codec:             p.Codec,
 		Preset:            p.Preset,
@@ -496,9 +501,10 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 		switch p.Type {
 		case "upscale":
 			upOpts := runner.UpscaleOptions{
-				Processor:  job.Processor,
-				Model:      job.Model,
-				NoiseLevel: job.NoiseLevel,
+				Processor:    job.Processor,
+				Model:        job.Model,
+				NoiseLevel:   job.NoiseLevel,
+				TargetHeight: job.TargetHeight,
 			}
 			for i, f := range toProcess {
 				wg.Add(1)

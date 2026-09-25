@@ -107,6 +107,7 @@ truth).
 | `realcugan` | `models-se` | 2x · 3x · 4x | Standard edition — general purpose |
 | `realcugan` | `models-pro` | 2x · 3x | Pro — more detail preservation |
 | `realcugan` | `models-nose` | 2x | No-denoise — preserves film grain |
+| `seedvr2` | `seedvr2-7b` · `seedvr2-7b-sharp` · `seedvr2-3b` | target 720p · 1080p · 1440p · 4K | Live action and films — diffusion restoration, best quality, very slow ([SeedVR2 image](#seedvr2) only) |
 
 **When to use which processor:**
 
@@ -120,6 +121,28 @@ truth).
   season overnight.
 - **RealCUGAN** — middle ground. Strong on stylised content and gives the most
   control over denoise behaviour via the `models-*` variants.
+
+### SeedVR2
+
+[SeedVR2](https://github.com/ByteDance-Seed/SeedVR) is a diffusion-transformer
+video restoration model: the open counterpart of the generative upscalers in
+commercial video tools. It restores detail and removes compression instead of
+only sharpening, and keeps frames consistent over time. It is much heavier than
+everything above, so it ships in a separate API image:
+
+- **Image:** `ivanmicai/anime-upscaling-api:seedvr2` or `:<version>-seedvr2`
+  (set `API_IMAGE_TAG=seedvr2` with the Hub or Portainer compose file), or build
+  it with `make build-api-seedvr2` / `make run-seedvr2`. NVIDIA only; the UI offers the
+  `seedvr2` processor only when the API runs this image.
+- **GPU:** one run takes a whole GPU; 16 GB is enough with the default memory
+  settings (see `SEEDVR2_*` in `.env.example`). Expect well under real time.
+- **RAM:** part of the model is swapped to system RAM; budget ~16 GB per GPU
+  running SeedVR2 in `API_MEM_LIMIT`.
+- **Output:** you pick a target height instead of a scale; audio, subtitles and
+  chapters are kept. The first run downloads the weights (~9 GB for 7B) into
+  `models/seedvr2` under the data folder.
+- **Anime:** being generative, it can redraw line art. Compare it with the
+  Real-ESRGAN models before running a whole season.
 
 ### Interpolation models (RIFE)
 
@@ -326,6 +349,9 @@ This project stands on the shoulders of giants. The processing pipeline wraps:
 | [4xNomos8kSC, 4xLSDIRplusC, 4xHFA2k](https://github.com/Phhofm/models) | Community RRDBNet models by Phhofm (CC-BY-4.0) | Phhofm/models |
 | [4x_NMKD-Siax_200k](https://openmodeldb.info/models/4x-NMKD-Siax-CX) | Community RRDBNet model by NMKD (WTFPL) | openmodeldb.info |
 | [upscayl/custom-models](https://github.com/upscayl/custom-models) | ncnn conversions of the community models | upscayl/custom-models |
+| [SeedVR2](https://github.com/ByteDance-Seed/SeedVR) | Diffusion video restoration (Apache-2.0) | ByteDance-Seed/SeedVR |
+| [ComfyUI-SeedVR2_VideoUpscaler](https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler) | SeedVR2 CLI with low-VRAM support (Apache-2.0) | numz/ComfyUI-SeedVR2_VideoUpscaler |
+| [PyTorch](https://pytorch.org/) | SeedVR2 runtime | pytorch/pytorch |
 | [Next.js](https://nextjs.org/) | Web app framework | vercel/next.js |
 | [shadcn/ui](https://ui.shadcn.com/) | UI component library | shadcn-ui/ui |
 | [Go](https://go.dev/) | API runtime | go.dev |

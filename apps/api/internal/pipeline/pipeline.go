@@ -14,11 +14,14 @@ import (
 
 // PipelineStep defines a single operation in a pipeline.
 type PipelineStep struct {
-	Operation         string  `json:"operation"`
-	Scale             int     `json:"scale,omitempty"`
-	Processor         string  `json:"processor,omitempty"`
-	Model             string  `json:"model,omitempty"`
-	NoiseLevel        int     `json:"noise_level,omitempty"`
+	Operation  string `json:"operation"`
+	Scale      int    `json:"scale,omitempty"`
+	Processor  string `json:"processor,omitempty"`
+	Model      string `json:"model,omitempty"`
+	NoiseLevel int    `json:"noise_level,omitempty"`
+	// TargetHeight is the SeedVR2 output size: the short side in pixels
+	// (the height of a landscape video). SeedVR2 has no scale factor.
+	TargetHeight      int     `json:"target_height,omitempty"`
 	Multiplier        int     `json:"multiplier,omitempty"`
 	RifeModel         string  `json:"rife_model,omitempty"`
 	SceneThresh       float64 `json:"scene_thresh,omitempty"`
@@ -57,7 +60,49 @@ var QualityToCRF = map[string]int{
 
 // ValidProcessors lists allowed upscale processors.
 var ValidProcessors = map[string]bool{
-	"": true, "realesrgan": true, "libplacebo": true, "realcugan": true,
+	"": true, "realesrgan": true, "libplacebo": true, "realcugan": true, "seedvr2": true,
+}
+
+// SeedVR2Models lists the SeedVR2 model names. They belong to the seedvr2
+// processor only, and take a target height instead of a scale factor.
+var SeedVR2Models = map[string]bool{
+	"seedvr2-3b": true, "seedvr2-7b": true, "seedvr2-7b-sharp": true,
+}
+
+// ValidSeedVR2Heights lists the accepted SeedVR2 target heights.
+var ValidSeedVR2Heights = map[int]bool{720: true, 1080: true, 1440: true, 2160: true}
+
+// ValidateUpscale checks the upscale parameters shared by one-off jobs and
+// pipeline steps. scale is the effective scale (0 already defaulted to 2).
+func ValidateUpscale(processor, model string, scale, noiseLevel, targetHeight int) error {
+	if !ValidProcessors[processor] {
+		return fmt.Errorf("invalid processor %q", processor)
+	}
+	if processor == "seedvr2" {
+		if model != "" && !SeedVR2Models[model] {
+			return fmt.Errorf("model %q is not a SeedVR2 model", model)
+		}
+		if targetHeight != 0 && !ValidSeedVR2Heights[targetHeight] {
+			return fmt.Errorf("target_height must be 720, 1080, 1440 or 2160")
+		}
+		return nil
+	}
+	if SeedVR2Models[model] {
+		return fmt.Errorf("model %q needs the seedvr2 processor", model)
+	}
+	if scale != 2 && scale != 3 && scale != 4 {
+		return fmt.Errorf("scale must be 2, 3, or 4")
+	}
+	if !ValidUpscaleModels[model] {
+		return fmt.Errorf("invalid model %q", model)
+	}
+	if !ValidModelScale(model, scale) {
+		return fmt.Errorf("model %q does not support scale %d", model, scale)
+	}
+	if noiseLevel < 0 || noiseLevel > 3 {
+		return fmt.Errorf("noise_level must be between 0 and 3")
+	}
+	return nil
 }
 
 // ModelScaleCompat maps model/shader name to the set of valid scale factors.

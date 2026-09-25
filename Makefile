@@ -7,7 +7,7 @@ APP_PORT ?= 4750
 HOST_PROCESS_DIR ?= ./data
 PROCESS_DIR ?= $(abspath $(HOST_PROCESS_DIR))
 
-.PHONY: all init gen-secrets quickstart build build-api build-app run run-gpu stop logs dev dev-api dev-app clean deploy
+.PHONY: all init gen-secrets quickstart build build-api build-api-seedvr2 build-app run run-gpu run-seedvr2 stop logs dev dev-api dev-app clean deploy
 
 # --- Build ---
 
@@ -53,6 +53,10 @@ build: build-api build-app
 build-api:
 	docker build --platform=linux/amd64 -t anime-upscaling-api apps/api
 
+# The API image with SeedVR2 (PyTorch + CUDA); NVIDIA only, several GB larger.
+build-api-seedvr2:
+	docker build --platform=linux/amd64 --target seedvr2 -t anime-upscaling-api:seedvr2 apps/api
+
 build-app:
 	docker build -t anime-upscaling-app apps/web
 
@@ -64,6 +68,10 @@ run: init
 
 run-gpu: init
 	docker compose -f docker-compose.yml -f docker-compose.nvidia.yml up -d --build
+	@echo "App: http://localhost:$(APP_PORT)"
+
+run-seedvr2: init
+	docker compose -f docker-compose.yml -f docker-compose.nvidia.yml -f docker-compose.seedvr2.yml up -d --build
 	@echo "App: http://localhost:$(APP_PORT)"
 
 stop:

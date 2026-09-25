@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { sectionCardPlain } from "@/lib/section";
 import {
   CLEANUP_FOLDER_OPTIONS,
+  DEFAULT_MODEL,
   PROCESSOR_OPTIONS,
   QUALITY_PRESETS,
   validNoiseLevel,
@@ -62,6 +63,9 @@ function stepChips(step: PipelineStep): string[] {
       const proc =
         PROCESSOR_OPTIONS.find((p) => p.value === (step.processor ?? "realesrgan"))
           ?.label ?? "RealESRGAN";
+      if (step.processor === "seedvr2") {
+        return [proc, step.model ?? DEFAULT_MODEL.seedvr2, `${step.target_height ?? 1080}p`];
+      }
       const chips = [proc, step.model ?? "realesr-animevideov3", `${step.scale ?? 2}×`];
       // The level that actually applies: a saved pipeline can carry one its
       // model ignores (Real-ESRGAN without a denoise variant).
@@ -101,6 +105,7 @@ interface PipelineStepCardProps {
   totalSteps: number;
   allSteps: PipelineStep[];
   gpuVendor?: GPUVendor;
+  seedvr2Available?: boolean;
   onChange: (step: PipelineStep) => void;
   onRemove: () => void;
   onMoveUp: () => void;
@@ -113,6 +118,7 @@ export function PipelineStepCard({
   totalSteps,
   allSteps,
   gpuVendor = "",
+  seedvr2Available = false,
   onChange,
   onRemove,
   onMoveUp,
@@ -189,6 +195,7 @@ export function PipelineStepCard({
           config={step}
           onChange={(patch) => onChange({ ...step, ...patch })}
           gpuVendor={gpuVendor}
+          seedvr2Available={seedvr2Available}
         />
       ) : (
         <button

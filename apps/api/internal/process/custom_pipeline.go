@@ -213,9 +213,10 @@ func RunCustomPipelineForFile(
 				scale = 2
 			}
 			upOpts := runner.UpscaleOptions{
-				Processor:  step.Processor,
-				Model:      step.Model,
-				NoiseLevel: step.NoiseLevel,
+				Processor:    step.Processor,
+				Model:        step.Model,
+				NoiseLevel:   step.NoiseLevel,
+				TargetHeight: step.TargetHeight,
 			}
 
 			if err := slots.acquireGPU(ctx, gpuQ, ffmpegQ, pipelinePriority(stepIdx, index)); err != nil {
@@ -226,7 +227,7 @@ func RunCustomPipelineForFile(
 			gpuSrc := runner.GPUSource(slots.gpuID, slots.streamIdx, cfg.StreamsPerGPU)
 			onEvent(logger.JobLog{
 				Source: gpuSrc, Level: "INFO", Index: index,
-				Message: stepLabel + "Upscale " + fmt.Sprintf("%dx", scale) + ": " + filename,
+				Message: stepLabel + "Upscale " + upscaleLabel(upOpts, scale) + ": " + filename,
 				Time:    time.Now(),
 			})
 
@@ -424,4 +425,13 @@ func dirToSource(cfg config.Config, dir string) string {
 		}
 	}
 	return "input"
+}
+
+// upscaleLabel describes an upscale step in the log: its scale factor, or for
+// SeedVR2, which sizes by target height, that height.
+func upscaleLabel(opts runner.UpscaleOptions, scale int) string {
+	if opts.Processor == "seedvr2" {
+		return fmt.Sprintf("SeedVR2 %dp", opts.WithDefaults().TargetHeight)
+	}
+	return fmt.Sprintf("%dx", scale)
 }

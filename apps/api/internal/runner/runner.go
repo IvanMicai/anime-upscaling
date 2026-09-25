@@ -181,9 +181,11 @@ func NewRunner(cfg config.Config) *Runner {
 
 // UpscaleOptions holds processor and model parameters for video2x upscaling.
 type UpscaleOptions struct {
-	Processor  string // "realesrgan" (default), "libplacebo", "realcugan"
+	Processor  string // "realesrgan" (default), "libplacebo", "realcugan", "seedvr2"
 	Model      string // model/shader name (depends on processor)
 	NoiseLevel int    // 0=off, 1-3=noise reduction level
+	// TargetHeight is the SeedVR2 output short side in pixels (seedvr2 only).
+	TargetHeight int
 }
 
 // EffectiveNoiseLevel is the noise level actually passed to video2x.
@@ -219,7 +221,12 @@ func (o UpscaleOptions) WithDefaults() UpscaleOptions {
 			o.Model = "anime4k-v4-a"
 		case "realcugan":
 			o.Model = "models-se"
+		case "seedvr2":
+			o.Model = DefaultSeedVR2Model
 		}
+	}
+	if o.Processor == "seedvr2" && o.TargetHeight == 0 {
+		o.TargetHeight = DefaultSeedVR2Height
 	}
 	return o
 }

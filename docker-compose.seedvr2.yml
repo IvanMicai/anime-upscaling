@@ -1,0 +1,15 @@
+# SeedVR2 override: builds the API image with the SeedVR2 runtime (PyTorch +
+# CUDA 12.8, several GB larger). Needs an NVIDIA GPU, so combine it with the
+# NVIDIA override:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.nvidia.yml \
+#     -f docker-compose.seedvr2.yml up -d --build      (or: make run-seedvr2)
+#
+# To use the published image instead, set API_IMAGE_TAG=seedvr2 (or
+# <version>-seedvr2) with docker-compose.hub.yml or docker-compose.portainer.yml.
+services:
+  api:
+    build:
+      context: apps/api
+      target: seedvr2
+    image: anime-upscaling-api:seedvr2

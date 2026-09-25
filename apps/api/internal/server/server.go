@@ -391,6 +391,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		Processor         string   `json:"processor"`
 		Model             string   `json:"model"`
 		NoiseLevel        int      `json:"noise_level"`
+		TargetHeight      int      `json:"target_height"`
 		Quality           string   `json:"quality"`
 		Codec             string   `json:"codec"`
 		Preset            string   `json:"preset"`
@@ -419,25 +420,9 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 	if req.Scale == 0 {
 		req.Scale = 2
 	}
-	if req.Type == "upscale" && req.Scale != 2 && req.Scale != 3 && req.Scale != 4 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "scale must be 2, 3, or 4"})
-		return
-	}
 	if req.Type == "upscale" {
-		if req.Processor != "" && !pipeline.ValidProcessors[req.Processor] {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid processor"})
-			return
-		}
-		if req.Model != "" && !pipeline.ValidUpscaleModels[req.Model] {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid model"})
-			return
-		}
-		if req.Model != "" && !pipeline.ValidModelScale(req.Model, req.Scale) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("model %q does not support scale %d", req.Model, req.Scale)})
-			return
-		}
-		if req.NoiseLevel < 0 || req.NoiseLevel > 3 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "noise_level must be between 0 and 3"})
+		if err := pipeline.ValidateUpscale(req.Processor, req.Model, req.Scale, req.NoiseLevel, req.TargetHeight); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 	}
@@ -612,6 +597,7 @@ func handleCreateJob(jm *JobManager, cfg config.Config, w http.ResponseWriter, r
 		Processor:         req.Processor,
 		Model:             req.Model,
 		NoiseLevel:        req.NoiseLevel,
+		TargetHeight:      req.TargetHeight,
 		Quality:           req.Quality,
 		Codec:             req.Codec,
 		Preset:            req.Preset,

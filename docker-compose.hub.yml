@@ -1,6 +1,6 @@
 services:
   api:
-    image: ${DOCKERHUB_NAMESPACE:-ivanmicai}/anime-upscaling-api:${IMAGE_TAG:-latest}
+    image: ${DOCKERHUB_NAMESPACE:-ivanmicai}/anime-upscaling-api:${API_IMAGE_TAG:-${IMAGE_TAG:-latest}}
     container_name: anime-upscaling-api
     env_file: .env
     environment:

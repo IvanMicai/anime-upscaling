@@ -87,7 +87,35 @@ nmkd-siax 4x_NMKD-Siax_200k 519bffb4912e295155d3cb5d6a29639d217ccca55f80962d8f67
 hfa2k 4xHFA2k 4576ed5c2fc5fa250d3c3d585ef02248f26abdfc1867088078f501fe71e5d61e 8a135402b4f39286121b76abb47601a6b7b7e8d4f3e999a5aaa45ed277824fb4
 EOF
 
-FROM arch
+# ---- seedvr2-build: the SeedVR2 runtime, for the opt-in seedvr2 image ----
+# SeedVR2 (ByteDance, Apache-2.0) runs through the headless CLI of
+# numz/ComfyUI-SeedVR2_VideoUpscaler, pinned below; the repo is dormant, so it
+# is treated as frozen. Python comes from uv's standalone builds (the Arch
+# snapshot's Python is newer than PyTorch 2.9 supports well), and the packages
+# from seedvr2/requirements.txt, a lock compiled against the pinned commit's
+# date (see seedvr2/requirements.in). The PyTorch wheels bundle the CUDA 12.8
+# runtime, which has Blackwell (sm_120) kernels; the driver comes from the
+# host through the NVIDIA Container Toolkit. Weights are not baked in: they
+# download on first use into $PROCESS_DIR/models/seedvr2.
+FROM arch AS seedvr2-build
+ARG SEEDVR2_REF=4490bd1f482e026674543386bb2a4d176da245b9
+COPY --from=ghcr.io/astral-sh/uv:0.12.19 /uv /usr/local/bin/uv
+ENV UV_PYTHON_INSTALL_DIR=/opt/seedvr2/python UV_NO_CACHE=1 UV_LINK_MODE=copy
+RUN pacman -Syyuu --noconfirm --needed git \
+ && rm -rf /var/cache/pacman/pkg/*
+RUN git clone https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git /opt/seedvr2/app \
+ && git -C /opt/seedvr2/app checkout "$SEEDVR2_REF" \
+ && rm -rf /opt/seedvr2/app/.git /opt/seedvr2/app/docs /opt/seedvr2/app/example_workflows
+COPY seedvr2/requirements.txt /tmp/seedvr2-requirements.txt
+RUN uv venv --python 3.12 /opt/seedvr2/venv \
+ && VIRTUAL_ENV=/opt/seedvr2/venv uv pip install --no-deps -r /tmp/seedvr2-requirements.txt \
+        --index-url https://download.pytorch.org/whl/cu128 \
+        --extra-index-url https://pypi.org/simple --index-strategy unsafe-best-match \
+ && /opt/seedvr2/venv/bin/python -c "import torch; assert 'sm_120' in torch._C._cuda_getArchFlags(), torch._C._cuda_getArchFlags(); print('torch', torch.__version__, torch.version.cuda)" \
+ && cd /opt/seedvr2/app && /opt/seedvr2/venv/bin/python inference_cli.py --help > /dev/null
+
+# ---- runtime: what both API images share ----
+FROM arch AS runtime
 # Arch installs the Mesa manifests without the .x86_64 suffix Debian/Ubuntu use.
 ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json\
 :/usr/share/vulkan/icd.d/radeon_icd.json\
@@ -112,8 +140,20 @@ RUN pacman -Syyuu --noconfirm --needed \
 COPY --from=video2x /out/usr/ /usr/
 RUN video2x --version
 WORKDIR /host
+EXPOSE 4751
+ENTRYPOINT ["/usr/local/bin/api", "serve"]
+
+# ---- seedvr2: the API image plus SeedVR2 (docker build --target seedvr2) ----
+# Several GB larger, and only useful with an NVIDIA GPU. The runtime goes in
+# before the API binary so a Go-only change does not rebuild it.
+FROM runtime AS seedvr2
+COPY --from=seedvr2-build /opt/seedvr2 /opt/seedvr2
 COPY --from=builder /api /usr/local/bin/api
 COPY --from=ffmpeg /opt/ffmpeg/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg /opt/ffmpeg/bin/ffprobe /usr/local/bin/ffprobe
-EXPOSE 4751
-ENTRYPOINT ["/usr/local/bin/api", "serve"]
+
+# ---- api: the default image (last stage, so a plain `docker build` gets it) ----
+FROM runtime AS api
+COPY --from=builder /api /usr/local/bin/api
+COPY --from=ffmpeg /opt/ffmpeg/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=ffmpeg /opt/ffmpeg/bin/ffprobe /usr/local/bin/ffprobe
