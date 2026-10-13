@@ -38,8 +38,15 @@ export function computePreview(steps: PipelineStep[]): VideoState {
   for (const step of steps) {
     switch (step.operation) {
       case "upscale":
-        state.width *= step.scale ?? 2;
-        state.height *= step.scale ?? 2;
+        if (step.processor === "seedvr2") {
+          // SeedVR2 sets the short side (the height of a landscape video).
+          const h = step.target_height ?? 1080;
+          state.width = Math.round((state.width * h) / state.height);
+          state.height = h;
+        } else {
+          state.width *= step.scale ?? 2;
+          state.height *= step.scale ?? 2;
+        }
         break;
       case "interpolate":
         state.fps *= step.multiplier ?? 2;
@@ -100,6 +107,7 @@ export function formatStepSummary(steps: PipelineStep[]): string {
     switch (s.operation) {
       case "upscale": {
         const procLabel = PROCESSOR_OPTIONS.find(p => p.value === (s.processor ?? "realesrgan"))?.label ?? "RealESRGAN";
+        if (s.processor === "seedvr2") return `Upscale ${s.target_height ?? 1080}p (${procLabel})`;
         return `Upscale ${s.scale ?? 2}x (${procLabel})`;
       }
       case "interpolate":

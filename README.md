@@ -67,6 +67,9 @@ the Compose network.
 - File explorer with natural-sort episode ordering across deep folder trees.
 - Configurable concurrency: GPU streams and FFmpeg worker count per host.
 - Optional hardware-encoded output (NVIDIA / AMD / Intel) for `optimize` jobs.
+- Dual audio: merge two releases of an episode into one file with the better
+  picture and both audio tracks, synced segment by segment; the sync verdict is
+  written into the file and shown in the file explorer ([docs](docs/DUAL-AUDIO.md)).
 - Docker Compose deployment with a generic default and an NVIDIA GPU overlay.
 - Portainer-friendly stack file for one-click deploys on home servers.
 - Storybook for the UI component library (`apps/web`).
@@ -92,6 +95,11 @@ truth).
 | `realesrgan` | `realesr-animevideov3` | 2x · 3x · 4x | Anime video — fastest realesrgan variant |
 | `realesrgan` | `realesrgan-plus-anime` | 4x | Stylised anime — higher quality, slower |
 | `realesrgan` | `realesrgan-plus` | 4x | Live action / photographic content |
+| `realesrgan` | `realesr-generalv3` | 4x | General content — lighter than `realesrgan-plus`; noise level > 0 uses the denoise (`-wdn`) variant |
+| `realesrgan` | `nomos8ksc` | 4x | Live action / film — realistic detail, removes compression and blur |
+| `realesrgan` | `lsdirplusc` | 4x | Live action / film — `realesrgan-plus` fine-tuned on real photos, strong on compressed sources |
+| `realesrgan` | `nmkd-siax` | 4x | Clean or lightly compressed sources — faithful, adds little invented texture |
+| `realesrgan` | `hfa2k` | 4x | Anime films — trained on frames from modern anime movies |
 | `libplacebo` (Anime4K v4) | `anime4k-v4-a` · `…-a+a` | 2x · 3x · 4x | Lightweight shader — restores fine lines |
 | `libplacebo` (Anime4K v4) | `anime4k-v4-b` · `…-b+b` | 2x · 3x · 4x | Balanced shader — general anime |
 | `libplacebo` (Anime4K v4) | `anime4k-v4-c` · `…-c+a` | 2x · 3x · 4x | Sharp shader — CGI and flat colors |
@@ -99,16 +107,42 @@ truth).
 | `realcugan` | `models-se` | 2x · 3x · 4x | Standard edition — general purpose |
 | `realcugan` | `models-pro` | 2x · 3x | Pro — more detail preservation |
 | `realcugan` | `models-nose` | 2x | No-denoise — preserves film grain |
+| `seedvr2` | `seedvr2-7b` · `seedvr2-7b-sharp` · `seedvr2-3b` | target 720p · 1080p · 1440p · 4K | Live action and films — diffusion restoration, best quality, very slow ([SeedVR2 image](#seedvr2) only) |
 
 **When to use which processor:**
 
 - **RealESRGAN** — pure neural upscaler. Best raw quality for anime video,
   highest VRAM cost.
+  For live action and films, try `nomos8ksc` or `lsdirplusc`; they are 4x
+  only, so add an Optimize step with a target resolution to land at 1080p or
+  4K instead of keeping the full 4x frame.
 - **Anime4K (libplacebo)** — GPU shaders, very fast and lightweight, runs
   comfortably alongside other workloads. Good when you need to upscale a whole
   season overnight.
 - **RealCUGAN** — middle ground. Strong on stylised content and gives the most
   control over denoise behaviour via the `models-*` variants.
+
+### SeedVR2
+
+[SeedVR2](https://github.com/ByteDance-Seed/SeedVR) is a diffusion-transformer
+video restoration model: the open counterpart of the generative upscalers in
+commercial video tools. It restores detail and removes compression instead of
+only sharpening, and keeps frames consistent over time. It is much heavier than
+everything above, so it ships in a separate API image:
+
+- **Image:** `ivanmicai/anime-upscaling-api:seedvr2` or `:<version>-seedvr2`
+  (set `API_IMAGE_TAG=seedvr2` with the Hub or Portainer compose file), or build
+  it with `make build-api-seedvr2` / `make run-seedvr2`. NVIDIA only; the UI offers the
+  `seedvr2` processor only when the API runs this image.
+- **GPU:** one run takes a whole GPU; 16 GB is enough with the default memory
+  settings (see `SEEDVR2_*` in `.env.example`). Expect well under real time.
+- **RAM:** part of the model is swapped to system RAM; budget ~16 GB per GPU
+  running SeedVR2 in `API_MEM_LIMIT`.
+- **Output:** you pick a target height instead of a scale; audio, subtitles and
+  chapters are kept. The first run downloads the weights (~9 GB for 7B) into
+  `models/seedvr2` under the data folder.
+- **Anime:** being generative, it can redraw line art. Compare it with the
+  Real-ESRGAN models before running a whole season.
 
 ### Interpolation models (RIFE)
 
@@ -139,6 +173,7 @@ Each job — and each step inside a pipeline — has an operation type:
 
 | Operation | What it does |
 | --- | --- |
+| `merge` | Joins two releases of the same episode — `name.pt-br.mp4` + `name.en.mp4` → `merged/name.mkv` — keeping the better picture and both audio tracks in sync. See [Dual audio](docs/DUAL-AUDIO.md). |
 | `upscale` | Runs video2x with the chosen processor + model + scale. |
 | `interpolate` | Runs RIFE to multiply the frame rate (2x, 3x, 4x…). |
 | `optimize` | Re-encodes with the chosen codec, CRF preset and audio settings. |
@@ -174,7 +209,7 @@ run on a GPU:
 
 ```bash
 cp .env.example .env
-mkdir -p data/input data/output data/optimized data/interpolated data/temp
+mkdir -p data/input data/merged data/output data/optimized data/interpolated data/temp
 ```
 
 Edit `.env` before exposing the app outside your machine. Generate the secret
@@ -290,6 +325,7 @@ rendered from the files below — see [`site/`](site/README.md).
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Deployment guide](docs/DEPLOYMENT.md)
+- [Dual audio](docs/DUAL-AUDIO.md)
 - [Releasing guide](docs/RELEASING.md)
 - [API reference](apps/api/README.md)
 - [App notes](apps/web/README.md)
@@ -310,6 +346,12 @@ This project stands on the shoulders of giants. The processing pipeline wraps:
 | [Real-CUGAN](https://github.com/bilibili/ailab/tree/main/Real-CUGAN) | RealCUGAN models | bilibili/ailab |
 | [RIFE](https://github.com/megvii-research/ECCV2022-RIFE) | Frame interpolation | megvii-research/ECCV2022-RIFE |
 | [rife-ncnn-vulkan](https://github.com/nihui/rife-ncnn-vulkan) | RIFE Vulkan runtime | nihui/rife-ncnn-vulkan |
+| [4xNomos8kSC, 4xLSDIRplusC, 4xHFA2k](https://github.com/Phhofm/models) | Community RRDBNet models by Phhofm (CC-BY-4.0) | Phhofm/models |
+| [4x_NMKD-Siax_200k](https://openmodeldb.info/models/4x-NMKD-Siax-CX) | Community RRDBNet model by NMKD (WTFPL) | openmodeldb.info |
+| [upscayl/custom-models](https://github.com/upscayl/custom-models) | ncnn conversions of the community models | upscayl/custom-models |
+| [SeedVR2](https://github.com/ByteDance-Seed/SeedVR) | Diffusion video restoration (Apache-2.0) | ByteDance-Seed/SeedVR |
+| [ComfyUI-SeedVR2_VideoUpscaler](https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler) | SeedVR2 CLI with low-VRAM support (Apache-2.0) | numz/ComfyUI-SeedVR2_VideoUpscaler |
+| [PyTorch](https://pytorch.org/) | SeedVR2 runtime | pytorch/pytorch |
 | [Next.js](https://nextjs.org/) | Web app framework | vercel/next.js |
 | [shadcn/ui](https://ui.shadcn.com/) | UI component library | shadcn-ui/ui |
 | [Go](https://go.dev/) | API runtime | go.dev |

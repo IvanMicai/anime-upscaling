@@ -5,6 +5,7 @@ import type { ResolvedProcessing } from "@/lib/processing";
 // Solid fill colors for the determinate bar, matching each stage's accent.
 const BAR_FILL: Record<FolderKey, string> = {
   input: "bg-yellow-500",
+  merged: "bg-pink-500",
   output: "bg-blue-500",
   optimized: "bg-green-500",
   interpolated: "bg-purple-500",

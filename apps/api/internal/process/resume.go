@@ -112,6 +112,80 @@ func GroupForAdmission(cfg config.Config, steps []pipeline.PipelineStep, plans [
 	return groups
 }
 
+// producer is a pipeline step that writes a stage folder, paired with it.
+type producer struct {
+	stepIdx int
+	dir     string
+}
+
+// stageProducers lists the producing steps in pipeline order.
+func stageProducers(cfg config.Config, steps []pipeline.PipelineStep) []producer {
+	var out []producer
+	for i, s := range steps {
+		stage := pipeline.StepOutputStage(s.Operation)
+		if stage == "" {
+			continue
+		}
+		if dir := StageDir(cfg, stage); dir != "" {
+			out = append(out, producer{stepIdx: i, dir: dir})
+		}
+	}
+	return out
+}
+
+// StrandedStatus says where a file stands in a pipeline's stage folders.
+type StrandedStatus int
+
+const (
+	// StrandedMissing: no stage folder this pipeline writes holds the file.
+	StrandedMissing StrandedStatus = iota
+	// StrandedResumable: the file sits mid-pipeline and has work left.
+	StrandedResumable
+	// StrandedFinished: the file already went through the last producing step.
+	StrandedFinished
+)
+
+// LocateStranded plans a file the user picked that is absent from the run's
+// source folder. The file picker lists every stage at once, so an episode that
+// was upscaled (and cleaned out of the source) by an earlier run is right there
+// to be picked — and it should resume, not be refused. Like an adopted orphan,
+// it resumes at the step after the furthest producing step whose output folder
+// still holds it.
+func LocateStranded(cfg config.Config, steps []pipeline.PipelineStep, name string) (FilePlan, StrandedStatus) {
+	producers := stageProducers(cfg, steps)
+	var found *producer
+	for i := range producers {
+		if files.FileExists(filepath.Join(producers[i].dir, name)) {
+			found = &producers[i] // later stages overwrite earlier ones
+		}
+	}
+	if found == nil {
+		return FilePlan{}, StrandedMissing
+	}
+	if found.stepIdx >= producers[len(producers)-1].stepIdx {
+		return FilePlan{}, StrandedFinished
+	}
+	return FilePlan{Name: name, StartStep: found.stepIdx + 1, InputDir: found.dir}, StrandedResumable
+}
+
+// WithStranded adds picked stranded files to a plan, skipping any the planner
+// already adopted as orphans, and restores the plan's natural order (see
+// PlanPipelineFiles for why the order matters).
+func WithStranded(plans, stranded []FilePlan) []FilePlan {
+	have := make(map[string]bool, len(plans))
+	for _, p := range plans {
+		have[p.Name] = true
+	}
+	for _, p := range stranded {
+		if !have[p.Name] {
+			have[p.Name] = true
+			plans = append(plans, p)
+		}
+	}
+	sort.SliceStable(plans, func(i, j int) bool { return files.NaturalLess(plans[i].Name, plans[j].Name) })
+	return plans
+}
+
 // PlanPipelineFiles builds the execution plan for a custom-pipeline run.
 //
 // Files handed in via sourceFiles always start at step 0: their presence in the
@@ -149,21 +223,7 @@ func PlanPipelineFiles(cfg config.Config, steps []pipeline.PipelineStep, sourceD
 		plans = append(plans, FilePlan{Name: f, StartStep: 0, InputDir: sourceDir})
 	}
 
-	// Producing steps in pipeline order, paired with the folder they write to.
-	type producer struct {
-		stepIdx int
-		dir     string
-	}
-	var producers []producer
-	for i, s := range steps {
-		stage := pipeline.StepOutputStage(s.Operation)
-		if stage == "" {
-			continue
-		}
-		if dir := StageDir(cfg, stage); dir != "" {
-			producers = append(producers, producer{stepIdx: i, dir: dir})
-		}
-	}
+	producers := stageProducers(cfg, steps)
 	if len(producers) == 0 {
 		return plans
 	}

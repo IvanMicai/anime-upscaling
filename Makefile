@@ -7,7 +7,7 @@ APP_PORT ?= 4750
 HOST_PROCESS_DIR ?= ./data
 PROCESS_DIR ?= $(abspath $(HOST_PROCESS_DIR))
 
-.PHONY: all init gen-secrets quickstart build build-api build-app run run-gpu stop logs dev dev-api dev-app clean deploy
+.PHONY: all init gen-secrets quickstart build build-api build-api-seedvr2 build-app run run-gpu run-seedvr2 stop logs dev dev-api dev-app clean deploy
 
 # --- Build ---
 
@@ -15,6 +15,7 @@ all: build
 
 init: gen-secrets
 	@mkdir -p "$(HOST_PROCESS_DIR)/input" \
+		"$(HOST_PROCESS_DIR)/merged" \
 		"$(HOST_PROCESS_DIR)/output" \
 		"$(HOST_PROCESS_DIR)/optimized" \
 		"$(HOST_PROCESS_DIR)/interpolated" \
@@ -48,9 +49,13 @@ quickstart: init
 
 build: build-api build-app
 
-# --platform: video2x base is amd64-only; lets the build run on Apple Silicon.
+# --platform: video2x image is amd64-only; lets the build run on Apple Silicon.
 build-api:
 	docker build --platform=linux/amd64 -t anime-upscaling-api apps/api
+
+# The API image with SeedVR2 (PyTorch + CUDA); NVIDIA only, several GB larger.
+build-api-seedvr2:
+	docker build --platform=linux/amd64 --target seedvr2 -t anime-upscaling-api:seedvr2 apps/api
 
 build-app:
 	docker build -t anime-upscaling-app apps/web
@@ -65,6 +70,10 @@ run-gpu: init
 	docker compose -f docker-compose.yml -f docker-compose.nvidia.yml up -d --build
 	@echo "App: http://localhost:$(APP_PORT)"
 
+run-seedvr2: init
+	docker compose -f docker-compose.yml -f docker-compose.nvidia.yml -f docker-compose.seedvr2.yml up -d --build
+	@echo "App: http://localhost:$(APP_PORT)"
+
 stop:
 	docker compose down
 
@@ -77,7 +86,8 @@ dev:
 	$(MAKE) dev-api & $(MAKE) dev-app & wait
 
 dev-api:
-	@mkdir -p "$(PROCESS_DIR)/input" "$(PROCESS_DIR)/output" "$(PROCESS_DIR)/optimized" \
+	@mkdir -p "$(PROCESS_DIR)/input" "$(PROCESS_DIR)/merged" "$(PROCESS_DIR)/output" \
+		"$(PROCESS_DIR)/optimized" \
 		"$(PROCESS_DIR)/interpolated" "$(PROCESS_DIR)/temp"
 	cd apps/api && go run ./cmd/animeup serve
 

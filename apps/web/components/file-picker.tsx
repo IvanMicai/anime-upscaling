@@ -39,49 +39,13 @@ import {
   formatBytes,
   formatBytesCompact,
   formatResolutionLabel,
-  formatFrameRate,
   formatCacheAge,
   joinPath,
   type FolderKey,
-  type FolderEntry,
 } from "@/lib/file-utils";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { FileTooltipContent } from "@/components/file-tooltip-content";
 import type { VideoFile, DirectorySizes } from "@/lib/types";
-
-function FileTooltipContent({ entry }: { entry: FolderEntry }) {
-  return (
-    <div className="space-y-1 text-xs">
-      <div>Size: {formatBytes(entry.size)}</div>
-      {entry.width && entry.height && (
-        <div>Resolution: {entry.width}x{entry.height}</div>
-      )}
-      {entry.frameRate ? (
-        <div>Framerate: {formatFrameRate(entry.frameRate)}</div>
-      ) : null}
-      {entry.audio && entry.audio.length > 0 && (
-        <div>
-          <div className="font-medium">Audio ({entry.audio.length}):</div>
-          {entry.audio.map((a, i) => (
-            <div key={i} className="ml-2 text-muted-foreground">
-              {[a.title, a.language, a.codec, a.channels ? `${a.channels}ch` : null]
-                .filter(Boolean).join(" · ") || `Track ${a.index}`}
-            </div>
-          ))}
-        </div>
-      )}
-      {entry.subtitles && entry.subtitles.length > 0 && (
-        <div>
-          <div className="font-medium">Subtitles ({entry.subtitles.length}):</div>
-          {entry.subtitles.map((s, i) => (
-            <div key={i} className="ml-2 text-muted-foreground">
-              {[s.title, s.language, s.codec].filter(Boolean).join(" · ") || `Track ${s.index}`}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 interface FilePickerProps {
   selected: string[];
@@ -89,9 +53,13 @@ interface FilePickerProps {
   dir?: string;
   path?: string;
   onPathChange?: (path: string) => void;
+  // When set, directory rows get a checkbox and whole folders can be picked
+  // (paths relative to `dir`). Used by merge, where "two folders" is the unit.
+  selectedDirs?: string[];
+  onDirsChange?: (dirs: string[]) => void;
 }
 
-export function FilePicker({ selected, onChange, dir = "input", path: pathProp, onPathChange }: FilePickerProps) {
+export function FilePicker({ selected, onChange, dir = "input", path: pathProp, onPathChange, selectedDirs, onDirsChange }: FilePickerProps) {
   const [internalPath, setInternalPath] = useState<string>("");
   const path = pathProp ?? internalPath;
   const setPath = (p: string) => {
@@ -119,6 +87,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
   // so this must run in an effect rather than during render.
   useEffect(() => {
     onChange([]);
+    if (onDirsChange) onDirsChange([]);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setInternalPath("");
     if (onPathChange) onPathChange("");
@@ -184,6 +153,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
     if (filters.has("optimized") && file.has_optimized) return true;
     if (filters.has("input") && (dir === "input" || file.has_input)) return true;
     if (filters.has("interpolated") && file.has_interpolated) return true;
+    if (filters.has("merged") && file.has_merged) return true;
     return false;
   }
 
@@ -209,7 +179,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
   }
 
   function getDeleteSummary() {
-    const counts: Record<FolderKey, number> = { input: 0, output: 0, optimized: 0, interpolated: 0 };
+    const counts: Record<FolderKey, number> = { input: 0, merged: 0, output: 0, optimized: 0, interpolated: 0 };
     for (const folders of deleteSelections.values()) {
       for (const f of folders) counts[f]++;
     }
@@ -254,6 +224,7 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
     totals.output += sizes.output;
     totals.optimized += sizes.optimized;
     totals.interpolated += sizes.interpolated;
+    totals.merged += sizes.merged ?? 0;
   }
   // Selection identifiers are file paths relative to the source dir
   // (e.g. "season1/ep01.mkv") so picks survive subfolder navigation.
@@ -416,13 +387,36 @@ export function FilePicker({ selected, onChange, dir = "input", path: pathProp, 
               )}
               {!loading && directories.map((name) => {
                 const sizes = directorySizes[name];
+                const dirRel = joinPath(path, name);
+                const dirPicked = !!selectedDirs?.includes(dirRel);
                 return (
                   <TableRow
                     key={`dir:${name}`}
                     className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => setPath(joinPath(path, name))}
+                    onClick={() => setPath(dirRel)}
                   >
-                    <TableCell className="w-8" />
+                    <TableCell
+                      className="w-8"
+                      onClick={(e) => {
+                        if (!onDirsChange) return;
+                        // The row navigates; the checkbox cell picks the folder.
+                        e.stopPropagation();
+                        onDirsChange(
+                          dirPicked
+                            ? (selectedDirs ?? []).filter((d) => d !== dirRel)
+                            : [...(selectedDirs ?? []), dirRel],
+                        );
+                      }}
+                    >
+                      {onDirsChange && (
+                        <Checkbox
+                          checked={dirPicked}
+                          tabIndex={-1}
+                          aria-label={`Selecionar a pasta ${name}`}
+                          className="pointer-events-none"
+                        />
+                      )}
+                    </TableCell>
                     <TableCell className="font-mono text-sm">
                       <span className="inline-flex items-center gap-2">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">

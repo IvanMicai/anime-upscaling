@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"anime-upscaling/internal/config"
+	"anime-upscaling/internal/runner"
 )
 
 type settingsResponse struct {
@@ -12,6 +13,9 @@ type settingsResponse struct {
 	FFmpegStreams int    `json:"ffmpeg_streams"`
 	GPUCount      int    `json:"gpu_count"`
 	GPUVendor     string `json:"gpu_vendor"`
+	// SeedVR2Available says whether this image ships the SeedVR2 runtime;
+	// the UI only offers the seedvr2 processor when it does.
+	SeedVR2Available bool `json:"seedvr2_available"`
 }
 
 func handleSettings(jm *JobManager) http.HandlerFunc {
@@ -20,10 +24,11 @@ func handleSettings(jm *JobManager) http.HandlerFunc {
 		case http.MethodGet:
 			cfg := jm.Config()
 			writeJSON(w, http.StatusOK, settingsResponse{
-				StreamsPerGPU: cfg.StreamsPerGPU,
-				FFmpegStreams: cfg.FFmpegStreams,
-				GPUCount:      cfg.GPUCount,
-				GPUVendor:     cfg.GPUVendor,
+				StreamsPerGPU:    cfg.StreamsPerGPU,
+				FFmpegStreams:    cfg.FFmpegStreams,
+				GPUCount:         cfg.GPUCount,
+				GPUVendor:        cfg.GPUVendor,
+				SeedVR2Available: runner.SeedVR2Installed(cfg.SeedVR2Dir),
 			})
 		case http.MethodPut:
 			var body struct {
@@ -58,10 +63,11 @@ func handleSettings(jm *JobManager) http.HandlerFunc {
 			}
 			jm.ApplySettings(body.StreamsPerGPU, body.FFmpegStreams, body.GPUVendor)
 			writeJSON(w, http.StatusOK, settingsResponse{
-				StreamsPerGPU: body.StreamsPerGPU,
-				FFmpegStreams: body.FFmpegStreams,
-				GPUCount:      cfg.GPUCount,
-				GPUVendor:     body.GPUVendor,
+				StreamsPerGPU:    body.StreamsPerGPU,
+				FFmpegStreams:    body.FFmpegStreams,
+				GPUCount:         cfg.GPUCount,
+				GPUVendor:        body.GPUVendor,
+				SeedVR2Available: runner.SeedVR2Installed(cfg.SeedVR2Dir),
 			})
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

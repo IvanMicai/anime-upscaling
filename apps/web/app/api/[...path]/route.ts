@@ -52,6 +52,19 @@ async function proxy(req: NextRequest) {
     });
   }
 
+  // Images (merge frame previews) are binary: reading them as text corrupts
+  // them. They are a few MB at most, so streaming them through is fine — unlike
+  // the multi-GB downloads handled above.
+  if (ct.startsWith("image/")) {
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: {
+        "Content-Type": ct,
+        "Cache-Control": upstream.headers.get("cache-control") || "private, max-age=3600",
+      },
+    });
+  }
+
   // Regular JSON response
   // 101/204/205/304 são "null body status codes" — Response() lança se receber body
   if (upstream.status === 204 || upstream.status === 205 || upstream.status === 304) {
@@ -75,6 +88,7 @@ export async function OPTIONS() {
 
 const DIR_MAP: Record<string, string> = {
   input: "input",
+  merged: "merged",
   output: "output",
   optimized: "optimized",
   interpolated: "interpolated",

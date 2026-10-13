@@ -12,6 +12,8 @@ import type {
   RunPipelineRequest,
   Settings,
   SystemStatus,
+  MergePreview,
+  MergeLocateResponse,
 } from "./types";
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -47,6 +49,31 @@ export function createJob(req: CreateJobRequest): Promise<CreateJobResponse> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });
+}
+
+// The pairing a merge job WOULD do, without starting it.
+export function previewMerge(req: {
+  source?: string;
+  path?: string;
+  files?: string[];
+  paths?: string[];
+}): Promise<MergePreview> {
+  return fetchJSON<MergePreview>("/api/merge/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+// Where time `t` of file `a` falls in file `b`, found by audio.
+export function locateMergeFrame(source: string, a: string, b: string, t: number): Promise<MergeLocateResponse> {
+  const params = new URLSearchParams({ source, a, b, t: t.toFixed(3) });
+  return fetchJSON<MergeLocateResponse>(`/api/merge/locate?${params}`);
+}
+
+// URL of one frame as PNG (lossless on purpose: it is there to judge quality).
+export function mergeFrameUrl(source: string, file: string, t: number): string {
+  return `/api/merge/frame?${new URLSearchParams({ source, file, t: t.toFixed(3) })}`;
 }
 
 export function cancelJob(id: string): Promise<CancelJobResponse> {

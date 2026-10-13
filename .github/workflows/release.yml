@@ -30,7 +30,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.26.5"
+          go-version: "1.26.9"
           cache-dependency-path: apps/api/go.mod
 
       - name: Test API
@@ -152,3 +152,31 @@ jobs:
             org.opencontainers.image.version=${{ steps.semantic.outputs.new_release_version }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
+
+      # The SeedVR2 variant (PyTorch + CUDA runtime) is several GB larger, so
+      # it is built last, after freeing the runner's preinstalled toolchains,
+      # and without cache-to: its layers would evict the other images' cache.
+      - name: Free disk space for the SeedVR2 image
+        if: steps.semantic.outputs.new_release_published == 'true'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af
+          df -h /
+
+      - name: Build and push API image with SeedVR2
+        if: steps.semantic.outputs.new_release_published == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: apps/api
+          file: apps/api/Dockerfile
+          target: seedvr2
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_version }}-seedvr2
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:seedvr2
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.semantic.outputs.new_release_version }}
+          cache-from: type=gha,scope=api

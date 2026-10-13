@@ -7,6 +7,7 @@ import type { FolderKey } from "./file-utils";
  * The `output` column is labelled "Upscaling" in FOLDER_COLORS.
  */
 export const OP_TO_COLUMN: Record<string, FolderKey | null> = {
+  merge: "merged",
   upscale: "output",
   interpolate: "interpolated",
   optimize: "optimized",
@@ -16,6 +17,7 @@ export const OP_TO_COLUMN: Record<string, FolderKey | null> = {
 
 /** Friendly label per operation. */
 export const OP_LABEL: Record<string, string> = {
+  merge: "Merging",
   upscale: "Upscaling",
   interpolate: "Interpolating",
   optimize: "Optimizing",
@@ -112,9 +114,32 @@ export function buildProcessingMap(jobs: Job[]): Map<string, FileProcessing> {
  * (often empty), so infer the running step from the worker + ffmpeg phase, and
  * disambiguate GPU upscale-vs-interpolate using the file's existing stages.
  */
+/**
+ * Whether a simple (non-pipeline) job has already produced its output for this
+ * file. A job holds its whole file list until it ends, so without this every
+ * file it touched reads as queued to the very last one — a merge of 82 showed
+ * all 82 "Na fila" with the first 40 already written and on disk.
+ */
+function simpleJobDone(jobType: string, file: VideoFile): boolean {
+  switch (jobType) {
+    case "merge":
+      return !!file.has_merged;
+    case "upscale":
+      return !!file.has_upscaled;
+    case "interpolate":
+      return !!file.has_interpolated;
+    case "optimize":
+      return !!file.has_optimized;
+    default:
+      return false;
+  }
+}
+
 function operationFor(info: FileProcessing, file: VideoFile): string | null {
   if (info.status === "queued") {
-    if (info.jobType !== "custom_pipeline") return info.jobType;
+    if (info.jobType !== "custom_pipeline") {
+      return simpleJobDone(info.jobType, file) ? null : info.jobType;
+    }
     const ops = info.pipelineOps ?? [];
     const stageExists = (op: string) =>
       (op === "upscale" && file.has_upscaled) ||

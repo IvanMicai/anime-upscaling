@@ -213,9 +213,10 @@ func RunCustomPipelineForFile(
 				scale = 2
 			}
 			upOpts := runner.UpscaleOptions{
-				Processor:  step.Processor,
-				Model:      step.Model,
-				NoiseLevel: step.NoiseLevel,
+				Processor:    step.Processor,
+				Model:        step.Model,
+				NoiseLevel:   step.NoiseLevel,
+				TargetHeight: step.TargetHeight,
 			}
 
 			if err := slots.acquireGPU(ctx, gpuQ, ffmpegQ, pipelinePriority(stepIdx, index)); err != nil {
@@ -226,7 +227,7 @@ func RunCustomPipelineForFile(
 			gpuSrc := runner.GPUSource(slots.gpuID, slots.streamIdx, cfg.StreamsPerGPU)
 			onEvent(logger.JobLog{
 				Source: gpuSrc, Level: "INFO", Index: index,
-				Message: stepLabel + "Upscale " + fmt.Sprintf("%dx", scale) + ": " + filename,
+				Message: stepLabel + "Upscale " + upscaleLabel(upOpts, scale) + ": " + filename,
 				Time:    time.Now(),
 			})
 
@@ -365,12 +366,7 @@ func RunCustomPipelineForFile(
 			}
 			name := filepath.Base(filename)
 
-			folderDirs := map[string]string{
-				"input":        cfg.InputDir,
-				"output":       cfg.OutputDir,
-				"interpolated": cfg.InterpolatedDir,
-				"optimized":    cfg.OptimizedDir,
-			}
+			folderDirs := cfg.StageDirs()
 			// Only attempt folders where the file actually exists, so stages this
 			// file never passed through don't produce noisy "no such file" errors.
 			var present []string
@@ -384,7 +380,7 @@ func RunCustomPipelineForFile(
 			if len(present) > 0 {
 				_, errs := files.DeleteFiles(
 					[]files.DeleteItem{{Name: name, Path: dir, Folders: present}},
-					cfg.InputDir, cfg.OutputDir, cfg.OptimizedDir, cfg.InterpolatedDir, cfg.VideoExts,
+					folderDirs, cfg.VideoExts,
 				)
 				for _, e := range errs {
 					onEvent(logger.JobLog{Source: "PIPELINE", Level: "STEP", Index: index, Message: "Limpeza: " + e, Time: time.Now()})
@@ -421,6 +417,7 @@ func dirToSource(cfg config.Config, dir string) string {
 		{cfg.InputDir, "input"},
 		{cfg.OutputDir, "output"},
 		{cfg.InterpolatedDir, "interpolated"},
+		{cfg.MergedDir, "merged"},
 		{cfg.OptimizedDir, "optimized"},
 	} {
 		if filepath.Clean(pair.dir) == absDir || strings.HasSuffix(absDir, "/"+pair.name) {
@@ -428,4 +425,13 @@ func dirToSource(cfg config.Config, dir string) string {
 		}
 	}
 	return "input"
+}
+
+// upscaleLabel describes an upscale step in the log: its scale factor, or for
+// SeedVR2, which sizes by target height, that height.
+func upscaleLabel(opts runner.UpscaleOptions, scale int) string {
+	if opts.Processor == "seedvr2" {
+		return fmt.Sprintf("SeedVR2 %dp", opts.WithDefaults().TargetHeight)
+	}
+	return fmt.Sprintf("%dx", scale)
 }

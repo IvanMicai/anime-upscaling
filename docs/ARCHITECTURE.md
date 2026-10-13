@@ -178,6 +178,16 @@ intentionally loses to an older job's later steps.
 FFmpeg pool. (`handleCreateJob` rejects `use_gpu` with those codecs or with no
 vendor configured.)
 
+**GPU shares.** A slot says a caller may use a GPU; a share
+([`queue.GPUShares`](../apps/api/internal/queue/share.go)) says how much of it.
+video2x and RIFE take one share each, so `STREAMS_PER_GPU` of them still run
+side by side. SeedVR2 fills a 16 GB card by itself and takes all
+`STREAMS_PER_GPU` shares: it waits for the other streams on its GPU to finish
+and holds them off until it is done. Shares are only taken while holding a slot
+on that GPU and released before the slot, so a share holder never waits on
+anything, and waiters are served in arrival order so a whole-GPU request is not
+starved.
+
 **Runtime reconfiguration.** `ApplySettings` rebuilds both queues with new
 concurrency values and is only safe when idle — callers must check
 `HasActiveJobs()` first, because rebuilding would otherwise discard queues that
@@ -219,6 +229,7 @@ The `/data` volume holds both media and JSON state. Directories are defined in
 | Directory        | Holds                                              |
 | ---------------- | -------------------------------------------------- |
 | `input/`         | Source files you drop in                           |
+| `merged/`        | Dual-audio merges (`merge` jobs); a valid source for every other step |
 | `output/`        | Upscale results                                    |
 | `interpolated/`  | Frame-interpolation (RIFE) results                 |
 | `optimized/`     | Final re-encodes                                   |
@@ -259,14 +270,30 @@ and surfaced as `Progress.Containers[source]`, keyed by worker label
 
 ## 9. The ffmpeg overlay decision
 
-The API image is built `FROM ghcr.io/k4yt3x/video2x:6.4.0`, which bundles an
-older `ffmpeg` whose `libx265` is prone to thread-pool `SIGSEGV`s on some inputs.
-Rather than fork video2x, the [`Dockerfile`](../apps/api/Dockerfile) fetches
+The API image builds `video2x` from source at a pinned upstream commit (the
+last release, 6.4.0, lacks the `realesr-generalv3` models), following
+upstream's own Arch Linux container recipe with packages from a dated Arch
+Linux Archive snapshot. The distro `ffmpeg` it links against is not what the
+API invokes: the 6.4.0-era build had a `libx265` prone to thread-pool
+`SIGSEGV`s on some inputs, so the [`Dockerfile`](../apps/api/Dockerfile) fetches
 a current static GPL build (libx265 + nvenc) from BtbN and copies `ffmpeg`/
 `ffprobe` into `/usr/local/bin`, which precedes `/usr/bin` on `PATH`. The API
 looks up `ffmpeg`/`ffprobe` by name, so it resolves to the newer binaries with no
 code change. Bump `FFMPEG_VARIANT` to change versions; the build prints
 `ffmpeg -version` into the log.
+
+**The SeedVR2 variant.** `docker build --target seedvr2` adds SeedVR2
+(ByteDance's diffusion-transformer video restoration model), run through the
+headless CLI of `numz/ComfyUI-SeedVR2_VideoUpscaler` at a pinned commit, with
+a uv-managed Python 3.12 and a dependency lock
+([`seedvr2/requirements.txt`](../apps/api/seedvr2/requirements.txt)) held to
+that commit's date. It is a separate image because PyTorch and its CUDA 12.8
+runtime add several GB that only NVIDIA users can use. Unlike video2x it picks
+its GPU through `CUDA_VISIBLE_DEVICES` (with `CUDA_DEVICE_ORDER=PCI_BUS_ID`),
+runs its own ffmpeg encoder as a child (so it runs in its own process group,
+and cancelling kills the group), writes video only (the API muxes the source's
+other tracks back), and is retried once with the safest memory settings when
+CUDA runs out of memory.
 
 Relatedly, the **salvage** path
 ([`internal/process/salvage.go`](../apps/api/internal/process/salvage.go))
@@ -308,7 +335,7 @@ that kills the process *after* it has finished the actual work.
 │   │   │   ├── files/        listing, natural sort, safe paths
 │   │   │   ├── cache/        file-status cache (resolution/track metadata)
 │   │   │   └── config/       env + persisted settings
-│   │   └── Dockerfile        video2x base + ffmpeg overlay
+│   │   └── Dockerfile        video2x (source build) + ffmpeg overlay
 │   └── web/                 Next.js dashboard (App Router)
 │       ├── app/api/[...path] server-side proxy + auth gate
 │       ├── components/       UI + Storybook stories

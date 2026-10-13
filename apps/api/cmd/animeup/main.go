@@ -30,6 +30,8 @@ func main() {
 		err = cmdPipeline(ctx)
 	case "check":
 		err = cmdCheck(ctx, os.Args[2:])
+	case "dualaudio":
+		err = cmdDualAudio(ctx, os.Args[2:])
 	case "stop":
 		err = cmdStop(ctx)
 	case "logs":
@@ -56,6 +58,7 @@ Commands:
   optimize   Compress videos with ffmpeg H.265 (sequential)
   pipeline   Upscale (GPU) + compress (CPU) in parallel pipeline
   check      Verify video integrity (ffprobe + decode)
+  dualaudio  Join one release's video with another's dubbed audio, in sync
   stop       Stop all running processes
   logs       Tail all log files with colors
   serve      Start HTTP API server`)

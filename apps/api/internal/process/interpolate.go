@@ -94,6 +94,13 @@ func InterpolateFile(ctx context.Context, cfg config.Config, r *runner.Runner, g
 
 	onEvent(logger.JobLog{Source: source, Level: "INFO", Index: index, Message: "Interpolando: " + filename, Time: time.Now()})
 
+	release, err := gpuShares.Acquire(ctx, gpuID, 1, cfg.StreamsPerGPU)
+	if err != nil {
+		onEvent(logger.JobLog{Source: source, Level: "ERRO", Index: index, Message: fmt.Sprintf("Falha ao interpolar: %s (%v)", filename, err), Time: time.Now()})
+		return false
+	}
+	defer release()
+
 	logFile := gpuLogPath(cfg, gpuID, streamIdx)
 	err = r.Video2xRife(ctx, gpuID, streamIdx, filename, logFile, multiplier, rifeOpts, effInputDir, tempOutputDir, gpuProgress)
 	tempOutPath := filepath.Join(tempOutputDir, filename)

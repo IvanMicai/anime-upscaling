@@ -37,19 +37,17 @@ import {
   COLUMN_ORDER,
   computeColumnTotals,
   getFolderData,
-  formatBytes,
   formatBytesCompact,
   formatResolutionLabel,
-  formatFrameRate,
   formatCacheAge,
   joinPath,
   type FolderKey,
-  type FolderEntry,
 } from "@/lib/file-utils";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { FileTooltipContent } from "@/components/file-tooltip-content";
 import type { VideoFile } from "@/lib/types";
 
-const TAB_ORDER: FolderKey[] = ["input", "output", "optimized", "interpolated"];
+const TAB_ORDER: FolderKey[] = ["input", "merged", "output", "optimized", "interpolated"];
 
 // "all" is a virtual pill that shows every file (the union across stages)
 // without filtering by which stage it has.
@@ -59,45 +57,11 @@ type Pill = FolderKey | "all";
 // directory pill filters the rows down to files that actually have that stage.
 const DIR_HAS: Record<FolderKey, (f: VideoFile) => boolean> = {
   input: (f) => !!f.has_input,
+  merged: (f) => !!f.has_merged,
   output: (f) => !!f.has_upscaled,
   optimized: (f) => !!f.has_optimized,
   interpolated: (f) => !!f.has_interpolated,
 };
-
-function FileTooltipContent({ entry }: { entry: FolderEntry }) {
-  return (
-    <div className="space-y-1 text-xs">
-      <div>Size: {formatBytes(entry.size)}</div>
-      {entry.width && entry.height && (
-        <div>Resolution: {entry.width}x{entry.height}</div>
-      )}
-      {entry.frameRate ? (
-        <div>Framerate: {formatFrameRate(entry.frameRate)}</div>
-      ) : null}
-      {entry.audio && entry.audio.length > 0 && (
-        <div>
-          <div className="font-medium">Audio ({entry.audio.length}):</div>
-          {entry.audio.map((a, i) => (
-            <div key={i} className="ml-2 text-muted-foreground">
-              {[a.title, a.language, a.codec, a.channels ? `${a.channels}ch` : null]
-                .filter(Boolean).join(" · ") || `Track ${a.index}`}
-            </div>
-          ))}
-        </div>
-      )}
-      {entry.subtitles && entry.subtitles.length > 0 && (
-        <div>
-          <div className="font-medium">Subtitles ({entry.subtitles.length}):</div>
-          {entry.subtitles.map((s, i) => (
-            <div key={i} className="ml-2 text-muted-foreground">
-              {[s.title, s.language, s.codec].filter(Boolean).join(" · ") || `Track ${s.index}`}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function FileBrowser() {
   const [dir, setDir] = useState<Pill>("all");
@@ -218,7 +182,7 @@ export function FileBrowser() {
   }
 
   function getDeleteSummary() {
-    const counts: Record<FolderKey, number> = { input: 0, output: 0, optimized: 0, interpolated: 0 };
+    const counts: Record<FolderKey, number> = { input: 0, merged: 0, output: 0, optimized: 0, interpolated: 0 };
     for (const folders of deleteSelections.values()) {
       for (const f of folders) counts[f]++;
     }
@@ -327,6 +291,7 @@ export function FileBrowser() {
             {deleteTotal > 0
               ? [
                   deleteSummary.input > 0 && `${deleteSummary.input} input`,
+                  deleteSummary.merged > 0 && `${deleteSummary.merged} merged`,
                   deleteSummary.output > 0 && `${deleteSummary.output} upscaled`,
                   deleteSummary.optimized > 0 && `${deleteSummary.optimized} optimized`,
                   deleteSummary.interpolated > 0 && `${deleteSummary.interpolated} interpolated`,
