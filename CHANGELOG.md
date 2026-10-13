@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.14.0](https://github.com/IvanMicai/anime-upscaling/compare/v1.13.4...v1.14.0) (2026-10-13)
+
+### Features
+
+* dual-audio Merge job, film upscale models and SeedVR2 ([#96](https://github.com/IvanMicai/anime-upscaling/issues/96)) ([dd5a58a](https://github.com/IvanMicai/anime-upscaling/commit/dd5a58a2b651ce7a449b98c59be0fe5f01188cbd))
+
 ## [1.13.4](https://github.com/IvanMicai/anime-upscaling/compare/v1.13.3...v1.13.4) (2026-08-01)
 
 ### Bug Fixes
