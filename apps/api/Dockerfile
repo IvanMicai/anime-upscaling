@@ -1,7 +1,7 @@
 # Arch Linux base for the video2x stages below (declared here: FROM needs it global).
 ARG ARCH_TAG=base-20260315.0.500537
 
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 WORKDIR /src
 COPY go.mod ./
 COPY . .
