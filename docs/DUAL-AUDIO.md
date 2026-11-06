@@ -399,9 +399,11 @@ in sync. No media is written and this analysis does not change the merge gate.
 The opt-in **Experimental visual assistance** setting proposes offsets from
 five-second image sequences sampled once per second. A candidate is only added
 after the original audio matcher independently refines it near that location.
-The solver compares the resulting alignment against the audio-only result and
-keeps it only if the existing quality checks improve; the audio quality gate is
-never relaxed. Enabling this decodes both videos and may substantially increase
+When audio-only matching finds an alignment, the solver keeps a visual-assisted
+alternative only if the existing quality checks improve. If audio-only matching
+finds no segments, the visual pass can seed a candidate instead; audio must
+still confirm each proposal and the normal quality gate is never relaxed.
+Enabling this decodes both videos and may substantially increase
 processing time. Videos longer than two hours are rejected by this mode.
 
 Visual matches can be wrong in repeated scenes, cuts, mirrored or heavily edited

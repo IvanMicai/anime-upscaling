@@ -123,8 +123,25 @@ func Process(ctx context.Context, t Tools, j Job) (*Result, error) {
 	baseFeat, dubFeat := ExtractFeatures(baseMono), ExtractFeatures(dubMono)
 	al := Align(baseFeat, dubFeat, baseDur, dubDur, j.Options)
 	res.Alignment = al
+	visualAttempted := false
+	// Audio-only matching can find no initial segment even when a local audio
+	// match near a distinctive visual sequence is available. Give the opt-in
+	// visual proposal pass a chance before returning. These proposals are still
+	// audio-confirmed and the usual validation and write gate remain mandatory.
+	if len(al.Segments) == 0 && j.VisualAssist {
+		visualAttempted = true
+		proposals, err := t.visualCandidatesFor(ctx, j.BasePath, j.DubPath, baseDur, dubDur, baseFeat, dubFeat, j.Options.MinConfidence)
+		if err != nil {
+			return res, fmt.Errorf("visual assistance: %w", err)
+		}
+		res.VisualCandidates = len(proposals)
+		if len(proposals) > 0 {
+			seedVisualCandidates(al, proposals, j.Options.WindowSec)
+			al.Solve(baseFeat, dubFeat)
+		}
+	}
 	if len(al.Segments) == 0 {
-		res.Notes = append(res.Notes, "no window locked: the two files are probably different content")
+		res.Notes = append(res.Notes, "no window locked: the two files may differ or matching evidence may be insufficient")
 		return res, nil
 	}
 
@@ -140,7 +157,7 @@ func Process(ctx context.Context, t Tools, j Job) (*Result, error) {
 	}
 	phase(PhaseValidate)
 	rendered, best := Refine(al, baseFeat, dubFeat, dubPCM, basePCM, j.GapFill, j.Options.MinConfidence, j.TickSec)
-	if j.VisualAssist {
+	if j.VisualAssist && !visualAttempted {
 		proposals, err := t.visualCandidatesFor(ctx, j.BasePath, j.DubPath, baseDur, dubDur, baseFeat, dubFeat, j.Options.MinConfidence)
 		if err != nil {
 			return res, fmt.Errorf("visual assistance: %w", err)
@@ -194,6 +211,20 @@ func Process(ctx context.Context, t Tools, j Job) (*Result, error) {
 		res.Written = true
 	}
 	return res, nil
+}
+
+// seedVisualCandidates initializes an alignment that audio-only matching left
+// empty. Its inputs have already passed the visual and audio proposal checks.
+func seedVisualCandidates(al *Alignment, proposals []estimate, windowSec float64) {
+	if al.cand == nil {
+		al.cand = make(map[int]*candidate)
+	}
+	if al.wm == 0 {
+		al.wm = int(math.Round(windowSec * fps))
+	}
+	for _, p := range proposals {
+		al.addCandidate(int(math.Round(p.lag)), float64(p.frame)+p.lag)
+	}
 }
 
 // A proposed visual alignment must not discard audio evidence, even if the
