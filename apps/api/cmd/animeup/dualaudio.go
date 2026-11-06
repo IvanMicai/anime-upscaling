@@ -156,6 +156,7 @@ func dualaudioWaveformProbe(ctx context.Context, tools dualaudio.Tools, args []s
 	baseStart := fs.Float64("base-start", math.NaN(), "reference window start")
 	dubStart := fs.Float64("dub-start", math.NaN(), "dubbed window start")
 	window := fs.Float64("window", .5, "duration of the dubbed query, 0.5 to 3 seconds")
+	baseStream := fs.Int("base-stream", 0, "audio stream index in reference")
 	stream := fs.Int("dub-stream", 0, "audio stream index in dub")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -163,7 +164,7 @@ func dualaudioWaveformProbe(ctx context.Context, tools dualaudio.Tools, args []s
 	if *base == "" || *dub == "" {
 		return errors.New("--base and --dub are required")
 	}
-	probe, err := dualaudio.ProbeStereoWaveformWindow(ctx, tools, *base, *dub, *stream, *baseStart, *dubStart, *window)
+	probe, err := dualaudio.ProbeStereoWaveformTracks(ctx, tools, *base, *dub, *baseStream, *stream, *baseStart, *dubStart, *window)
 	if err != nil {
 		return err
 	}

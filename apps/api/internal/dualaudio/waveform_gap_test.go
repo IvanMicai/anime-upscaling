@@ -8,6 +8,34 @@ import (
 	"testing"
 )
 
+func TestWaveformProbeSelectsReferenceTrack(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	ffprobe, err := exec.LookPath("ffprobe")
+	if err != nil {
+		t.Skip("ffprobe unavailable")
+	}
+	path := filepath.Join(t.TempDir(), "tracks.mka")
+	cmd := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "anoisesrc=sample_rate=16000:duration=10:seed=47", "-f", "lavfi", "-i", "anoisesrc=sample_rate=16000:duration=10:seed=91", "-map", "0:a", "-map", "1:a", "-c:a", "pcm_s16le", path)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create tracks: %v: %s", err, out)
+	}
+	tools := Tools{FFmpeg: ffmpeg, FFprobe: ffprobe}
+	matched, err := ProbeStereoWaveformTracks(context.Background(), tools, path, path, 1, 1, 4, 4, 1)
+	if err != nil || !matched.Accepted || math.Abs(matched.OffsetSec) > .003 {
+		t.Fatalf("selected track: %+v, %v", matched, err)
+	}
+	wrong, err := ProbeStereoWaveformTracks(context.Background(), tools, path, path, 0, 1, 4, 4, 1)
+	if err != nil || wrong.Accepted {
+		t.Fatalf("unrelated tracks: %+v, %v", wrong, err)
+	}
+	if _, err := ProbeStereoWaveformTracks(context.Background(), tools, path, path, -1, 1, 4, 4, 1); err == nil {
+		t.Fatal("negative reference track accepted")
+	}
+}
+
 func TestWaveformGapProposesOnlySharedSound(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {

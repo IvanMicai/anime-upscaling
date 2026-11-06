@@ -117,8 +117,13 @@ func ProposeWaveformGap(ctx context.Context, t Tools, basePath, dubPath string, 
 // ProbeStereoWaveformWindow decodes bounded excerpts; short matches are
 // diagnostic only and never authorize a gap fill or an output file.
 func ProbeStereoWaveformWindow(ctx context.Context, t Tools, basePath, dubPath string, stream int, baseStart, dubStart, window float64) (WaveformEvidence, error) {
+	return ProbeStereoWaveformTracks(ctx, t, basePath, dubPath, 0, stream, baseStart, dubStart, window)
+}
+
+// ProbeStereoWaveformTracks allows selecting both audio tracks independently.
+func ProbeStereoWaveformTracks(ctx context.Context, t Tools, basePath, dubPath string, baseStream, stream int, baseStart, dubStart, window float64) (WaveformEvidence, error) {
 	var empty WaveformEvidence
-	if stream < 0 || !finiteSeam(baseStart) || !finiteSeam(dubStart) || !finiteSeam(window) || baseStart < 1.5 || dubStart < 0 || window < .5 || window > 3 {
+	if baseStream < 0 || stream < 0 || !finiteSeam(baseStart) || !finiteSeam(dubStart) || !finiteSeam(window) || baseStart < 1.5 || dubStart < 0 || window < .5 || window > 3 {
 		return empty, fmt.Errorf("invalid waveform probe")
 	}
 	bd, err := t.Duration(ctx, basePath)
@@ -148,7 +153,7 @@ func ProbeStereoWaveformWindow(ctx context.Context, t Tools, basePath, dubPath s
 		}
 		return pcm, nil
 	}
-	base, err := decode(basePath, baseStart-1.5, window+3.2, 0)
+	base, err := decode(basePath, baseStart-1.5, window+3.2, baseStream)
 	if err != nil {
 		return empty, err
 	}
