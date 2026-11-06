@@ -46,7 +46,7 @@ func VisualAudioAlign(timeline *VisualTimeline, base, dub *Features, baseDuratio
 	var groups []group
 	lastEnd := 0.0
 	for i, w := range timeline.Windows {
-		if math.IsNaN(w.Start) || math.IsNaN(w.End) || math.IsNaN(w.Lag) || math.IsInf(w.Start, 0) || math.IsInf(w.End, 0) || math.IsInf(w.Lag, 0) || w.Start < 0 || w.End <= w.Start || w.End > baseDuration || (i > 0 && w.Start < lastEnd) {
+		if !validVisualWindow(w, baseDuration) || (i > 0 && w.Start < lastEnd) {
 			return nil, fmt.Errorf("invalid or overlapping visual window at index %d", i)
 		}
 		if overlapsRejected(w.Start, w.End, timeline.Rejected) {

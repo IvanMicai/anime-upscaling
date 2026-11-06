@@ -16,6 +16,15 @@ func TestRefineVisualRejectionsRequiresCandidateDetails(t *testing.T) {
 	}
 }
 
+func TestFineCandidateMustCoverExactlyTwoSeconds(t *testing.T) {
+	if !validVisualWindow(VisualWindow{Start: 10, End: 12}, 30) {
+		t.Fatal("valid window rejected")
+	}
+	if validVisualWindow(VisualWindow{Start: 10, End: 25}, 30) {
+		t.Fatal("probe must not validate a longer window")
+	}
+}
+
 func TestRefineVisualSequence24RequiresDistinctPeak(t *testing.T) {
 	rng := rand.New(rand.NewSource(88))
 	query, search := make([]byte, 72*visualBytes), make([]byte, 336*visualBytes)

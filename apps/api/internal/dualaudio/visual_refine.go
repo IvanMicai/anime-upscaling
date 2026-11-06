@@ -45,7 +45,7 @@ func RefineVisualRejections(ctx context.Context, t Tools, basePath, dubPath stri
 			copyTimeline.RejectedCandidates = append(copyTimeline.RejectedCandidates, w)
 			continue
 		}
-		if math.IsNaN(w.Start) || math.IsNaN(w.End) || math.IsNaN(w.Lag) || math.IsInf(w.Start, 0) || math.IsInf(w.End, 0) || math.IsInf(w.Lag, 0) || w.Start < 0 || w.End <= w.Start || w.End > baseDur {
+		if !validVisualWindow(w, baseDur) {
 			return nil, fmt.Errorf("invalid rejected candidate")
 		}
 		gapIndex, overlaps := -1, 0
@@ -94,6 +94,14 @@ func RefineVisualRejections(ctx context.Context, t Tools, basePath, dubPath stri
 		}
 	}
 	return result, nil
+}
+
+// The three-second probe covers only a two-second window with half a second of
+// context on either side. Never extrapolate it to a longer supplied interval.
+func validVisualWindow(w VisualWindow, duration float64) bool {
+	return !math.IsNaN(w.Start) && !math.IsNaN(w.End) && !math.IsNaN(w.Lag) &&
+		!math.IsInf(w.Start, 0) && !math.IsInf(w.End, 0) && !math.IsInf(w.Lag, 0) &&
+		w.Start >= 0 && w.End <= duration && math.Abs(w.End-w.Start-2) <= 1e-6
 }
 
 // refineVisualSequence24 compares a three-second sequence at 24 fps against
