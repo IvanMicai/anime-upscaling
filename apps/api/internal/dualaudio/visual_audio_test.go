@@ -156,3 +156,15 @@ func TestVisualAudioDoesNotExtrapolateCorrectionAcrossEpisode(t *testing.T) {
 		t.Fatalf("expected unsupported early audio and corrected later audio: %+v", segments)
 	}
 }
+
+func TestVisualAudioAlignDoesNotBridgeUnobservedShortWindow(t *testing.T) {
+	f := ExtractFeatures(make([]int16, 30*featRate))
+	timeline := &VisualTimeline{Windows: []VisualWindow{{Start: 2, End: 4}, {Start: 6, End: 8}}}
+	got, err := VisualAudioAlign(timeline, f, f, 30, 30, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Alignment.Segments) != 2 || got.Alignment.Segments[0].BaseEnd != 4 || got.Alignment.Segments[1].BaseStart != 6 {
+		t.Fatalf("unobserved window was bridged: %+v", got.Alignment.Segments)
+	}
+}

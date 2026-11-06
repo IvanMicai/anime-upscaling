@@ -186,7 +186,7 @@ func visualAudioAlign(timeline *VisualTimeline, base, dub *Features, baseDuratio
 				lag += region.Correction
 			}
 			segs := result.Alignment.Segments
-			if n := len(segs); n > 0 && w.Start-segs[n-1].BaseEnd <= 4 && math.Abs(lag-segs[n-1].Lag) < 0.001 && !overlapsRejected(segs[n-1].BaseEnd, w.Start, rejected) {
+			if n := len(segs); n > 0 && w.Start-segs[n-1].BaseEnd <= 0.001 && math.Abs(lag-segs[n-1].Lag) < 0.001 && !overlapsRejected(segs[n-1].BaseEnd, w.Start, rejected) {
 				result.Alignment.Segments[n-1].BaseEnd = w.End
 				result.Alignment.Segments[n-1].Windows++
 			} else {
