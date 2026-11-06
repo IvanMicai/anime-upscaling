@@ -436,3 +436,17 @@ be an English fallback, shared music, or a sound effect; it does not identify
 speech or establish lip synchronization. Thresholds are exploratory, and an
 unreported window is not evidence that no fallback is present. Inspect the
 reported intervals in context and compare the source audio before editing.
+
+### Find a possible misplaced transition
+
+`dualaudio analyze --base BASE --dub DUB --visual-assist --json > alignment.json`
+exports the normal analysis result. Given a separately generated visual timeline,
+`dualaudio visual-seams --timeline timeline.json --alignment alignment.json`
+can report an interval where directly measured frames support the previous
+source offset after the audio solver has already switched to the next offset.
+It estimates a local visual/audio bias and requires multiple direct observations
+on both sides; contextual windows, rejected regions and large observation gaps
+cannot establish a boundary. The interval is a review hint, not an exact edit,
+proof of dubbed-source lip sync, or permission to bypass the normal merge gate.
+This diagnostic currently detects only a visual transition later than the audio
+boundary, so an empty result is not evidence that all boundaries are correct.

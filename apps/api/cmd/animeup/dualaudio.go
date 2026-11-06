@@ -22,7 +22,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio|shared-audio> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio|visual-seams|shared-audio> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -41,6 +41,8 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioVisualAudio(ctx, tools, args[1:])
 	case "visual-refine":
 		return dualaudioVisualRefine(ctx, tools, args[1:])
+	case "visual-seams":
+		return dualaudioVisualSeams(args[1:])
 	case "visual-regions":
 		return dualaudioVisualRegions(ctx, tools, args[1:])
 	case "visual-fill":
@@ -78,6 +80,56 @@ func dualaudioSharedAudio(ctx context.Context, tools dualaudio.Tools, args []str
 		Windows []dualaudio.SharedAudioWindow `json:"windows"`
 	}{
 		"Exploratory shared audio only: music/effects may match, and unmatched windows are not proof of different audio or speech.", windows,
+	})
+}
+
+// dualaudioVisualSeams reports possible boundary intervals without editing media.
+func dualaudioVisualSeams(args []string) error {
+	fs := flag.NewFlagSet("dualaudio visual-seams", flag.ContinueOnError)
+	timeline := fs.String("timeline", "", "visual timeline JSON")
+	alignment := fs.String("alignment", "", "alignment JSON or analyze --json result")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *timeline == "" || *alignment == "" {
+		return errors.New("--timeline and --alignment are required")
+	}
+	raw, err := os.ReadFile(*timeline)
+	if err != nil {
+		return err
+	}
+	var visual dualaudio.VisualTimeline
+	if err := json.Unmarshal(raw, &visual); err != nil {
+		return fmt.Errorf("visual timeline: %w", err)
+	}
+	raw, err = os.ReadFile(*alignment)
+	if err != nil {
+		return err
+	}
+	var result struct {
+		Alignment *dualaudio.Alignment `json:"alignment"`
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return fmt.Errorf("alignment: %w", err)
+	}
+	if result.Alignment == nil {
+		result.Alignment = &dualaudio.Alignment{}
+		if err := json.Unmarshal(raw, result.Alignment); err != nil {
+			return fmt.Errorf("alignment: %w", err)
+		}
+	}
+	if len(result.Alignment.Segments) == 0 {
+		return errors.New("alignment contains no segments")
+	}
+	reviews := dualaudio.FindVisualBoundaryReviews(&visual, result.Alignment.Segments)
+	if reviews == nil {
+		reviews = []dualaudio.VisualBoundaryReview{}
+	}
+	return json.NewEncoder(os.Stdout).Encode(struct {
+		Warning    string                           `json:"warning"`
+		Boundaries []dualaudio.VisualBoundaryReview `json:"boundaries"`
+	}{
+		"Review only: visual evidence does not prove audio or lip synchronization, and intervals are not automatic edits.", reviews,
 	})
 }
 
@@ -486,6 +538,7 @@ func dualaudioAnalyze(ctx context.Context, t dualaudio.Tools, args []string) err
 	// grade is computed over changes with it.
 	tick := fs.Float64("tick", 0, "seconds between sync checks (0 = default)")
 	visual := fs.Bool("visual-assist", false, "propose audio-confirmed offsets from video")
+	jsonOutput := fs.Bool("json", false, "output the full analysis as JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -499,6 +552,9 @@ func dualaudioAnalyze(ctx context.Context, t dualaudio.Tools, args []string) err
 	res, err := dualaudio.Process(ctx, t, j)
 	if err != nil {
 		return err
+	}
+	if *jsonOutput {
+		return json.NewEncoder(os.Stdout).Encode(res)
 	}
 	printResult(filepath.Base(*base), res)
 	return nil

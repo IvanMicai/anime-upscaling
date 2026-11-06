@@ -15,3 +15,59 @@ func TestFindVisualAudioSeamJumps(t *testing.T) {
 		t.Fatal("invalid threshold accepted")
 	}
 }
+
+func TestVisualBoundaryReviewBracketsLateChange(t *testing.T) {
+	segments := []Segment{{BaseStart: 610.5, BaseEnd: 793.5, Lag: -11.12}, {BaseStart: 794, BaseEnd: 1218.5, Lag: -10.61}}
+	var windows []VisualWindow
+	for t := 780.0; t < 830; t += 2 {
+		windows = append(windows, VisualWindow{Start: t, End: t + 2, Lag: -11.1666667})
+	}
+	for t := 834.0; t < 840; t += 2 {
+		windows = append(windows, VisualWindow{Start: t, End: t + 2, Lag: -10.6666667})
+	}
+	timeline := &VisualTimeline{Windows: windows}
+	before := append([]Segment(nil), segments...)
+	got := FindVisualBoundaryReviews(timeline, segments)
+	if len(got) != 1 || got[0].Earliest != 830 || got[0].Latest != 834 {
+		t.Fatalf("unexpected bracket: %+v", got)
+	}
+	if segments[0] != before[0] || segments[1] != before[1] {
+		t.Fatal("diagnostic changed alignment")
+	}
+	timeline.Rejected = []Gap{{Start: 830, End: 834}}
+	if got := FindVisualBoundaryReviews(timeline, segments); len(got) != 0 {
+		t.Fatalf("rejected gap accepted: %+v", got)
+	}
+	timeline.Rejected = nil
+	for i := range windows {
+		if windows[i].Start >= 794 {
+			windows[i].Contextual = true
+		}
+	}
+	if got := FindVisualBoundaryReviews(timeline, segments); len(got) != 0 {
+		t.Fatalf("inferred windows accepted as independent: %+v", got)
+	}
+}
+
+func TestVisualBoundaryReviewRejectsUnknownOrAmbiguousIntervals(t *testing.T) {
+	segments := []Segment{{BaseStart: 0, BaseEnd: 20, Lag: 0}, {BaseStart: 20, BaseEnd: 100, Lag: 1}}
+	windows := []VisualWindow{{Start: 14, End: 16, Lag: 0}, {Start: 16, End: 18, Lag: 0}, {Start: 18, End: 20, Lag: 0}, {Start: 20, End: 22, Lag: 0}, {Start: 22, End: 24, Lag: 0}, {Start: 24, End: 26, Lag: 0}, {Start: 40, End: 42, Lag: 1}, {Start: 42, End: 44, Lag: 1}, {Start: 44, End: 46, Lag: 1}}
+	if got := FindVisualBoundaryReviews(&VisualTimeline{Windows: windows}, segments); len(got) != 0 {
+		t.Fatalf("large observation gap accepted: %+v", got)
+	}
+	windows[6].Start, windows[6].End = 28, 30
+	windows[7].Start, windows[7].End = 30, 32
+	windows[8].Start, windows[8].End = 32, 34
+	windows[5].Lag = .5
+	if got := FindVisualBoundaryReviews(&VisualTimeline{Windows: windows}, segments); len(got) != 0 {
+		t.Fatalf("ambiguous visual offset accepted: %+v", got)
+	}
+}
+
+func TestVisualBoundaryReviewRejectsDuplicateWindows(t *testing.T) {
+	segments := []Segment{{BaseStart: 0, BaseEnd: 20, Lag: 0}, {BaseStart: 20, BaseEnd: 100, Lag: 1}}
+	w := []VisualWindow{{Start: 14, End: 16, Lag: 0}, {Start: 14, End: 16, Lag: 0}, {Start: 18, End: 20, Lag: 0}, {Start: 20, End: 22, Lag: 0}, {Start: 22, End: 24, Lag: 0}, {Start: 24, End: 26, Lag: 0}, {Start: 28, End: 30, Lag: 1}, {Start: 30, End: 32, Lag: 1}, {Start: 32, End: 34, Lag: 1}}
+	if got := FindVisualBoundaryReviews(&VisualTimeline{Windows: w}, segments); len(got) != 0 {
+		t.Fatalf("duplicate observations accepted: %+v", got)
+	}
+}
