@@ -18,3 +18,19 @@ func TestWaveformProbeRequiresStereoAndDisallowsHoldout(t *testing.T) {
 		}
 	}
 }
+
+func TestWaveformScanRejectsInvalidOptions(t *testing.T) {
+	for _, extra := range [][]string{
+		{"--waveform-every", "5", "--stereo"},
+		{"--waveform-every", "NaN", "--stereo"},
+		{"--waveform-every", "15"},
+		{"--waveform-every", "15", "--stereo", "--holdout"},
+		{"--waveform-every", "15", "--stereo", "--waveform-at", "30"},
+	} {
+		args := append([]string{"--base", "x", "--dub", "y", "--timeline", "z"}, extra...)
+		err := dualaudioVisualAudio(context.Background(), dualaudio.Tools{}, args)
+		if err == nil || !strings.Contains(err.Error(), "--waveform-every") {
+			t.Fatalf("invalid combination not rejected: %v", err)
+		}
+	}
+}

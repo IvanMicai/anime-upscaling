@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -112,6 +113,7 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 	repair := fs.Bool("repair-audio", false, "experimentally test localized stereo audio corrections")
 	holdout := fs.Bool("holdout", false, "reserve non-overlapping stereo windows for evaluation")
 	waveformAt := fs.String("waveform-at", "", "comma-separated base start times for experimental three-second stereo waveform probes")
+	waveformEvery := fs.Float64("waveform-every", 0, "experimentally sample stereo waveform probes at this interval in seconds (minimum 10)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -126,6 +128,12 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 	}
 	if *holdout && *repair {
 		return errors.New("--holdout cannot be combined with --repair-audio")
+	}
+	if math.IsNaN(*waveformEvery) || math.IsInf(*waveformEvery, 0) || *waveformEvery < 0 || (*waveformEvery > 0 && *waveformEvery < 10) {
+		return errors.New("--waveform-every must be zero or at least 10 seconds")
+	}
+	if *waveformEvery > 0 && (*waveformAt != "" || !*stereo || *holdout) {
+		return errors.New("--waveform-every requires --stereo and cannot be combined with --waveform-at or --holdout")
 	}
 	var probeTimes []float64
 	if *waveformAt != "" {
@@ -159,6 +167,14 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 	dubDur, err := tools.Duration(ctx, *dub)
 	if err != nil {
 		return err
+	}
+	if *waveformEvery > 0 {
+		if math.Ceil(baseDur / *waveformEvery) > 200 {
+			return errors.New("--waveform-every would exceed 200 probes; increase the interval")
+		}
+		for at := *waveformEvery / 2; at+4.5 <= baseDur; at += *waveformEvery {
+			probeTimes = append(probeTimes, at)
+		}
 	}
 	channels := 1
 	if *stereo {
@@ -228,9 +244,18 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 	}
 	conflicts, conflictSeconds := dualaudio.FindVisualAudioConflicts(&visual, candidate.Alignment.Segments, .15)
 	var probes []dualaudio.WaveformEvidence
+	type skippedWaveformProbe struct {
+		BaseStart float64 `json:"base_start"`
+		Reason    string  `json:"reason"`
+	}
+	var skippedProbes []skippedWaveformProbe
 	for _, at := range probeTimes {
 		probe, err := dualaudio.ProbeVisualWaveform(&visual, baseMono, dubMono, at)
 		if err != nil {
+			if *waveformEvery > 0 {
+				skippedProbes = append(skippedProbes, skippedWaveformProbe{BaseStart: at, Reason: err.Error()})
+				continue
+			}
 			return fmt.Errorf("waveform probe at %.3f: %w", at, err)
 		}
 		probes = append(probes, probe)
@@ -252,7 +277,9 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 		VisualConflictSeconds float64                         `json:"visual_conflict_seconds"`
 		VisualConflicts       []dualaudio.VisualAudioConflict `json:"visual_conflicts,omitempty"`
 		WaveformProbes        []dualaudio.WaveformEvidence    `json:"waveform_probes,omitempty"`
-	}{"review", candidate, v.Hits, v.Eligible, v.Median, v.P95, v.OffSec, source, *stereo, *holdout, v.Misses, v.Runs, repairs, conflictSeconds, conflicts, probes})
+		WaveformInterval      float64                         `json:"waveform_interval,omitempty"`
+		WaveformSkipped       []skippedWaveformProbe          `json:"waveform_skipped,omitempty"`
+	}{"review", candidate, v.Hits, v.Eligible, v.Median, v.P95, v.OffSec, source, *stereo, *holdout, v.Misses, v.Runs, repairs, conflictSeconds, conflicts, probes, *waveformEvery, skippedProbes})
 }
 
 // mappingFile is what `match` writes and `build` reads. It is plain JSON on

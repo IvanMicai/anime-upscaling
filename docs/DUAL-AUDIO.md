@@ -391,8 +391,11 @@ For targeted research, `visual-audio --stereo --waveform-at 133.083,187`
 adds experimental three-second waveform probes at base-video times. Each
 probe requires continuous visual coverage and a consistent visual offset,
 compares both 16-kHz stereo channels over a ±1.5-second base search, and
-reports channel peaks, ambiguity ratios and an `accepted` heuristic. It is
-limited to 20 probes and cannot be combined with `--holdout`. Two-channel
+reports channel peaks, ambiguity ratios and an `accepted` heuristic. Manual selection is
+limited to 20 probes and cannot be combined with `--holdout`. Alternatively,
+`--waveform-every 15` samples regularly at 15-second intervals, reports skipped
+positions and reasons, and allows at most 200 attempts. The scan does not
+constitute a holdout: it uses the same tracks and visual map. Two-channel
 agreement and shared waveform peaks can corroborate a common sound; duplicate
 channels, differing mixes, repeated music and imperfect source lip sync mean
 this is not independent truth or an automatic merge approval. Thresholds are
