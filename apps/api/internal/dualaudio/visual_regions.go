@@ -11,13 +11,22 @@ import (
 // VisualRegionEvidence describes one local diagnostic. It does not validate
 // dubbing, source lip sync, or authorize replacing any part of a timeline.
 type VisualRegionEvidence struct {
-	BaseStart    float64            `json:"base_start"`
-	DubCenter    float64            `json:"dub_center"`
-	Rate         int                `json:"rate"`
-	Regions      []VisualRegionVote `json:"regions"`
-	Agreeing     int                `json:"agreeing"`
-	OffsetFrames float64            `json:"offset_frames"`
-	Consensus    bool               `json:"consensus"`
+	BaseStart     float64              `json:"base_start"`
+	DubCenter     float64              `json:"dub_center"`
+	Rate          int                  `json:"rate"`
+	Regions       []VisualRegionVote   `json:"regions"`
+	Agreeing      int                  `json:"agreeing"`
+	OffsetFrames  float64              `json:"offset_frames"`
+	Consensus     bool                 `json:"consensus"`
+	FrameWarnings []VisualFrameWarning `json:"frame_warnings,omitempty"`
+}
+
+// VisualFrameWarning identifies a sampled frame where the matching regions'
+// median similarity is low. It can be caused by an edit, phase or a flash.
+type VisualFrameWarning struct {
+	Frame            int     `json:"frame"`
+	BaseTime         float64 `json:"base_time"`
+	MedianSimilarity float64 `json:"median_similarity"`
 }
 
 type VisualRegionVote struct {
@@ -97,6 +106,11 @@ func compareRegionPixels(q, s []byte, baseStart, dubCenter float64) (VisualRegio
 		return out, fmt.Errorf("expected exactly 48 query and 120 search frames")
 	}
 	votes := make([]int, 0, 16)
+	type regionFrames struct {
+		offset int
+		scores [48]float64
+	}
+	var acceptedFrames []regionFrames
 	for y := 0; y < 120; y += 30 {
 		for x := 0; x < 160; x += 40 {
 			normalize := func(data []byte, n int) [][]float32 {
@@ -166,6 +180,15 @@ func compareRegionPixels(q, s []byte, baseStart, dubCenter float64) (VisualRegio
 			v.Accepted = regionPeakAccepted(v.OffsetFrames, v.Similarity, v.Margin, v.ReverseMargin)
 			if v.Accepted {
 				votes = append(votes, v.OffsetFrames)
+				frames := regionFrames{offset: v.OffsetFrames}
+				for f := 0; f < 48; f++ {
+					var dot float32
+					for i, value := range a[f] {
+						dot += value * b[f+best][i]
+					}
+					frames.scores[f] = float64(dot)
+				}
+				acceptedFrames = append(acceptedFrames, frames)
 			}
 			out.Regions = append(out.Regions, v)
 		}
@@ -197,5 +220,23 @@ func compareRegionPixels(q, s []byte, baseStart, dubCenter float64) (VisualRegio
 		}
 	}
 	out.Consensus = out.Agreeing >= 3 && 10*out.Agreeing >= 7*len(votes)
+	if out.Consensus {
+		for f := 0; f < 48; f++ {
+			values := make([]float64, 0, out.Agreeing)
+			for _, region := range acceptedFrames {
+				if absInt(region.offset-center) <= 1 {
+					values = append(values, region.scores[f])
+				}
+			}
+			sort.Float64s(values)
+			median := values[len(values)/2]
+			if len(values)%2 == 0 {
+				median = (values[len(values)/2-1] + median) / 2
+			}
+			if median < .65 {
+				out.FrameWarnings = append(out.FrameWarnings, VisualFrameWarning{Frame: f, BaseTime: baseStart + float64(f)/regionRate, MedianSimilarity: median})
+			}
+		}
+	}
 	return out, nil
 }

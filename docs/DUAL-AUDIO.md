@@ -298,7 +298,10 @@ outside the search interval. `offset_frames` is
 relative to `--dub-center`; a positive value means the matching image was found
 later in the dub. This diagnostic neither modifies a timeline nor validates
 audio or lip sync. Static imagery, repeated animation, subtitles and differing
-edits can still mislead it; thresholds are experimental.
+edits can still mislead it; thresholds are experimental. When regions agree,
+`frame_warnings` lists sampled frames whose median region similarity is low.
+An isolated flash, frame-rate phase or visual edit can trigger a warning; it
+does not automatically reject the sequence or identify which version is right.
 
 For a targeted, slower second look, `dualaudio visual-refine --base ... --dub
 ... --timeline timeline.json --limit 8 > refined.json` decodes three-second

@@ -25,6 +25,19 @@ func TestVisualRegionsRequiresMultipleConsistentPatches(t *testing.T) {
 	if !result.Consensus || result.Agreeing != 16 || result.OffsetFrames != 4 {
 		t.Fatalf("expected 16 votes for four-frame shift: %+v", result)
 	}
+	if len(result.FrameWarnings) != 0 {
+		t.Fatalf("matching sequence produced frame warnings: %+v", result.FrameWarnings)
+	}
+	// A single unrelated frame is hidden by the sequence average. Report its
+	// location without changing the experimental aggregate consensus.
+	copy(query[24*regionPixels:25*regionPixels], search[4*regionPixels:5*regionPixels])
+	result, err = compareRegionPixels(query, search, 10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Consensus || len(result.FrameWarnings) != 1 || result.FrameWarnings[0].Frame != 24 {
+		t.Fatalf("expected a warning at frame 24 despite consensus: %+v", result)
+	}
 	// Even a perfect match at the edge is ambiguous: the search did not
 	// inspect the next offset, so it cannot rule out a better nearby match.
 	for i := 0; i < 48; i++ {
