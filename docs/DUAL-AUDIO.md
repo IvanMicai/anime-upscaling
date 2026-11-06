@@ -309,6 +309,14 @@ audio was placed as the map specifies, not whether the map or the dub's own
 lip sync is correct; it also does not verify a muxed or encoded output file.
 The report gives mapped and examined seconds separately because short segments,
 gaps and joins are excluded from the source check.
+
+The native AAC/Matroska mux path retains the complete rendered PCM. An
+integration test measures the decoded track against its source to detect an
+encoder-priming timing shift; this behavior should be rechecked if the encoder
+or container changes.
+PCM decoding uses stream timestamps to preserve initial audio offsets relative
+to the container timeline. A regression test covers an audio stream beginning
+one second after video.
 Each report is `review`: a soundtrack match can disagree with the dub's own
 picture, and the report does not establish whether the original dub is itself
 in sync. No media is written and this analysis does not change the merge gate.
