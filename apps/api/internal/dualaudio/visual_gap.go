@@ -70,13 +70,50 @@ func recoverVisualGaps(input *VisualTimeline, base, dub []byte, duration float64
 		}
 		return data[i*visualBytes : (i+1)*visualBytes]
 	}
+	// Near the start a centered three-second query or its earlier control may
+	// fall outside the file. Search non-overlapping two-second windows in
+	// half-second steps using only the original anchors and valid controls.
+	if baseFrames > 0 && dubFrames > 0 {
+		for start := 0.5; start < 6 && start+2 <= duration && result.Attempted < limit; start += 0.5 {
+			end := start + 2
+			if overlapsRejected(start, end, input.Rejected) {
+				continue
+			}
+			occupied := false
+			for _, w := range timeline.Windows {
+				if w.Start < end && w.End > start {
+					occupied = true
+					break
+				}
+			}
+			if occupied {
+				continue
+			}
+			nearest, distance := -1, math.Inf(1)
+			for i, w := range input.Windows {
+				d := math.Abs((w.Start+w.End)/2 - (start + 1))
+				if d < distance {
+					nearest, distance = i, d
+				}
+			}
+			if nearest < 0 || distance > 90 {
+				continue
+			}
+			center := int(math.Round((start - input.Windows[nearest].Lag) * 12))
+			result.Attempted++
+			if w, ok := shortVisualGap(base, dub, start, center); ok {
+				timeline.Windows = append(timeline.Windows, w)
+				result.Recovered++
+			}
+		}
+	}
 	for start := 0; float64(start+2) <= duration && result.Attempted < limit; start += 2 {
 		end := float64(start + 2)
 		if overlapsRejected(float64(start), end, input.Rejected) {
 			continue
 		}
 		occupied := false
-		for _, w := range input.Windows {
+		for _, w := range timeline.Windows {
 			if w.Start < end && w.End > float64(start) {
 				occupied = true
 				break
@@ -106,7 +143,7 @@ func recoverVisualGaps(input *VisualTimeline, base, dub []byte, duration float64
 		// If the wider query crosses an edit, a strict two-second fallback can
 		// still recover the target window without assuming its neighbors match.
 		shortFallback := func() {
-			if w, ok := shortVisualGap(base, dub, start, center+6); ok {
+			if w, ok := shortVisualGap(base, dub, float64(start), center+6); ok {
 				timeline.Windows = append(timeline.Windows, w)
 				result.Recovered++
 			}
@@ -195,8 +232,8 @@ func gapSequenceHashScore(base, dub []byte, query, pos int) (float64, bool) {
 // shortVisualGap matches only the missing window. Its stricter thresholds and
 // distant controls compensate partially for the shorter sequence; the result is
 // still contextual evidence, not an independently verified sync decision.
-func shortVisualGap(base, dub []byte, start, center int) (VisualWindow, bool) {
-	query := start * 12
+func shortVisualGap(base, dub []byte, start float64, center int) (VisualWindow, bool) {
+	query := int(math.Round(start * 12))
 	frame := func(data []byte, i int) []byte {
 		if i < 0 || (i+1)*visualBytes > len(data) {
 			return nil
@@ -247,10 +284,18 @@ func shortVisualGap(base, dub []byte, start, center int) (VisualWindow, bool) {
 	pos := center + best - 30
 	before, _, hashBefore, okBefore := score(pos - 60)
 	after, _, hashAfter, okAfter := score(pos + 60)
+	// If a control is outside the source, require a second control ten
+	// seconds away on the available side; never omit a control silently.
+	if !okBefore && pos-60 < 0 && okAfter {
+		before, _, hashBefore, okBefore = score(pos + 120)
+	}
+	if !okAfter && pos+60+24 > len(dub)/visualBytes && okBefore {
+		after, _, hashAfter, okAfter = score(pos - 120)
+	}
 	margin := scores[best] - second
 	hashMargin := math.Min(hashBefore, hashAfter) - hashes[best]
 	if !okBefore || !okAfter || math.IsInf(second, -1) || scores[best] < .90 || blocks[best] < .85 || margin < .08 || scores[best]-math.Max(before, after) < .20 || hashes[best] >= .35 || hashMargin < .05 {
 		return VisualWindow{}, false
 	}
-	return VisualWindow{Start: float64(start), End: float64(start + 2), Lag: float64(query-pos) / 12, Contextual: true, GapRecovered: true, SequenceSimilarity: scores[best], SequenceMargin: margin, SequenceHashDistance: hashes[best], SequenceHashMargin: hashMargin}, true
+	return VisualWindow{Start: start, End: start + 2, Lag: float64(query-pos) / 12, Contextual: true, GapRecovered: true, SequenceSimilarity: scores[best], SequenceMargin: margin, SequenceHashDistance: hashes[best], SequenceHashMargin: hashMargin}, true
 }

@@ -300,7 +300,9 @@ The limit is 1–100 per invocation; the resulting JSON remains compatible with
 anchors using three-second grayscale sequences and distant controls. When the
 wider sequence fails, it can try the two-second window itself with stricter
 similarity and ambiguity thresholds; an edit just outside the window may
-otherwise hide a match. It never
+otherwise hide a match. Near a file boundary it requires two distant controls
+on the available side and checks half-second starting positions near the
+beginning. It never
 fills explicitly rejected intervals or uses newly recovered windows as anchors.
 It also checks a cropped difference hash of the same sampled frames against
 both distant controls; the two metrics are not independent source material.

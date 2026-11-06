@@ -158,3 +158,65 @@ func TestShortVisualGapRejectsRepeatedScene(t *testing.T) {
 		t.Fatal("repeated scene accepted as a unique match")
 	}
 }
+
+func TestRecoverVisualGapsAtBeginningUsesTwoForwardControls(t *testing.T) {
+	rng := rand.New(rand.NewSource(703))
+	base, dub := make([]byte, 24*12*visualBytes), make([]byte, 24*12*visualBytes)
+	if _, err := rng.Read(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rng.Read(dub); err != nil {
+		t.Fatal(err)
+	}
+	copy(dub[3*visualBytes:], base[:len(base)-3*visualBytes])
+	timeline := &VisualTimeline{SampleRate: 12, Windows: []VisualWindow{{Start: 6, End: 8, Lag: -.25}}}
+	result, err := recoverVisualGaps(timeline, base, dub, 24, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, w := range result.Timeline.Windows {
+		if i > 0 && w.Start < result.Timeline.Windows[i-1].End {
+			t.Fatal("overlapping recovered windows")
+		}
+	}
+	for _, w := range result.Timeline.Windows {
+		if w.Start == .5 && w.End == 2.5 && w.GapRecovered && math.Abs(w.Lag+.25) < .001 {
+			return
+		}
+	}
+	t.Fatal("opening window was not recovered")
+}
+
+func TestShortVisualGapRejectsRepeatedForwardControl(t *testing.T) {
+	rng := rand.New(rand.NewSource(704))
+	base, dub := make([]byte, 24*12*visualBytes), make([]byte, 24*12*visualBytes)
+	if _, err := rng.Read(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rng.Read(dub); err != nil {
+		t.Fatal(err)
+	}
+	query, target := 6, 9
+	copy(dub[target*visualBytes:(target+24)*visualBytes], base[query*visualBytes:(query+24)*visualBytes])
+	copy(dub[(target+120)*visualBytes:(target+144)*visualBytes], base[query*visualBytes:(query+24)*visualBytes])
+	if _, ok := shortVisualGap(base, dub, .5, target); ok {
+		t.Fatal("repeated ten-second forward control accepted")
+	}
+}
+
+func TestShortVisualGapDoesNotReplaceInconclusiveInBoundsControl(t *testing.T) {
+	rng := rand.New(rand.NewSource(705))
+	base, dub := make([]byte, 40*12*visualBytes), make([]byte, 40*12*visualBytes)
+	if _, err := rng.Read(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rng.Read(dub); err != nil {
+		t.Fatal(err)
+	}
+	query, target := 14*12, 14*12+3
+	copy(dub[target*visualBytes:(target+24)*visualBytes], base[query*visualBytes:(query+24)*visualBytes])
+	clear(dub[(target-60)*visualBytes : (target-36)*visualBytes])
+	if _, ok := shortVisualGap(base, dub, 14, target); ok {
+		t.Fatal("inconclusive in-bounds control was replaced")
+	}
+}
