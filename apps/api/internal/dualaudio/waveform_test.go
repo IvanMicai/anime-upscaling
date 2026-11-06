@@ -27,6 +27,30 @@ func TestMatchStereoWaveformFindsSharedSound(t *testing.T) {
 		t.Fatalf("shared sound not found: %+v", got)
 	}
 }
+
+func TestShortStereoWaveformRetainsChannelPolarity(t *testing.T) {
+	rng := rand.New(rand.NewSource(304))
+	base, dub := make([]int16, 10*featRate*2), make([]int16, 10*featRate*2)
+	for i := range base {
+		base[i] = int16(rng.Intn(20001) - 10000)
+		dub[i] = int16(rng.Intn(20001) - 10000)
+	}
+	shift := int(.263 * featRate)
+	for i := 0; i < featRate/2; i++ {
+		dub[2*(3*featRate+i)] = -base[2*(3*featRate+shift+i)]
+		dub[2*(3*featRate+i)+1] = base[2*(3*featRate+shift+i)+1]
+	}
+	got, err := MatchStereoWaveformWindow(base, dub, 3, 3, .5)
+	if err != nil || !got.Accepted || math.Abs(got.OffsetSec-.263) > .001 || got.LeftPolarity != -1 || got.RightPolarity != 1 {
+		t.Fatalf("short inverted match: %+v %v", got, err)
+	}
+	if got, err := MatchStereoWaveformWindow(base, dub, 5, 5, .5); err != nil || got.Accepted {
+		t.Fatalf("unrelated short sound accepted: %+v %v", got, err)
+	}
+	if _, err := MatchStereoWaveformWindow(base, dub, 3, 3, .25); err == nil {
+		t.Fatal("too-short probe accepted")
+	}
+}
 func TestMatchStereoWaveformRejectsAmbiguityAndSilence(t *testing.T) {
 	base, dub := make([]int16, 10*featRate*2), make([]int16, 10*featRate*2)
 	got, err := MatchStereoWaveform(base, dub, 3, 3)

@@ -443,6 +443,15 @@ explicitly reports `visual_rejected` when the original visual analysis rejected
 the gap. A matching soundtrack can be music or effects and can coexist with a
 different edit or misaligned dubbed source, so this is not a lip-sync verdict.
 
+For a short transition, `dualaudio waveform-probe --base BASE --dub DUB
+--base-start 462 --dub-start 461.89525 --window 0.5` measures each stereo
+channel separately over a query of 0.5–3 seconds. It reports peak polarity as
+`-1` or `1`; channel inversion can otherwise cancel a shared sound. Short
+queries use stricter heuristic thresholds and return review status. Repeated
+sound, seek/resampling phase, differing mixes and source lip sync can still
+make this measurement misleading or inconclusive. This diagnostic does not
+write media or change the three-second gap-recovery gate.
+
 ### Review shared audio in a rendered file
 
 `animeup dualaudio shared-audio --file review.mkv --reference-stream 0 --candidate-stream 1`

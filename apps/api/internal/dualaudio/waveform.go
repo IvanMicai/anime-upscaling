@@ -67,6 +67,8 @@ type WaveformEvidence struct {
 	RightCorrelation float64 `json:"right_correlation"`
 	LeftPeakRatio    float64 `json:"left_peak_ratio"`
 	RightPeakRatio   float64 `json:"right_peak_ratio"`
+	LeftPolarity     int     `json:"left_polarity,omitempty"`
+	RightPolarity    int     `json:"right_polarity,omitempty"`
 	Accepted         bool    `json:"accepted"`
 }
 
@@ -75,11 +77,26 @@ type WaveformEvidence struct {
 // 16-kHz stereo PCM. It keeps separate channels to avoid mono cancellation.
 // Thresholds are exploratory; accepted matches are corroborating evidence only.
 func MatchStereoWaveform(base, dub []int16, baseStart, dubStart float64) (WaveformEvidence, error) {
+	return MatchStereoWaveformWindow(base, dub, baseStart, dubStart, 3)
+}
+
+// MatchStereoWaveformWindow permits shorter probes for locating an edit.
+// Sub-three-second probes use stricter thresholds; they are diagnostic only
+// and must not be substituted for the three-second gap-recovery gate.
+func MatchStereoWaveformWindow(base, dub []int16, baseStart, dubStart, window float64) (WaveformEvidence, error) {
 	out := WaveformEvidence{BaseStart: baseStart, DubStart: dubStart}
-	if math.IsNaN(baseStart) || math.IsInf(baseStart, 0) || math.IsNaN(dubStart) || math.IsInf(dubStart, 0) || baseStart < 1.5 || dubStart < 0 || baseStart+4.5 > float64(len(base)/2)/featRate || dubStart+3 > float64(len(dub)/2)/featRate {
-		return out, fmt.Errorf("three-second window and 1.5-second base search must fit in both stereo inputs")
+	if math.IsNaN(window) || math.IsInf(window, 0) || window < .5 || window > 3 {
+		return out, fmt.Errorf("waveform window must be between 0.5 and 3 seconds")
 	}
 	const rate = 4000
+	count := int(math.Round(window * rate))
+	window = float64(count) / rate
+	if math.IsNaN(baseStart) || math.IsInf(baseStart, 0) || math.IsNaN(dubStart) || math.IsInf(dubStart, 0) || baseStart < 1.5 || dubStart < 0 || baseStart+window+1.5 > float64(len(base)/2)/featRate || dubStart+window > float64(len(dub)/2)/featRate {
+		return out, fmt.Errorf("waveform window and 1.5-second base search must fit in both stereo inputs")
+	}
+	if len(base)%2 != 0 || len(dub)%2 != 0 || int(math.Round((baseStart-1.5)*featRate))+4*(count+3*rate) > len(base)/2 || int(math.Round(dubStart*featRate))+4*count > len(dub)/2 {
+		return out, fmt.Errorf("waveform inputs contain incomplete stereo samples")
+	}
 	channel := func(pcm []int16, start float64, n, ch int) []float64 {
 		out := make([]float64, n)
 		off := int(math.Round(start * featRate))
@@ -90,10 +107,13 @@ func MatchStereoWaveform(base, dub []int16, baseStart, dubStart float64) (Wavefo
 		}
 		return out
 	}
-	type peak struct{ offset, score, ratio float64 }
+	type peak struct {
+		offset, score, ratio float64
+		polarity             int
+	}
 	measure := func(ch int) peak {
-		ref := channel(base, baseStart-1.5, 6*rate, ch)
-		win := channel(dub, dubStart, 3*rate, ch)
+		ref := channel(base, baseStart-1.5, count+3*rate, ch)
+		win := channel(dub, dubStart, count, ch)
 		var sum, energy float64
 		for _, v := range win {
 			sum += v
@@ -110,6 +130,7 @@ func MatchStereoWaveform(base, dub []int16, baseStart, dubStart float64) (Wavefo
 		}
 		corr := crossCorrelate(ref, win)
 		scores := make([]float64, len(corr))
+		signed := make([]float64, len(corr))
 		best := 0
 		for i, v := range corr {
 			s := prefix[i+len(win)] - prefix[i]
@@ -117,7 +138,8 @@ func MatchStereoWaveform(base, dub []int16, baseStart, dubStart float64) (Wavefo
 			if e <= float64(len(win))*30*30 {
 				continue
 			}
-			scores[i] = math.Abs(v-s*sum/float64(len(win))) / math.Sqrt(e*energy)
+			signed[i] = (v - s*sum/float64(len(win))) / math.Sqrt(e*energy)
+			scores[i] = math.Abs(signed[i])
 			if scores[i] > scores[best] {
 				best = i
 			}
@@ -132,14 +154,25 @@ func MatchStereoWaveform(base, dub []int16, baseStart, dubStart float64) (Wavefo
 		if runner > 1e-12 {
 			ratio = scores[best] / runner
 		}
-		return peak{float64(best)/rate - 1.5, scores[best], ratio}
+		polarity := 0
+		if signed[best] > 0 {
+			polarity = 1
+		} else if signed[best] < 0 {
+			polarity = -1
+		}
+		return peak{float64(best)/rate - 1.5, scores[best], ratio, polarity}
 	}
 	l, r := measure(0), measure(1)
 	out.LeftOffsetSec, out.RightOffsetSec = l.offset, r.offset
 	out.LeftCorrelation, out.RightCorrelation = l.score, r.score
 	out.LeftPeakRatio, out.RightPeakRatio = l.ratio, r.ratio
+	out.LeftPolarity, out.RightPolarity = l.polarity, r.polarity
 	out.OffsetSec = (l.offset + r.offset) / 2
-	out.Accepted = l.score >= .20 && r.score >= .20 && l.ratio >= 1.8 && r.ratio >= 1.8 && math.Abs(l.offset-r.offset) <= .005 && math.Abs(out.OffsetSec) <= .5
+	minScore, minRatio := .20, 1.8
+	if window < 3 {
+		minScore, minRatio = .75, 2.5
+	}
+	out.Accepted = l.score >= minScore && r.score >= minScore && l.ratio >= minRatio && r.ratio >= minRatio && math.Abs(l.offset-r.offset) <= .005 && math.Abs(out.OffsetSec) <= .5
 	return out, nil
 }
 

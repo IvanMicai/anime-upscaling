@@ -22,7 +22,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio|waveform-gap> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio|waveform-gap|waveform-probe> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -39,6 +39,8 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioSharedAudio(ctx, tools, args[1:])
 	case "waveform-gap":
 		return dualaudioWaveformGap(ctx, tools, args[1:])
+	case "waveform-probe":
+		return dualaudioWaveformProbe(ctx, tools, args[1:])
 	case "visual-audio":
 		return dualaudioVisualAudio(ctx, tools, args[1:])
 	case "visual-refine":
@@ -55,6 +57,32 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioVisualFill(ctx, tools, args[1:])
 	}
 	return fmt.Errorf("unknown dualaudio command: %s", args[0])
+}
+
+func dualaudioWaveformProbe(ctx context.Context, tools dualaudio.Tools, args []string) error {
+	fs := flag.NewFlagSet("dualaudio waveform-probe", flag.ContinueOnError)
+	base := fs.String("base", "", "reference audio file")
+	dub := fs.String("dub", "", "dubbed audio file")
+	baseStart := fs.Float64("base-start", math.NaN(), "reference window start")
+	dubStart := fs.Float64("dub-start", math.NaN(), "dubbed window start")
+	window := fs.Float64("window", .5, "duration of the dubbed query, 0.5 to 3 seconds")
+	stream := fs.Int("dub-stream", 0, "audio stream index in dub")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *base == "" || *dub == "" {
+		return errors.New("--base and --dub are required")
+	}
+	probe, err := dualaudio.ProbeStereoWaveformWindow(ctx, tools, *base, *dub, *stream, *baseStart, *dubStart, *window)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(struct {
+		Status  string                     `json:"status"`
+		Warning string                     `json:"warning"`
+		Window  float64                    `json:"window_seconds"`
+		Probe   dualaudio.WaveformEvidence `json:"probe"`
+	}{"review", "Shared sound is not independent proof of lip sync; no media was written.", *window, probe})
 }
 
 func dualaudioWaveformGap(ctx context.Context, tools dualaudio.Tools, args []string) error {

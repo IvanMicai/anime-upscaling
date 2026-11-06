@@ -91,38 +91,10 @@ func ProposeWaveformGap(ctx context.Context, t Tools, basePath, dubPath string, 
 		return nil, fmt.Errorf("alignment durations do not match files or exceed two hours")
 	}
 	dubStart := gap.Start - seed
-	// Demuxer seek and resampler rounding can leave a requested interval a few
-	// samples short. Decode 200 ms extra; the matcher consumes only 6 s / 3 s.
-	if gap.Start+4.7 > bd || dubStart < 0 || dubStart+3.2 > dd {
-		return nil, fmt.Errorf("waveform probe exceeds source bounds")
-	}
-	decode := func(path string, start, dur float64, track int) ([]int16, error) {
-		raw, e := t.run(ctx, t.FFmpeg, nil, "-v", "error", "-nostdin", "-ss", strconv.FormatFloat(start, 'f', 6, 64), "-t", strconv.FormatFloat(dur, 'f', 6, 64), "-threads", "2", "-i", path, "-map", fmt.Sprintf("0:a:%d", track), "-vn", "-ac", "2", "-ar", "16000", "-af", "aresample=16000:async=1:first_pts=0", "-f", "s16le", "-")
-		if e != nil {
-			return nil, e
-		}
-		if len(raw)%4 != 0 {
-			return nil, fmt.Errorf("incomplete PCM")
-		}
-		pcm := make([]int16, len(raw)/2)
-		for j := range pcm {
-			pcm[j] = int16(binary.LittleEndian.Uint16(raw[2*j:]))
-		}
-		return pcm, nil
-	}
-	base, err := decode(basePath, gap.Start-1.5, 6.2, 0)
+	probe, err := ProbeStereoWaveformWindow(ctx, t, basePath, dubPath, stream, gap.Start, dubStart, 3)
 	if err != nil {
 		return nil, err
 	}
-	dub, err := decode(dubPath, dubStart, 3.2, stream)
-	if err != nil {
-		return nil, err
-	}
-	probe, err := MatchStereoWaveform(base, dub, 1.5, 0)
-	if err != nil {
-		return nil, err
-	}
-	probe.BaseStart, probe.DubStart = gap.Start, dubStart
 	if !probe.Accepted {
 		return nil, fmt.Errorf("shared stereo waveform did not pass confidence checks")
 	}
@@ -140,4 +112,54 @@ func ProposeWaveformGap(ctx context.Context, t Tools, basePath, dubPath string, 
 		return nil, err
 	}
 	return &WaveformGapProposal{Alignment: &result, Gap: gap, Probe: probe, VisualRejected: rejected}, nil
+}
+
+// ProbeStereoWaveformWindow decodes bounded excerpts; short matches are
+// diagnostic only and never authorize a gap fill or an output file.
+func ProbeStereoWaveformWindow(ctx context.Context, t Tools, basePath, dubPath string, stream int, baseStart, dubStart, window float64) (WaveformEvidence, error) {
+	var empty WaveformEvidence
+	if stream < 0 || !finiteSeam(baseStart) || !finiteSeam(dubStart) || !finiteSeam(window) || baseStart < 1.5 || dubStart < 0 || window < .5 || window > 3 {
+		return empty, fmt.Errorf("invalid waveform probe")
+	}
+	bd, err := t.Duration(ctx, basePath)
+	if err != nil {
+		return empty, err
+	}
+	dd, err := t.Duration(ctx, dubPath)
+	if err != nil {
+		return empty, err
+	}
+	// Demuxer seek and resampler rounding can leave a requested interval a few
+	// samples short. Decode 200 ms extra, which the matcher does not consume.
+	if bd > 7200 || dd > 7200 || baseStart+window+1.7 > bd || dubStart+window+.2 > dd {
+		return empty, fmt.Errorf("waveform probe exceeds source bounds")
+	}
+	decode := func(path string, start, dur float64, track int) ([]int16, error) {
+		raw, e := t.run(ctx, t.FFmpeg, nil, "-v", "error", "-nostdin", "-ss", strconv.FormatFloat(start, 'f', 6, 64), "-t", strconv.FormatFloat(dur, 'f', 6, 64), "-threads", "2", "-i", path, "-map", fmt.Sprintf("0:a:%d", track), "-vn", "-ac", "2", "-ar", "16000", "-af", "aresample=16000:async=1:first_pts=0", "-f", "s16le", "-")
+		if e != nil {
+			return nil, e
+		}
+		if len(raw)%4 != 0 {
+			return nil, fmt.Errorf("incomplete PCM")
+		}
+		pcm := make([]int16, len(raw)/2)
+		for j := range pcm {
+			pcm[j] = int16(binary.LittleEndian.Uint16(raw[2*j:]))
+		}
+		return pcm, nil
+	}
+	base, err := decode(basePath, baseStart-1.5, window+3.2, 0)
+	if err != nil {
+		return empty, err
+	}
+	dub, err := decode(dubPath, dubStart, window+.2, stream)
+	if err != nil {
+		return empty, err
+	}
+	probe, err := MatchStereoWaveformWindow(base, dub, 1.5, 0, window)
+	if err != nil {
+		return empty, err
+	}
+	probe.BaseStart, probe.DubStart = baseStart, dubStart
+	return probe, nil
 }
