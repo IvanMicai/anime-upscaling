@@ -304,6 +304,16 @@ edits can still mislead it; thresholds are experimental. When regions agree,
 An isolated flash, frame-rate phase or visual edit can trigger a warning; it
 does not automatically reject the sequence or identify which version is right.
 
+`dualaudio visual-motion --base BASE --dub DUB --base-start 1132 --dub-center
+1142.666667` is an experimental alternative for a small moving subject on a
+mostly static background. It subtracts a temporal median in the central image
+region, compares a two-second sequence at 24 fps, and reports the best peak,
+alternatives and a reversed-time control. The offset is in frames relative to
+the returned `dub_center`. Thresholds are heuristic; repeated movement,
+camera motion, color changes and subjects outside the central region can be
+misleading. It always returns review status, writes no media and does not
+establish that the dubbed source audio is synchronized.
+
 For a targeted, slower second look, `dualaudio visual-refine --base ... --dub
 ... --timeline timeline.json --limit 8 > refined.json` decodes three-second
 sequences at 24 fps around rejected candidates. A window is recovered only

@@ -22,7 +22,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio|waveform-gap|waveform-probe> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-motion|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio|waveform-gap|waveform-probe> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -53,10 +53,35 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioVisualSeams(args[1:])
 	case "visual-regions":
 		return dualaudioVisualRegions(ctx, tools, args[1:])
+	case "visual-motion":
+		return dualaudioVisualMotion(ctx, tools, args[1:])
 	case "visual-fill":
 		return dualaudioVisualFill(ctx, tools, args[1:])
 	}
 	return fmt.Errorf("unknown dualaudio command: %s", args[0])
+}
+
+func dualaudioVisualMotion(ctx context.Context, tools dualaudio.Tools, args []string) error {
+	fs := flag.NewFlagSet("dualaudio visual-motion", flag.ContinueOnError)
+	base := fs.String("base", "", "reference video")
+	dub := fs.String("dub", "", "dubbed video")
+	start := fs.Float64("base-start", math.NaN(), "reference window start")
+	center := fs.Float64("dub-center", math.NaN(), "expected dubbed window start")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *base == "" || *dub == "" {
+		return errors.New("--base and --dub are required")
+	}
+	result, err := dualaudio.CompareVisualMotion(ctx, tools, *base, *dub, *start, *center)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(struct {
+		Status   string                         `json:"status"`
+		Warning  string                         `json:"warning"`
+		Evidence dualaudio.VisualMotionEvidence `json:"evidence"`
+	}{"review", "Motion similarity does not establish dubbed audio sync; no media was written.", result})
 }
 
 func dualaudioWaveformProbe(ctx context.Context, tools dualaudio.Tools, args []string) error {
