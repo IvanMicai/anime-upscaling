@@ -251,6 +251,7 @@ func dualaudioCompareAlignments(ctx context.Context, tools dualaudio.Tools, args
 	dub := fs.String("dub", "", "dubbed audio file")
 	first := fs.String("first", "", "first alignment JSON or analyze --json result")
 	second := fs.String("second", "", "second alignment JSON or analyze --json result")
+	timeline := fs.String("timeline", "", "optional visual timeline JSON")
 	stream := fs.Int("dub-stream", 0, "audio stream index in dub")
 	tick := fs.Float64("tick", 1, "seconds between validation windows (1-30)")
 	stereo := fs.Bool("stereo", true, "compare stereo features instead of mono")
@@ -299,6 +300,22 @@ func dualaudioCompareAlignments(ctx context.Context, tools dualaudio.Tools, args
 			Status string `json:"status"`
 			Reason string `json:"reason"`
 		}{"review", "no common mapped intervals"})
+	}
+	var visualEvidence *dualaudio.VisualComparison
+	if *timeline != "" {
+		raw, err := os.ReadFile(*timeline)
+		if err != nil {
+			return err
+		}
+		var visual dualaudio.VisualTimeline
+		if err := json.Unmarshal(raw, &visual); err != nil {
+			return fmt.Errorf("visual timeline: %w", err)
+		}
+		evidence, err := dualaudio.CompareAlignmentVisualEvidence(&visual, a, b, .15)
+		if err != nil {
+			return err
+		}
+		visualEvidence = &evidence
 	}
 	baseDuration, err := tools.Duration(ctx, *base)
 	if err != nil {
@@ -356,15 +373,22 @@ func dualaudioCompareAlignments(ctx context.Context, tools dualaudio.Tools, args
 	compact := func(v dualaudio.Validation) metrics {
 		return metrics{v.Hits, v.Eligible, v.OffSec, v.Median, v.P95, v.Runs}
 	}
+	var both *bool
+	if visualEvidence != nil {
+		value := dualaudio.BetterVisualBoundaryEvidence(before, after) && visualEvidence.VisualMetricNotWorse
+		both = &value
+	}
 	return json.NewEncoder(os.Stdout).Encode(struct {
-		Status        string  `json:"status"`
-		Warning       string  `json:"warning"`
-		Stereo        bool    `json:"stereo"`
-		CommonSeconds float64 `json:"common_mapped_seconds"`
-		First         metrics `json:"first"`
-		Second        metrics `json:"second"`
-		Improved      bool    `json:"audio_metric_improved"`
-	}{"review", "Same-material audio metrics are not independent proof of lip sync; no media was written.", *stereo, seconds, compact(before), compact(after), dualaudio.BetterVisualBoundaryEvidence(before, after)})
+		Status        string                      `json:"status"`
+		Warning       string                      `json:"warning"`
+		Stereo        bool                        `json:"stereo"`
+		CommonSeconds float64                     `json:"common_mapped_seconds"`
+		First         metrics                     `json:"first"`
+		Second        metrics                     `json:"second"`
+		Improved      bool                        `json:"audio_metric_improved"`
+		Visual        *dualaudio.VisualComparison `json:"visual_evidence,omitempty"`
+		Both          *bool                       `json:"audio_and_visual_metrics_favor_second,omitempty"`
+	}{"review", "Same-material metrics are not independent proof of lip sync; no media was written.", *stereo, seconds, compact(before), compact(after), dualaudio.BetterVisualBoundaryEvidence(before, after), visualEvidence, both})
 }
 
 func dualaudioVisualRegions(ctx context.Context, tools dualaudio.Tools, args []string) error {

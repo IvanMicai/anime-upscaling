@@ -474,3 +474,9 @@ not write media. Use `--stereo=false` to inspect mono behavior separately. The
 same 50 ms gap tolerance as the regular validator applies. Higher audio scores
 are not proof of correct lip sync, especially when the same material was used
 to create the map; this diagnostic always returns review status.
+
+Optionally, `--timeline TIMELINE.json` also reports visual conflicts where the
+two maps differ by more than 150 ms. Only directly observed, non-rejected image
+windows count. The 90% observation threshold is a heuristic; agreement does not
+prove that the dubbed source itself has correct lip sync. This comparison does
+not apply changes or bypass the merge gate.
