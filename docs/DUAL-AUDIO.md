@@ -294,8 +294,9 @@ timestamp. The JSON reports each region's score, peak margin and reversed-time
 control, plus a consensus requiring at least three individually passing regions
 and agreement from 70% of passing regions within one frame. Peaks within three
 frames of the search boundary are inconclusive, because a better match may lie
-outside the search interval. `offset_frames` is
-relative to `--dub-center`; a positive value means the matching image was found
+outside the search interval. Seeks are rounded to a shared 24-fps time grid;
+the JSON `base_start` and `dub_center` report the effective timestamps.
+`offset_frames` is relative to that returned `dub_center`; a positive value means the matching image was found
 later in the dub. This diagnostic neither modifies a timeline nor validates
 audio or lip sync. Static imagery, repeated animation, subtitles and differing
 edits can still mislead it; thresholds are experimental. When regions agree,

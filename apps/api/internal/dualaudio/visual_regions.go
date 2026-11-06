@@ -57,6 +57,13 @@ func CompareVisualRegions(ctx context.Context, t Tools, base, dub string, baseSt
 	if math.IsNaN(baseStart) || math.IsInf(baseStart, 0) || math.IsNaN(dubCenter) || math.IsInf(dubCenter, 0) || baseStart < 0 || dubCenter < 1.5 {
 		return out, fmt.Errorf("invalid region query timestamps")
 	}
+	// Align both seeks to the same 24 fps grid. Without this, the fps filter
+	// starts at a different phase for different search centers, so changing
+	// only the center can change the inferred source time by almost a frame.
+	// Return effective timestamps so callers can reconstruct the match.
+	baseStart = snapVisualRegionTime(baseStart)
+	dubCenter = snapVisualRegionTime(dubCenter)
+	out.BaseStart, out.DubCenter = baseStart, dubCenter
 	bd, err := t.Duration(ctx, base)
 	if err != nil {
 		return out, err
@@ -95,6 +102,10 @@ func CompareVisualRegions(ctx context.Context, t Tools, base, dub string, baseSt
 		s = s[:120*regionPixels]
 	}
 	return compareRegionPixels(q, s, baseStart, dubCenter)
+}
+
+func snapVisualRegionTime(t float64) float64 {
+	return math.Round(t*regionRate) / regionRate
 }
 
 // compareRegionPixels uses per-frame normalized correlations, temporal reverse

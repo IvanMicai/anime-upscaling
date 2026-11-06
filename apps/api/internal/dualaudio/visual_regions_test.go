@@ -1,9 +1,54 @@
 package dualaudio
 
 import (
+	"context"
+	"math"
 	"math/rand"
+	"os/exec"
+	"path/filepath"
 	"testing"
 )
+
+func TestVisualRegionsSearchCenterDoesNotChangeMatchPhase(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	ffprobe, err := exec.LookPath("ffprobe")
+	if err != nil {
+		t.Skip("ffprobe unavailable")
+	}
+	video := filepath.Join(t.TempDir(), "motion.mkv")
+	cmd := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=24:duration=10", "-c:v", "mpeg4", "-threads", "2", video)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create source: %v: %s", err, output)
+	}
+	tools := Tools{FFmpeg: ffmpeg, FFprobe: ffprobe}
+	var previous float64
+	for i, center := range []float64{3.3, 3.083333, 3.01, 3.2, 3.4} {
+		result, err := CompareVisualRegions(context.Background(), tools, video, video, 3, center)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.Consensus {
+			t.Fatalf("no consensus for center %.6f: %+v", center, result)
+		}
+		matched := result.DubCenter + result.OffsetFrames/regionRate
+		if i > 0 && math.Abs(matched-previous) > 1e-6 {
+			t.Fatalf("search center changed match: %.6f versus %.6f", previous, matched)
+		}
+		previous = matched
+	}
+}
+
+func TestVisualRegionSeekTimesShareFrameGrid(t *testing.T) {
+	for _, v := range []float64{109.3, 109.083333, 109.123456} {
+		got := snapVisualRegionTime(v)
+		if math.Abs(got*regionRate-math.Round(got*regionRate)) > 1e-9 || math.Abs(got-v) > .5/regionRate+1e-9 {
+			t.Fatalf("%f rounded to invalid frame time %f", v, got)
+		}
+	}
+}
 
 func TestVisualRegionsRequiresMultipleConsistentPatches(t *testing.T) {
 	const frames = 120
