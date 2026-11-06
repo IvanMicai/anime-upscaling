@@ -10,15 +10,24 @@ import (
 
 // VisualMotionEvidence is an experimental comparison, not a dubbing verdict.
 type VisualMotionEvidence struct {
-	BaseStart     float64 `json:"base_start"`
-	DubCenter     float64 `json:"dub_center"`
-	OffsetFrames  int     `json:"offset_frames"`
-	Score         float64 `json:"score"`
-	RunnerScore   float64 `json:"runner_score"`
-	ReverseScore  float64 `json:"reverse_score"`
-	ReverseFrames int     `json:"reverse_frames"`
-	ValidFrames   int     `json:"valid_frames"`
-	Accepted      bool    `json:"accepted"`
+	BaseStart     float64              `json:"base_start"`
+	DubCenter     float64              `json:"dub_center"`
+	OffsetFrames  int                  `json:"offset_frames"`
+	Score         float64              `json:"score"`
+	RunnerScore   float64              `json:"runner_score"`
+	ReverseScore  float64              `json:"reverse_score"`
+	ReverseFrames int                  `json:"reverse_frames"`
+	ValidFrames   int                  `json:"valid_frames"`
+	FrameWarnings []MotionFrameWarning `json:"frame_warnings,omitempty"`
+	Accepted      bool                 `json:"accepted"`
+}
+
+// MotionFrameWarning records a low-similarity frame within an otherwise
+// stronger sequence. A flash, an edit or imperfect sampling can trigger it.
+type MotionFrameWarning struct {
+	Frame    int     `json:"frame"`
+	BaseTime float64 `json:"base_time"`
+	Score    float64 `json:"score"`
 }
 
 // CompareVisualMotion suppresses a static background using temporal medians,
@@ -63,6 +72,9 @@ func CompareVisualMotion(ctx context.Context, t Tools, base, dub string, baseSta
 	}
 	out, err = compareMotionPixels(a, b)
 	out.BaseStart, out.DubCenter = baseStart, dubCenter
+	for i := range out.FrameWarnings {
+		out.FrameWarnings[i].BaseTime = baseStart + float64(out.FrameWarnings[i].Frame)/regionRate
+	}
 	return out, err
 }
 
@@ -149,6 +161,19 @@ func compareMotionPixels(base, dub []byte) (VisualMotionEvidence, error) {
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].score > candidates[j].score })
 	best := candidates[0]
 	out.OffsetFrames, out.Score, out.ValidFrames = best.shift, best.score, best.valid
+	for i := 0; i < 48; i++ {
+		ai, bi := 48+i, 84+i+best.shift
+		if an[ai] <= 300 || bn[bi] <= 300 {
+			continue
+		}
+		var dot float32
+		for k := 0; k < pixels; k++ {
+			dot += a[ai*pixels+k] * b[bi*pixels+k]
+		}
+		if dot < .25 {
+			out.FrameWarnings = append(out.FrameWarnings, MotionFrameWarning{Frame: i, Score: float64(dot)})
+		}
+	}
 	second := math.Inf(-1)
 	for _, c := range candidates[1:] {
 		if absInt(c.shift-best.shift) > 2 {
@@ -179,6 +204,6 @@ func compareMotionPixels(base, dub []byte) (VisualMotionEvidence, error) {
 		return out, nil
 	}
 	out.ReverseScore = rev / float64(count)
-	out.Accepted = absInt(best.shift) <= 32 && best.score >= .55 && best.score-second >= .12 && best.score-out.ReverseScore >= .2
+	out.Accepted = absInt(best.shift) <= 32 && best.score >= .55 && best.score-second >= .12 && best.score-out.ReverseScore >= .2 && len(out.FrameWarnings) == 0
 	return out, nil
 }

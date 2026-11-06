@@ -59,6 +59,13 @@ func TestMotionComparisonFindsSmallMovingObject(t *testing.T) {
 		t.Fatalf("small motion did not match: %+v %v", got, err)
 	}
 	wrong := motionTestFrames(240, 719)
+	changed := append([]byte(nil), b...)
+	frame := 48 + 24 + 41
+	copy(changed[frame*regionPixels:(frame+1)*regionPixels], wrong[frame*regionPixels:(frame+1)*regionPixels])
+	got, err = compareMotionPixels(a, changed)
+	if err != nil || got.Accepted || len(got.FrameWarnings) == 0 {
+		t.Fatalf("single mismatched frame not flagged: %+v %v", got, err)
+	}
 	got, err = compareMotionPixels(a, wrong)
 	if err != nil || got.Accepted {
 		t.Fatalf("unrelated motion accepted: %+v %v", got, err)

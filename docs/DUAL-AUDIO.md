@@ -309,7 +309,9 @@ does not automatically reject the sequence or identify which version is right.
 mostly static background. It subtracts a temporal median in the central image
 region, compares a two-second sequence at 24 fps, and reports the best peak,
 alternatives and a reversed-time control. The offset is in frames relative to
-the returned `dub_center`. Thresholds are heuristic; repeated movement,
+the returned `dub_center`. Low-scoring individual moving frames are reported
+as `frame_warnings` and prevent a match from being accepted. Thresholds are
+heuristic; repeated movement,
 camera motion, color changes and subjects outside the central region can be
 misleading. It always returns review status, writes no media and does not
 establish that the dubbed source audio is synchronized.
