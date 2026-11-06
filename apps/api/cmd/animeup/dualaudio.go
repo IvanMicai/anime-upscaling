@@ -92,6 +92,7 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 	}
 	rendered := dualaudio.Render(candidate.Alignment, dubPCM, basePCM, dualaudio.GapFillBase)
 	v := dualaudio.Validate(rendered, baseFeat, candidate.Alignment.Segments, dualaudio.DefaultOptions().MinConfidence, 5)
+	source := dualaudio.ValidateDubSource(rendered, dubFeat, candidate.Alignment.Segments, dualaudio.DefaultOptions().MinConfidence)
 	return json.NewEncoder(os.Stdout).Encode(struct {
 		Status    string                          `json:"status"`
 		Candidate *dualaudio.VisualAudioCandidate `json:"candidate"`
@@ -100,7 +101,8 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 		Median    float64                         `json:"median"`
 		P95       float64                         `json:"p95"`
 		OffSec    float64                         `json:"off_sec"`
-	}{"review", candidate, v.Hits, v.Eligible, v.Median, v.P95, v.OffSec})
+		Source    dualaudio.SourceValidation      `json:"source_validation"`
+	}{"review", candidate, v.Hits, v.Eligible, v.Median, v.P95, v.OffSec, source})
 }
 
 // mappingFile is what `match` writes and `build` reads. It is plain JSON on

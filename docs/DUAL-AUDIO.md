@@ -303,6 +303,12 @@ audio window; elsewhere it retains the visual offset as an unverified hypothesis
 Use the same base and dub used to create the timeline: the JSON does not bind
 itself to the source files.
 It reports gaps, the candidate map, audio evidence and validation statistics.
+The separate `source_validation` compares the in-memory reconstruction to the
+original dubbed audio at the candidate map's positions. This checks whether
+audio was placed as the map specifies, not whether the map or the dub's own
+lip sync is correct; it also does not verify a muxed or encoded output file.
+The report gives mapped and examined seconds separately because short segments,
+gaps and joins are excluded from the source check.
 Each report is `review`: a soundtrack match can disagree with the dub's own
 picture, and the report does not establish whether the original dub is itself
 in sync. No media is written and this analysis does not change the merge gate.
