@@ -207,7 +207,6 @@ func dualaudioVisualSeamsEvaluate(ctx context.Context, tools dualaudio.Tools, ar
 		return err
 	}
 	baseFeat := dualaudio.ExtractFeatures(baseMono)
-	baseMono = nil
 	dubPCM, err := tools.DecodePCM(ctx, *dub, 48000, 2, *stream)
 	if err != nil {
 		return err
