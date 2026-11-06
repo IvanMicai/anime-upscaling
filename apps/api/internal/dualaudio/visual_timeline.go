@@ -14,17 +14,77 @@ type VisualTimeline struct {
 	SampleRate int              `json:"sample_rate"`
 	Matches    []VisualLocation `json:"matches"`
 	Windows    []VisualWindow   `json:"windows"`
+	Rejected   []Gap            `json:"rejected,omitempty"` // pixel check failed; do not bridge
 }
 
 // VisualWindow is a two-second comparison using offsets supported by several
 // independent scene matches. A missing window is inconclusive, not a gap.
 type VisualWindow struct {
-	Start      float64 `json:"start"`
-	End        float64 `json:"end"`
-	Lag        float64 `json:"lag"` // base timestamp minus dub timestamp
-	Distance   float64 `json:"distance"`
-	Margin     float64 `json:"margin"`
-	Contextual bool    `json:"contextual,omitempty"` // inferred using neighboring matches
+	Start           float64 `json:"start"`
+	End             float64 `json:"end"`
+	Lag             float64 `json:"lag"` // base timestamp minus dub timestamp
+	Distance        float64 `json:"distance"`
+	Margin          float64 `json:"margin"`
+	Contextual      bool    `json:"contextual,omitempty"`       // inferred using neighboring matches
+	PixelSimilarity float64 `json:"pixel_similarity,omitempty"` // independent grayscale check at midpoint
+}
+
+// pixelCorrelation compares brightness patterns, independently of the
+// difference hash. Constant frames cannot establish a correspondence.
+func pixelCorrelation(a, b []byte) (float64, bool) {
+	if len(a) != visualBytes || len(b) != visualBytes {
+		return 0, false
+	}
+	var sx, sy, sxx, syy, sxy, n float64
+	for y := 3; y < 21; y++ {
+		for x := 4; x < 28; x++ {
+			u, v := float64(a[y*visualWidth+x]), float64(b[y*visualWidth+x])
+			sx += u
+			sy += v
+			sxx += u * u
+			syy += v * v
+			sxy += u * v
+			n++
+		}
+	}
+	dx, dy := n*sxx-sx*sx, n*syy-sy*sy
+	if dx <= 0 || dy <= 0 {
+		return 0, false
+	}
+	return (n*sxy - sx*sy) / math.Sqrt(dx*dy), true
+}
+
+// filterVisualPixelDisagreements rejects individual windows whose midpoint
+// fails a second similarity measure or matches a five-second-away control
+// substantially better. It does not prove sub-frame or audio synchronization.
+func filterVisualPixelDisagreements(windows []VisualWindow, base, dub []byte) ([]VisualWindow, []Gap) {
+	frame := func(data []byte, i int) []byte {
+		if i < 0 || (i+1)*visualBytes > len(data) {
+			return nil
+		}
+		return data[i*visualBytes : (i+1)*visualBytes]
+	}
+	out := make([]VisualWindow, 0, len(windows))
+	var rejected []Gap
+	for _, w := range windows {
+		k := int(math.Round((w.Start + w.End) * 6))
+		j := k - int(math.Round(w.Lag*12))
+		a := frame(base, k)
+		score, ok := pixelCorrelation(a, frame(dub, j))
+		if !ok || score < 0.85 {
+			rejected = append(rejected, Gap{Start: w.Start, End: w.End})
+			continue
+		}
+		before, okBefore := pixelCorrelation(a, frame(dub, j-60))
+		after, okAfter := pixelCorrelation(a, frame(dub, j+60))
+		if !okBefore || !okAfter || before > score+0.1 || after > score+0.1 {
+			rejected = append(rejected, Gap{Start: w.Start, End: w.End})
+			continue
+		}
+		w.PixelSimilarity = score
+		out = append(out, w)
+	}
+	return out, rejected
 }
 
 // refineVisual compares a three-second sequence at 12 fps around a coarse
@@ -79,15 +139,17 @@ func LocateVisualTimeline(ctx context.Context, t Tools, basePath, dubPath string
 	if err != nil {
 		return nil, err
 	}
-	baseFine, err := t.visualFramesAt(ctx, basePath, 0, baseDur, 12)
+	baseFine, basePixels, err := t.visualFramesAndPixelsAt(ctx, basePath, 0, baseDur, 12)
 	if err != nil {
 		return nil, err
 	}
-	dubFine, err := t.visualFramesAt(ctx, dubPath, 0, dubDur, 12)
+	dubFine, dubPixels, err := t.visualFramesAndPixelsAt(ctx, dubPath, 0, dubDur, 12)
 	if err != nil {
 		return nil, err
 	}
-	return visualTimeline(baseCoarse, dubCoarse, baseFine, dubFine), nil
+	result := visualTimeline(baseCoarse, dubCoarse, baseFine, dubFine)
+	result.Windows, result.Rejected = filterVisualPixelDisagreements(result.Windows, basePixels, dubPixels)
+	return result, nil
 }
 
 func visualTimeline(base, dub, baseFine, dubFine [][7]uint64) *VisualTimeline {

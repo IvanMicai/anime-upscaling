@@ -34,6 +34,30 @@ func TestVisualAudioAlignRejectsOverlappingWindows(t *testing.T) {
 	}
 }
 
+func TestVisualAudioAlignDoesNotBridgeRejectedVisualWindow(t *testing.T) {
+	f := ExtractFeatures(make([]int16, 30*featRate))
+	timeline := &VisualTimeline{Windows: []VisualWindow{{Start: 2, End: 4}, {Start: 6, End: 8}}, Rejected: []Gap{{Start: 4, End: 6}}}
+	got, err := VisualAudioAlign(timeline, f, f, 30, 30, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Alignment.Segments) != 2 {
+		t.Fatalf("rejected window was bridged: %+v", got.Alignment.Segments)
+	}
+}
+
+func TestVisualAudioAlignDoesNotBridgeTemporallyRejectedWindow(t *testing.T) {
+	f := ExtractFeatures(make([]int16, 30*featRate))
+	timeline := &VisualTimeline{Windows: []VisualWindow{{Start: 2, End: 4}, {Start: 4, End: 6}, {Start: 6, End: 8, Lag: -11}, {Start: 8, End: 10}, {Start: 10, End: 12}}}
+	got, err := VisualAudioAlign(timeline, f, f, 30, 30, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Alignment.Segments) != 2 {
+		t.Fatalf("temporally rejected window was bridged: %+v", got.Alignment.Segments)
+	}
+}
+
 func TestVisualAudioAlignDoesNotTrustSilentAudio(t *testing.T) {
 	f := ExtractFeatures(make([]int16, 40*featRate))
 	timeline := &VisualTimeline{}

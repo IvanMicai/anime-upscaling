@@ -33,6 +33,11 @@ func VisualAudioAlign(timeline *VisualTimeline, base, dub *Features, baseDuratio
 	if timeline == nil || base == nil || dub == nil || baseDuration <= 0 || dubDuration <= 0 {
 		return nil, fmt.Errorf("visual timeline, audio features and positive durations are required")
 	}
+	for i, gap := range timeline.Rejected {
+		if math.IsNaN(gap.Start) || math.IsNaN(gap.End) || math.IsInf(gap.Start, 0) || math.IsInf(gap.End, 0) || gap.Start < 0 || gap.End <= gap.Start || gap.End > baseDuration {
+			return nil, fmt.Errorf("invalid rejected window at index %d", i)
+		}
+	}
 	type group struct {
 		start, end, lag float64
 		windows         []VisualWindow
@@ -43,9 +48,24 @@ func VisualAudioAlign(timeline *VisualTimeline, base, dub *Features, baseDuratio
 		if math.IsNaN(w.Start) || math.IsNaN(w.End) || math.IsNaN(w.Lag) || math.IsInf(w.Start, 0) || math.IsInf(w.End, 0) || math.IsInf(w.Lag, 0) || w.Start < 0 || w.End <= w.Start || w.End > baseDuration || (i > 0 && w.Start < lastEnd) {
 			return nil, fmt.Errorf("invalid or overlapping visual window at index %d", i)
 		}
+		if overlapsRejected(w.Start, w.End, timeline.Rejected) {
+			return nil, fmt.Errorf("visual window %d overlaps rejected evidence", i)
+		}
 		lastEnd = w.End
 	}
-	for _, w := range rejectIsolatedVisualWindows(timeline.Windows) {
+	clean := rejectIsolatedVisualWindows(timeline.Windows)
+	rejected := append([]Gap(nil), timeline.Rejected...)
+	// A second temporal check may discard windows supplied by an older timeline
+	// or exposed by filtering. Do not silently bridge over those either.
+	next := 0
+	for _, w := range timeline.Windows {
+		if next < len(clean) && clean[next].Start == w.Start {
+			next++
+		} else {
+			rejected = append(rejected, Gap{Start: w.Start, End: w.End})
+		}
+	}
+	for _, w := range clean {
 		n := len(groups)
 		if n > 0 && w.Start-groups[n-1].end <= 30 && math.Abs(w.Lag-groups[n-1].lag) <= 0.10 {
 			groups[n-1].end = w.End
@@ -107,7 +127,7 @@ func VisualAudioAlign(timeline *VisualTimeline, base, dub *Features, baseDuratio
 				lag += region.Correction
 			}
 			segs := result.Alignment.Segments
-			if n := len(segs); n > 0 && w.Start-segs[n-1].BaseEnd <= 4 && math.Abs(lag-segs[n-1].Lag) < 0.001 {
+			if n := len(segs); n > 0 && w.Start-segs[n-1].BaseEnd <= 4 && math.Abs(lag-segs[n-1].Lag) < 0.001 && !overlapsRejected(segs[n-1].BaseEnd, w.Start, rejected) {
 				result.Alignment.Segments[n-1].BaseEnd = w.End
 				result.Alignment.Segments[n-1].Windows++
 			} else {
@@ -117,6 +137,15 @@ func VisualAudioAlign(timeline *VisualTimeline, base, dub *Features, baseDuratio
 	}
 	result.Alignment.Gaps, result.Alignment.Coverage = gapsAndCoverage(result.Alignment.Segments, baseDuration)
 	return result, nil
+}
+
+func overlapsRejected(start, end float64, rejected []Gap) bool {
+	for _, g := range rejected {
+		if g.Start < end && g.End > start {
+			return true
+		}
+	}
+	return false
 }
 
 // Do not extend a correction through long stretches without independent

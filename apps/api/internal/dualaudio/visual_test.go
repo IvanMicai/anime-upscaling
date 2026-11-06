@@ -208,6 +208,56 @@ func TestSupplementVisualWindowsRequiresMatchingFramesAndBoundaries(t *testing.T
 	}
 }
 
+func TestPixelCheckRejectsDissimilarAndConstantFrames(t *testing.T) {
+	rng := rand.New(rand.NewSource(45))
+	base := make([]byte, 200*visualBytes)
+	if _, err := rng.Read(base); err != nil {
+		t.Fatal(err)
+	}
+	dub := append([]byte(nil), base...)
+	windows := []VisualWindow{{Start: 6, End: 8}}
+	got, rejected := filterVisualPixelDisagreements(windows, base, dub)
+	if len(got) != 1 || got[0].PixelSimilarity < .99 {
+		t.Fatalf("matching frame rejected: %+v", got)
+	}
+	if len(rejected) != 0 {
+		t.Fatal("matching frame was marked rejected")
+	}
+	index := 7 * 12 * visualBytes
+	for i := index; i < index+visualBytes; i++ {
+		dub[i] = 255 - dub[i]
+	}
+	if got, rejected = filterVisualPixelDisagreements(windows, base, dub); len(got) != 0 || len(rejected) != 1 {
+		t.Fatal("inverted frame accepted")
+	}
+	clear(base[index : index+visualBytes])
+	clear(dub[index : index+visualBytes])
+	if got, rejected = filterVisualPixelDisagreements(windows, base, dub); len(got) != 0 || len(rejected) != 1 {
+		t.Fatal("constant frame accepted")
+	}
+}
+
+func TestPixelCheckRejectsBetterDistantControl(t *testing.T) {
+	rng := rand.New(rand.NewSource(46))
+	base := make([]byte, 200*visualBytes)
+	if _, err := rng.Read(base); err != nil {
+		t.Fatal(err)
+	}
+	dub := append([]byte(nil), base...)
+	k := 7 * 12
+	copy(dub[(k+60)*visualBytes:(k+61)*visualBytes], base[k*visualBytes:(k+1)*visualBytes])
+	for i := 0; i < visualBytes; i++ {
+		dub[k*visualBytes+i] = byte((65*int(base[k*visualBytes+i]) + 35*rng.Intn(256)) / 100)
+	}
+	score, ok := pixelCorrelation(base[k*visualBytes:(k+1)*visualBytes], dub[k*visualBytes:(k+1)*visualBytes])
+	if !ok || score < .85 || score >= .9 {
+		t.Fatalf("fixture must pass basic threshold but lose to control: %.3f", score)
+	}
+	if got, _ := filterVisualPixelDisagreements([]VisualWindow{{Start: 6, End: 8}}, base, dub); len(got) != 0 {
+		t.Fatal("stronger distant control accepted")
+	}
+}
+
 func TestVisualCandidatesRequireMatchingAudio(t *testing.T) {
 	rng := rand.New(rand.NewSource(912))
 	frames := make([][7]uint64, 100)

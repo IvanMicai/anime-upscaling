@@ -89,18 +89,23 @@ func (t Tools) visualFrames(ctx context.Context, path string, start, dur float64
 }
 
 func (t Tools) visualFramesAt(ctx context.Context, path string, start, dur float64, rate int) ([][7]uint64, error) {
+	out, _, err := t.visualFramesAndPixelsAt(ctx, path, start, dur, rate)
+	return out, err
+}
+
+func (t Tools) visualFramesAndPixelsAt(ctx context.Context, path string, start, dur float64, rate int) ([][7]uint64, []byte, error) {
 	raw, err := t.run(ctx, t.FFmpeg, nil, "-v", "error", "-nostdin", "-ss", strconv.FormatFloat(start, 'f', 3, 64), "-t", strconv.FormatFloat(dur, 'f', 3, 64), "-threads", "2", "-i", path, "-map", "0:v:0", "-vf", fmt.Sprintf("fps=%d,scale=32:24,format=gray", rate), "-an", "-f", "rawvideo", "-")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(raw)%visualBytes != 0 {
-		return nil, fmt.Errorf("incomplete decoded video frame")
+		return nil, nil, fmt.Errorf("incomplete decoded video frame")
 	}
 	out := make([][7]uint64, 0, len(raw)/visualBytes)
 	for i := 0; i < len(raw); i += visualBytes {
 		out = append(out, visualFingerprint(raw[i:i+visualBytes]))
 	}
-	return out, nil
+	return out, raw, nil
 }
 
 // LocateVisual searches around an approximate timestamp. It deliberately does

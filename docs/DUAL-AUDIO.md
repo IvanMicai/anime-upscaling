@@ -282,6 +282,10 @@ comparison windows using offsets supported by at least three scene matches.
 Short intervals between agreeing windows may also be included when every
 intermediate sequence visually resembles the proposed match. These windows are
 marked `contextual` because a static scene or short edit can remain ambiguous.
+An independent grayscale-correlation check compares each midpoint against the
+proposed frame and five-second-away controls. Rejected windows are recorded
+separately and the audio map will not bridge those ranges. This check samples
+one frame per window and does not prove frame-accurate alignment.
 Missing windows are inconclusive; they are not proof of a gap. This is not a
 continuous edit map and does not identify exact cut boundaries. Sampling
 limits timestamp resolution, and the audio may already be out of sync with its
