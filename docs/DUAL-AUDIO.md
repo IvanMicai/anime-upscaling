@@ -249,3 +249,23 @@ Analysis is CPU-bound FFT work; nothing here touches the GPU. One episode takes
 about 40 s and ~1 GB of RAM at the default settings, so `--jobs` multiplies both.
 On a host shared with other services, cap the container (`--cpus`) — an unbounded
 batch will starve its neighbours.
+
+## Experimental visual diagnostics
+
+When audio has little common music or effects, `dualaudio visual` can look for a
+five-second image sequence near a timestamp in another release:
+
+```bash
+animeup dualaudio visual --base episode.en.mkv --dub episode.pt-br.mp4 --time 150 --radius 20
+```
+
+The JSON response gives `t_a`, `t_b`, normalized `distance`, `margin`, and
+`matched`. It decodes one frame per second, downscales to grayscale and compares
+cropped difference hashes. A match is rejected when the distance is too high or
+a non-adjacent sequence scores similarly. These thresholds are experimental;
+opening sequences, static scenes, watermarks, crops and differing edits can
+still cause incorrect matches. An unmatched result has `t_b` set to zero.
+
+This command is **read-only**. Its coarse timestamps are diagnostic evidence,
+not proof of audio synchronization: it neither feeds the alignment algorithm nor
+changes the quality gate. Check corresponding scenes and verify audio separately.

@@ -20,7 +20,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -31,6 +31,8 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioBuild(ctx, tools, args[1:])
 	case "analyze":
 		return dualaudioAnalyze(ctx, tools, args[1:])
+	case "visual":
+		return dualaudioVisual(ctx, tools, args[1:])
 	}
 	return fmt.Errorf("unknown dualaudio command: %s", args[0])
 }
@@ -326,4 +328,24 @@ func mergeReport(path string, results []*dualaudio.Result) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
+}
+
+// dualaudioVisual reports a coarse visual correspondence without changing media.
+func dualaudioVisual(ctx context.Context, tools dualaudio.Tools, args []string) error {
+	fs := flag.NewFlagSet("dualaudio visual", flag.ContinueOnError)
+	a := fs.String("base", "", "first video")
+	b := fs.String("dub", "", "second video")
+	at := fs.Float64("time", -1, "timestamp in the first video, in seconds")
+	radius := fs.Float64("radius", 30, "search radius in seconds (5–240)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *a == "" || *b == "" {
+		return errors.New("--base and --dub are required")
+	}
+	result, err := dualaudio.LocateVisual(ctx, tools, *a, *b, *at, *radius)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(result)
 }
