@@ -292,7 +292,9 @@ visual-regions --base BASE --dub DUB --base-start 808 --dub-center 819`.
 It compares a 4×4 grid at 24 fps within ±1.5 seconds of the expected dubbed
 timestamp. The JSON reports each region's score, peak margin and reversed-time
 control, plus a consensus requiring at least three individually passing regions
-and agreement from 70% of passing regions within one frame. `offset_frames` is
+and agreement from 70% of passing regions within one frame. Peaks within three
+frames of the search boundary are inconclusive, because a better match may lie
+outside the search interval. `offset_frames` is
 relative to `--dub-center`; a positive value means the matching image was found
 later in the dub. This diagnostic neither modifies a timeline nor validates
 audio or lip sync. Static imagery, repeated animation, subtitles and differing

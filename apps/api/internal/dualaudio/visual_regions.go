@@ -30,6 +30,13 @@ type VisualRegionVote struct {
 	Accepted      bool    `json:"accepted"`
 }
 
+// regionPeakAccepted requires room to compare alternatives on both sides of a
+// peak. A peak close to the search boundary may be the visible edge of a
+// stronger match outside the decoded interval.
+func regionPeakAccepted(offset int, similarity, margin, reverseMargin float64) bool {
+	return absInt(offset) <= 32 && similarity >= .8 && margin >= .04 && reverseMargin >= .1
+}
+
 const regionWidth, regionHeight, regionRate = 160, 120, 24
 const regionPixels = regionWidth * regionHeight
 
@@ -156,7 +163,7 @@ func compareRegionPixels(q, s []byte, baseStart, dubCenter float64) (VisualRegio
 			}
 			reverse /= 48
 			v := VisualRegionVote{X: x, Y: y, OffsetFrames: best - 36, Similarity: scores[best], Margin: scores[best] - runner, ReverseMargin: scores[best] - reverse}
-			v.Accepted = v.Similarity >= .8 && v.Margin >= .04 && v.ReverseMargin >= .1
+			v.Accepted = regionPeakAccepted(v.OffsetFrames, v.Similarity, v.Margin, v.ReverseMargin)
 			if v.Accepted {
 				votes = append(votes, v.OffsetFrames)
 			}
