@@ -146,6 +146,24 @@ func TestVisualWindowsIdentifiesEditAndRejectsStaticFrames(t *testing.T) {
 	}
 }
 
+func TestVisualWindowsDoesNotTreatNearbyOffsetsAsIndependent(t *testing.T) {
+	frames := make([][7]uint64, 100)
+	rng := rand.New(rand.NewSource(19))
+	for i := range frames {
+		for j := range frames[i] {
+			frames[i][j] = rng.Uint64()
+		}
+	}
+	var matches []VisualLocation
+	for i := 0; i < 3; i++ {
+		matches = append(matches, VisualLocation{TimeA: float64(i), TimeB: float64(i)})
+		matches = append(matches, VisualLocation{TimeA: float64(i), TimeB: float64(i) + 0.25})
+	}
+	if got := visualWindows(frames, frames, matches); len(got) != 0 {
+		t.Fatal("nearby offsets do not provide an independent ambiguity check")
+	}
+}
+
 func TestVisualCandidatesRequireMatchingAudio(t *testing.T) {
 	rng := rand.New(rand.NewSource(912))
 	frames := make([][7]uint64, 100)

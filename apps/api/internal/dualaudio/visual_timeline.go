@@ -91,7 +91,7 @@ func LocateVisualTimeline(ctx context.Context, t Tools, basePath, dubPath string
 
 func visualTimeline(base, dub, baseFine, dubFine [][7]uint64) *VisualTimeline {
 	result := &VisualTimeline{SampleRate: 12, Matches: []VisualLocation{}, Windows: []VisualWindow{}}
-	for second := 15; second+3 < len(base); second += 10 {
+	for second := 15; second+3 < len(base); second += 5 {
 		lo, hi := max(0, second-200), min(len(dub), second+205)
 		if lo >= hi {
 			continue
@@ -141,7 +141,9 @@ func visualWindows(base, dub [][7]uint64, matches []VisualLocation) []VisualWind
 	for start := 0; start+24 <= len(base); start += 24 {
 		best, second := math.Inf(1), math.Inf(1)
 		bestLag := 0
-		for _, lag := range candidates {
+		scores := make([]float64, len(candidates))
+		for i, lag := range candidates {
+			scores[i] = math.Inf(1)
 			p := start - lag
 			if p < 0 || p+24 > len(dub) {
 				continue
@@ -151,10 +153,16 @@ func visualWindows(base, dub [][7]uint64, matches []VisualLocation) []VisualWind
 				distance += visualDistance(base[start+k], dub[p+k])
 			}
 			score := float64(distance) / float64(24*414)
+			scores[i] = score
 			if score < best {
-				second, best, bestLag = best, score, lag
-			} else if score < second {
-				second = score
+				best, bestLag = score, lag
+			}
+		}
+		// Adjacent estimates often describe the same scene with a one-frame
+		// quantization difference. Only a distinct offset tests ambiguity.
+		for i, lag := range candidates {
+			if absInt(lag-bestLag) > 3 && scores[i] < second {
+				second = scores[i]
 			}
 		}
 		if best < 0.28 && !math.IsInf(second, 1) && second-best > 0.008 {

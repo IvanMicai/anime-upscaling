@@ -276,7 +276,7 @@ For a read-only map of distinctive scenes across an episode, run:
 animeup dualaudio visual --base episode.en.mkv --dub episode.pt-br.mp4 --timeline
 ```
 
-This searches every ten seconds and refines distinctive three-second sequences
+This searches every five seconds and refines distinctive three-second sequences
 at 12 frames per second. The JSON contains accepted scene matches and two-second
 comparison windows using offsets supported by at least three scene matches.
 Missing windows are inconclusive; they are not proof of a gap. This is not a
