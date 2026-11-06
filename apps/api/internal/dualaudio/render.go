@@ -39,10 +39,11 @@ func Render(a *Alignment, dub, base []int16, fill GapFill) []int16 {
 	if fade < 1 {
 		fade = 1
 	}
-	// sin² in, cos² out: the two ramps sum to exactly 1 across a join.
-	ramp := make([]float32, fade)
+	// Both ramps span the same interval [join-fade, join+fade]. The
+	// incoming sin² and outgoing cos² weights therefore sum to one.
+	ramp := make([]float32, 2*fade+1)
 	for i := range ramp {
-		s := math.Sin(float64(i) / float64(fade) * math.Pi / 2)
+		s := math.Sin(float64(i) / float64(2*fade) * math.Pi / 2)
 		ramp[i] = float32(s * s)
 	}
 
@@ -60,11 +61,13 @@ func Render(a *Alignment, dub, base []int16, fill GapFill) []int16 {
 		}
 		srcStart -= dstStart - lo
 		for i := 0; i < n; i++ {
+			pos := lo + i
 			g := float32(1)
-			if i < fade {
-				g = ramp[i]
-			} else if n-1-i < fade {
-				g = ramp[n-1-i]
+			if dstStart > 0 && pos < dstStart+fade {
+				g *= ramp[pos-(dstStart-fade)]
+			}
+			if dstEnd < total && pos >= dstEnd-fade {
+				g *= ramp[(dstEnd+fade)-pos]
 			}
 			si := srcStart + i
 			if si < 0 || (si+1)*outChannels > len(src) {

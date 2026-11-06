@@ -154,7 +154,7 @@ music-and-effects master: only the voices differ. The score is what lines up.
    so that stretch is left as a **hole** (placed by a change-point search) and
    plays the base audio — it used to be filled with repeated dub audio.
 6. **Render.** The dub's PCM is repositioned on the base timeline segment by
-   segment, with a 20 ms crossfade at each join.
+   segment, with a 40 ms crossfade centered on each join (20 ms on each side).
 7. **Gaps.** A stretch that exists only in the base (credits, preview, a scene
    the dub's rip cut) plays the **base audio**. `--gap-fill silence` mutes it
    instead, but a minute of silence reads as a playback fault, while the original
