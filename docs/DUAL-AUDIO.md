@@ -464,6 +464,17 @@ sound, seek/resampling phase, differing mixes and source lip sync can still
 make this measurement misleading or inconclusive. This diagnostic does not
 write media or change the three-second gap-recovery gate.
 
+`dualaudio source-waveform-audit --review REVIEW.mkv --dub DUB.mp4
+--alignment MAP.json --stride 3` screens the rendered dubbed track against
+the original dubbed source in non-overlapping three-second queries. The map
+supplies search offsets, including nearby offsets for gaps and seams. The
+report distinguishes matches, inconclusive windows and conflicting candidates;
+it always requires review and writes no media. Each query searches overlapping
+reference audio, and a match may be dominated by shared music or effects, so
+window counts are not verified speech coverage or a lip-sync verdict. The
+command decodes both full stereo tracks into memory and accepts files up to two
+hours; increasing `--stride` reduces the number of comparisons.
+
 ### Review shared audio in a rendered file
 
 `animeup dualaudio shared-audio --file review.mkv --reference-stream 0 --candidate-stream 1`

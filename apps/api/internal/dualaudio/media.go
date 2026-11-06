@@ -92,7 +92,7 @@ func (t Tools) hasSubtitles(ctx context.Context, path string) bool {
 
 // DecodePCM decodes one audio stream to interleaved signed 16-bit samples.
 func (t Tools) DecodePCM(ctx context.Context, path string, rate, channels, stream int) ([]int16, error) {
-	raw, err := t.run(ctx, t.FFmpeg, nil, "-v", "error", "-nostdin", "-i", path,
+	raw, err := t.run(ctx, t.FFmpeg, nil, "-v", "error", "-nostdin", "-threads", "2", "-i", path,
 		"-map", fmt.Sprintf("0:a:%d", stream), "-vn",
 		"-ac", strconv.Itoa(channels), "-ar", strconv.Itoa(rate),
 		"-af", fmt.Sprintf("aresample=%d:async=1:first_pts=0", rate), "-f", "s16le", "-")

@@ -22,7 +22,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-motion|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio|waveform-gap|waveform-probe> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-motion|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio|waveform-gap|waveform-probe|source-waveform-audit> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -41,6 +41,8 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioWaveformGap(ctx, tools, args[1:])
 	case "waveform-probe":
 		return dualaudioWaveformProbe(ctx, tools, args[1:])
+	case "source-waveform-audit":
+		return dualaudioSourceWaveformAudit(ctx, tools, args[1:])
 	case "visual-audio":
 		return dualaudioVisualAudio(ctx, tools, args[1:])
 	case "visual-refine":
@@ -59,6 +61,69 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioVisualFill(ctx, tools, args[1:])
 	}
 	return fmt.Errorf("unknown dualaudio command: %s", args[0])
+}
+
+func dualaudioSourceWaveformAudit(ctx context.Context, tools dualaudio.Tools, args []string) error {
+	fs := flag.NewFlagSet("dualaudio source-waveform-audit", flag.ContinueOnError)
+	review := fs.String("review", "", "rendered review file")
+	dub := fs.String("dub", "", "original dubbed file")
+	mapPath := fs.String("alignment", "", "alignment JSON or analyze --json result")
+	reviewStream := fs.Int("review-stream", 1, "dubbed audio stream index in review")
+	dubStream := fs.Int("dub-stream", 0, "audio stream index in dub")
+	stride := fs.Float64("stride", 3, "seconds between three-second queries (3–60)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *review == "" || *dub == "" || *mapPath == "" || *reviewStream < 0 || *dubStream < 0 || math.IsNaN(*stride) || math.IsInf(*stride, 0) || *stride < 3 || *stride > 60 {
+		return errors.New("review, dub, alignment, valid stream indexes and stride 3–60 are required")
+	}
+	raw, err := os.ReadFile(*mapPath)
+	if err != nil {
+		return err
+	}
+	var wrapped struct {
+		Alignment *dualaudio.Alignment `json:"alignment"`
+	}
+	if err = json.Unmarshal(raw, &wrapped); err != nil {
+		return fmt.Errorf("alignment: %w", err)
+	}
+	if wrapped.Alignment == nil {
+		wrapped.Alignment = &dualaudio.Alignment{}
+		if err = json.Unmarshal(raw, wrapped.Alignment); err != nil {
+			return fmt.Errorf("alignment: %w", err)
+		}
+	}
+	if _, err = dualaudio.CommonCoverageSegments(wrapped.Alignment, wrapped.Alignment); err != nil {
+		return err
+	}
+	rd, err := tools.Duration(ctx, *review)
+	if err != nil {
+		return err
+	}
+	dd, err := tools.Duration(ctx, *dub)
+	if err != nil {
+		return err
+	}
+	if rd > 7200 || dd > 7200 || rd > wrapped.Alignment.BaseDuration+.25 || math.Abs(dd-wrapped.Alignment.DubDuration) > .25 {
+		return errors.New("source durations do not match alignment or exceed two hours")
+	}
+	output, err := tools.DecodePCM(ctx, *review, 16000, 2, *reviewStream)
+	if err != nil {
+		return err
+	}
+	source, err := tools.DecodePCM(ctx, *dub, 16000, 2, *dubStream)
+	if err != nil {
+		return err
+	}
+	report, err := dualaudio.AuditSourceWaveform(ctx, output, source, wrapped.Alignment, *stride)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(struct {
+		Status  string                        `json:"status"`
+		Warning string                        `json:"warning"`
+		Report  dualaudio.SourceWaveformAudit `json:"report"`
+	}{"review", "Waveform matches can reflect music or effects and do not prove language, complete coverage or lip sync; no media was written.", report})
 }
 
 func dualaudioVisualMotion(ctx context.Context, tools dualaudio.Tools, args []string) error {
