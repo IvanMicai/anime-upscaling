@@ -117,3 +117,44 @@ func TestRecoverVisualGapsDoesNotBootstrapDistantWindows(t *testing.T) {
 		}
 	}
 }
+
+func TestRecoverVisualGapsUsesStrictShortWindowAtEdit(t *testing.T) {
+	rng := rand.New(rand.NewSource(701))
+	base, dub := make([]byte, 40*12*visualBytes), make([]byte, 40*12*visualBytes)
+	if _, err := rng.Read(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rng.Read(dub); err != nil {
+		t.Fatal(err)
+	}
+	// Exactly the target two seconds correspond; the surrounding edit does not.
+	copy(dub[(14*12+3)*visualBytes:(16*12+3)*visualBytes], base[14*12*visualBytes:16*12*visualBytes])
+	timeline := &VisualTimeline{SampleRate: 12, Windows: []VisualWindow{{Start: 12, End: 14, Lag: -.25}}}
+	result, err := recoverVisualGaps(timeline, base, dub, 40, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range result.Timeline.Windows {
+		if w.Start == 14 && w.GapRecovered && math.Abs(w.Lag+.25) < .001 {
+			return
+		}
+	}
+	t.Fatal("short matching window was not recovered")
+}
+
+func TestShortVisualGapRejectsRepeatedScene(t *testing.T) {
+	rng := rand.New(rand.NewSource(702))
+	base, dub := make([]byte, 40*12*visualBytes), make([]byte, 40*12*visualBytes)
+	if _, err := rng.Read(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rng.Read(dub); err != nil {
+		t.Fatal(err)
+	}
+	query, target := 14*12, 14*12+3
+	copy(dub[target*visualBytes:(target+24)*visualBytes], base[query*visualBytes:(query+24)*visualBytes])
+	copy(dub[(target+60)*visualBytes:(target+84)*visualBytes], base[query*visualBytes:(query+24)*visualBytes])
+	if _, ok := shortVisualGap(base, dub, 14, target); ok {
+		t.Fatal("repeated scene accepted as a unique match")
+	}
+}

@@ -103,6 +103,14 @@ func recoverVisualGaps(input *VisualTimeline, base, dub []byte, duration float64
 		}
 		center := query - int(math.Round(input.Windows[nearest].Lag*12))
 		result.Attempted++
+		// If the wider query crosses an edit, a strict two-second fallback can
+		// still recover the target window without assuming its neighbors match.
+		shortFallback := func() {
+			if w, ok := shortVisualGap(base, dub, start, center+6); ok {
+				timeline.Windows = append(timeline.Windows, w)
+				result.Recovered++
+			}
+		}
 		score := func(pos int) (float64, float64, bool) {
 			if pos < 0 || pos+36 > dubFrames {
 				return 0, 0, false
@@ -137,6 +145,7 @@ func recoverVisualGaps(input *VisualTimeline, base, dub []byte, duration float64
 			}
 		}
 		if best < 0 {
+			shortFallback()
 			continue
 		}
 		second := math.Inf(-1)
@@ -150,6 +159,7 @@ func recoverVisualGaps(input *VisualTimeline, base, dub []byte, duration float64
 		after, _, okAfter := score(pos + 60)
 		margin := scores[best] - second
 		if !okBefore || !okAfter || math.IsInf(second, -1) || scores[best] < .84 || blocks[best] < .72 || margin < .04 || scores[best]-math.Max(before, after) < .10 {
+			shortFallback()
 			continue
 		}
 		hash, okHash := gapSequenceHashScore(base, dub, query, pos)
@@ -157,6 +167,7 @@ func recoverVisualGaps(input *VisualTimeline, base, dub []byte, duration float64
 		hashAfter, okHashAfter := gapSequenceHashScore(base, dub, query, pos+60)
 		hashMargin := math.Min(hashBefore, hashAfter) - hash
 		if !okHash || !okHashBefore || !okHashAfter || hash >= .35 || hashMargin < .025 {
+			shortFallback()
 			continue
 		}
 		timeline.Windows = append(timeline.Windows, VisualWindow{Start: float64(start), End: end, Lag: float64(query-pos) / 12, Contextual: true, GapRecovered: true, SequenceSimilarity: scores[best], SequenceMargin: margin, SequenceHashDistance: hash, SequenceHashMargin: hashMargin})
@@ -179,4 +190,67 @@ func gapSequenceHashScore(base, dub []byte, query, pos int) (float64, bool) {
 		distance += visualDistance(visualFingerprint(a), visualFingerprint(b))
 	}
 	return float64(distance) / float64(9*414), true
+}
+
+// shortVisualGap matches only the missing window. Its stricter thresholds and
+// distant controls compensate partially for the shorter sequence; the result is
+// still contextual evidence, not an independently verified sync decision.
+func shortVisualGap(base, dub []byte, start, center int) (VisualWindow, bool) {
+	query := start * 12
+	frame := func(data []byte, i int) []byte {
+		if i < 0 || (i+1)*visualBytes > len(data) {
+			return nil
+		}
+		return data[i*visualBytes : (i+1)*visualBytes]
+	}
+	score := func(pos int) (float64, float64, float64, bool) {
+		var sum, low, hash float64
+		low = math.Inf(1)
+		for i := 0; i < 24; i += 6 {
+			var block float64
+			for j := 0; j < 6; j += 3 {
+				a, b := frame(base, query+i+j), frame(dub, pos+i+j)
+				v, ok := pixelCorrelation(a, b)
+				if !ok {
+					return 0, 0, 0, false
+				}
+				block += v
+				hash += float64(visualDistance(visualFingerprint(a), visualFingerprint(b)))
+			}
+			low = math.Min(low, block/2)
+			sum += block
+		}
+		return sum / 8, low, hash / (8 * 414), true
+	}
+	var scores [61]float64
+	var blocks, hashes [61]float64
+	best := -1
+	for i := range scores {
+		scores[i] = math.Inf(-1)
+		a, b, h, ok := score(center + i - 30)
+		if ok {
+			scores[i], blocks[i], hashes[i] = a, b, h
+			if best < 0 || a > scores[best] {
+				best = i
+			}
+		}
+	}
+	if best < 0 {
+		return VisualWindow{}, false
+	}
+	second := math.Inf(-1)
+	for i, v := range scores {
+		if absInt(i-best) > 1 && v > second {
+			second = v
+		}
+	}
+	pos := center + best - 30
+	before, _, hashBefore, okBefore := score(pos - 60)
+	after, _, hashAfter, okAfter := score(pos + 60)
+	margin := scores[best] - second
+	hashMargin := math.Min(hashBefore, hashAfter) - hashes[best]
+	if !okBefore || !okAfter || math.IsInf(second, -1) || scores[best] < .90 || blocks[best] < .85 || margin < .08 || scores[best]-math.Max(before, after) < .20 || hashes[best] >= .35 || hashMargin < .05 {
+		return VisualWindow{}, false
+	}
+	return VisualWindow{Start: float64(start), End: float64(start + 2), Lag: float64(query-pos) / 12, Contextual: true, GapRecovered: true, SequenceSimilarity: scores[best], SequenceMargin: margin, SequenceHashDistance: hashes[best], SequenceHashMargin: hashMargin}, true
 }

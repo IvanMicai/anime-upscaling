@@ -297,7 +297,10 @@ The limit is 1–100 per invocation; the resulting JSON remains compatible with
 
 `dualaudio visual-fill --base ... --dub ... --timeline refined.json --limit 100
 > filled.json` optionally searches missing two-second windows near existing
-anchors using three-second grayscale sequences and distant controls. It never
+anchors using three-second grayscale sequences and distant controls. When the
+wider sequence fails, it can try the two-second window itself with stricter
+similarity and ambiguity thresholds; an edit just outside the window may
+otherwise hide a match. It never
 fills explicitly rejected intervals or uses newly recovered windows as anchors.
 It also checks a cropped difference hash of the same sampled frames against
 both distant controls; the two metrics are not independent source material.
