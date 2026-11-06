@@ -169,5 +169,27 @@ func visualWindows(base, dub [][7]uint64, matches []VisualLocation) []VisualWind
 			windows = append(windows, VisualWindow{Start: float64(start) / 12, End: float64(start+24) / 12, Lag: float64(bestLag) / 12, Distance: best, Margin: second - best})
 		}
 	}
-	return windows
+	return rejectIsolatedVisualWindows(windows)
+}
+
+// An isolated disagreement between nearby windows with the same offset can be
+// a repeated shot or a very short edit. In either case there is not enough
+// evidence to choose the offset for that window, so leave it inconclusive.
+func rejectIsolatedVisualWindows(windows []VisualWindow) []VisualWindow {
+	if len(windows) < 3 {
+		return windows
+	}
+	out := make([]VisualWindow, 0, len(windows))
+	for i, w := range windows {
+		if i > 0 && i+1 < len(windows) {
+			before, after := windows[i-1], windows[i+1]
+			if w.Start-before.End <= 4 && after.Start-w.End <= 4 &&
+				math.Abs(before.Lag-after.Lag) <= 0.25 &&
+				math.Abs(w.Lag-before.Lag) > 0.25 && math.Abs(w.Lag-after.Lag) > 0.25 {
+				continue
+			}
+		}
+		out = append(out, w)
+	}
+	return out
 }

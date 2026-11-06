@@ -164,6 +164,22 @@ func TestVisualWindowsDoesNotTreatNearbyOffsetsAsIndependent(t *testing.T) {
 	}
 }
 
+func TestRejectIsolatedVisualWindows(t *testing.T) {
+	windows := []VisualWindow{
+		{Start: 0, End: 2, Lag: 0},
+		{Start: 2, End: 4, Lag: 0},
+		{Start: 4, End: 6, Lag: -11},
+		{Start: 6, End: 8, Lag: 0},
+		{Start: 8, End: 10, Lag: 0},
+		{Start: 10, End: 12, Lag: -11},
+		{Start: 12, End: 14, Lag: -11},
+	}
+	got := rejectIsolatedVisualWindows(windows)
+	if len(got) != 6 || got[2].Start != 6 || got[4].Start != 10 {
+		t.Fatalf("expected isolated outlier removed and sustained cut retained: %+v", got)
+	}
+}
+
 func TestVisualCandidatesRequireMatchingAudio(t *testing.T) {
 	rng := rand.New(rand.NewSource(912))
 	frames := make([][7]uint64, 100)
