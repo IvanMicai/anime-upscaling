@@ -1,0 +1,165 @@
+package dualaudio
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"sort"
+)
+
+// VisualTimeline is diagnostic evidence, not an audio synchronization verdict.
+// Timestamps refer to the video streams; the dub's own audio/video sync must
+// be established separately. Missing matches must not be interpolated blindly.
+type VisualTimeline struct {
+	SampleRate int              `json:"sample_rate"`
+	Matches    []VisualLocation `json:"matches"`
+	Windows    []VisualWindow   `json:"windows"`
+}
+
+// VisualWindow is a two-second comparison using offsets supported by several
+// independent scene matches. A missing window is inconclusive, not a gap.
+type VisualWindow struct {
+	Start    float64 `json:"start"`
+	End      float64 `json:"end"`
+	Lag      float64 `json:"lag"` // base timestamp minus dub timestamp
+	Distance float64 `json:"distance"`
+	Margin   float64 `json:"margin"`
+}
+
+// refineVisual compares a three-second sequence at 12 fps around a coarse
+// match. Distant alternatives guard against a repeated or static scene.
+func refineVisual(query, search [][7]uint64) (int, float64, float64, bool) {
+	if len(query) != 36 || len(search) < len(query)+13 {
+		return 0, 0, 0, false
+	}
+	scores := make([]float64, len(search)-len(query)+1)
+	best, bestScore := 0, math.Inf(1)
+	for i := range scores {
+		for j := range query {
+			scores[i] += float64(visualDistance(query[j], search[i+j]))
+		}
+		scores[i] /= float64(len(query) * 414)
+		if scores[i] < bestScore {
+			best, bestScore = i, scores[i]
+		}
+	}
+	second := math.Inf(1)
+	for i, score := range scores {
+		if absInt(i-best) > 6 && score < second {
+			second = score
+		}
+	}
+	if math.IsInf(second, 1) {
+		return best, bestScore, 0, false
+	}
+	margin := second - bestScore
+	return best, bestScore, margin, bestScore < 0.28 && margin > 0.008
+}
+
+// LocateVisualTimeline finds independent coarse scene matches and refines
+// them to 1/12 second. It deliberately does not extrapolate across edits.
+func LocateVisualTimeline(ctx context.Context, t Tools, basePath, dubPath string) (*VisualTimeline, error) {
+	baseDur, err := t.Duration(ctx, basePath)
+	if err != nil {
+		return nil, err
+	}
+	dubDur, err := t.Duration(ctx, dubPath)
+	if err != nil {
+		return nil, err
+	}
+	if baseDur > 7200 || dubDur > 7200 {
+		return nil, fmt.Errorf("visual timeline supports videos up to two hours")
+	}
+	baseCoarse, err := t.visualFramesAt(ctx, basePath, 0, baseDur, 1)
+	if err != nil {
+		return nil, err
+	}
+	dubCoarse, err := t.visualFramesAt(ctx, dubPath, 0, dubDur, 1)
+	if err != nil {
+		return nil, err
+	}
+	baseFine, err := t.visualFramesAt(ctx, basePath, 0, baseDur, 12)
+	if err != nil {
+		return nil, err
+	}
+	dubFine, err := t.visualFramesAt(ctx, dubPath, 0, dubDur, 12)
+	if err != nil {
+		return nil, err
+	}
+	return visualTimeline(baseCoarse, dubCoarse, baseFine, dubFine), nil
+}
+
+func visualTimeline(base, dub, baseFine, dubFine [][7]uint64) *VisualTimeline {
+	result := &VisualTimeline{SampleRate: 12, Matches: []VisualLocation{}, Windows: []VisualWindow{}}
+	for second := 15; second+3 < len(base); second += 10 {
+		lo, hi := max(0, second-200), min(len(dub), second+205)
+		if lo >= hi {
+			continue
+		}
+		idx, _, _, ok := matchVisual(base[second-2:second+3], dub[lo:hi])
+		if !ok {
+			continue
+		}
+		coarse := lo + idx + 2
+		start := (second - 1) * 12
+		center := (coarse - 1) * 12
+		left, right := max(0, center-30), min(len(dubFine), center+30+36)
+		if start < 0 || start+36 > len(baseFine) || left >= right {
+			continue
+		}
+		idx, distance, margin, ok := refineVisual(baseFine[start:start+36], dubFine[left:right])
+		if !ok {
+			continue
+		}
+		result.Matches = append(result.Matches, VisualLocation{TimeA: float64(second), TimeB: float64(left+idx)/12 + 1, Distance: distance, Margin: margin, Matched: true})
+	}
+	result.Windows = visualWindows(baseFine, dubFine, result.Matches)
+	return result
+}
+
+func visualWindows(base, dub [][7]uint64, matches []VisualLocation) []VisualWindow {
+	var offsets []int
+	for _, m := range matches {
+		offsets = append(offsets, int(math.Round((m.TimeA-m.TimeB)*12)))
+	}
+	sort.Ints(offsets)
+	var candidates []int
+	for i := 0; i < len(offsets); {
+		j := i + 1
+		for j < len(offsets) && offsets[j]-offsets[i] <= 2 {
+			j++
+		}
+		if j-i >= 3 {
+			candidates = append(candidates, offsets[(i+j)/2])
+		}
+		i = j
+	}
+	windows := []VisualWindow{}
+	if len(candidates) < 2 {
+		return windows
+	}
+	for start := 0; start+24 <= len(base); start += 24 {
+		best, second := math.Inf(1), math.Inf(1)
+		bestLag := 0
+		for _, lag := range candidates {
+			p := start - lag
+			if p < 0 || p+24 > len(dub) {
+				continue
+			}
+			distance := 0
+			for k := 0; k < 24; k++ {
+				distance += visualDistance(base[start+k], dub[p+k])
+			}
+			score := float64(distance) / float64(24*414)
+			if score < best {
+				second, best, bestLag = best, score, lag
+			} else if score < second {
+				second = score
+			}
+		}
+		if best < 0.28 && !math.IsInf(second, 1) && second-best > 0.008 {
+			windows = append(windows, VisualWindow{Start: float64(start) / 12, End: float64(start+24) / 12, Lag: float64(bestLag) / 12, Distance: best, Margin: second - best})
+		}
+	}
+	return windows
+}

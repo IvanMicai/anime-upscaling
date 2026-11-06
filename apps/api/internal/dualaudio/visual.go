@@ -85,7 +85,11 @@ func absInt(x int) int {
 }
 
 func (t Tools) visualFrames(ctx context.Context, path string, start, dur float64) ([][7]uint64, error) {
-	raw, err := t.run(ctx, t.FFmpeg, nil, "-v", "error", "-nostdin", "-ss", strconv.FormatFloat(start, 'f', 3, 64), "-t", strconv.FormatFloat(dur, 'f', 3, 64), "-threads", "2", "-i", path, "-map", "0:v:0", "-vf", "fps=1,scale=32:24,format=gray", "-an", "-f", "rawvideo", "-")
+	return t.visualFramesAt(ctx, path, start, dur, 1)
+}
+
+func (t Tools) visualFramesAt(ctx context.Context, path string, start, dur float64, rate int) ([][7]uint64, error) {
+	raw, err := t.run(ctx, t.FFmpeg, nil, "-v", "error", "-nostdin", "-ss", strconv.FormatFloat(start, 'f', 3, 64), "-t", strconv.FormatFloat(dur, 'f', 3, 64), "-threads", "2", "-i", path, "-map", "0:v:0", "-vf", fmt.Sprintf("fps=%d,scale=32:24,format=gray", rate), "-an", "-f", "rawvideo", "-")
 	if err != nil {
 		return nil, err
 	}

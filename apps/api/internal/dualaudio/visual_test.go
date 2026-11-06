@@ -65,6 +65,87 @@ func TestMatchVisualNeedsIndependentAlternative(t *testing.T) {
 	}
 }
 
+func TestRefineVisualFindsSubsecondMatchAndRejectsRepetition(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
+	search := make([][7]uint64, 140)
+	for i := range search {
+		for j := range search[i] {
+			search[i][j] = rng.Uint64()
+		}
+	}
+	query := append([][7]uint64(nil), search[41:77]...)
+	idx, _, _, ok := refineVisual(query, search)
+	if !ok || idx != 41 {
+		t.Fatalf("match=%v index=%d", ok, idx)
+	}
+	copy(search[95:131], query)
+	if _, _, _, ok := refineVisual(query, search); ok {
+		t.Fatal("repeated sequence must be ambiguous")
+	}
+}
+
+func TestVisualTimelineHandlesShortDub(t *testing.T) {
+	got := visualTimeline(make([][7]uint64, 500), make([][7]uint64, 10), nil, nil)
+	if len(got.Matches) != 0 {
+		t.Fatal("unexpected matches")
+	}
+}
+
+func TestVisualTimelineMeasuresOffset(t *testing.T) {
+	rng := rand.New(rand.NewSource(13))
+	base := make([][7]uint64, 80)
+	fine := make([][7]uint64, 80*12)
+	for _, frames := range [][][7]uint64{base, fine} {
+		for i := range frames {
+			for j := range frames[i] {
+				frames[i][j] = rng.Uint64()
+			}
+		}
+	}
+	dub, dubFine := make([][7]uint64, len(base)+3), make([][7]uint64, len(fine)+36)
+	copy(dub[3:], base)
+	copy(dubFine[36:], fine)
+	result := visualTimeline(base, dub, fine, dubFine)
+	if len(result.Matches) == 0 {
+		t.Fatal("expected distinctive matches")
+	}
+	for _, m := range result.Matches {
+		if m.TimeB-m.TimeA != 3 {
+			t.Fatalf("incorrect offset: %+v", m)
+		}
+	}
+}
+
+func TestVisualWindowsIdentifiesEditAndRejectsStaticFrames(t *testing.T) {
+	rng := rand.New(rand.NewSource(18))
+	base := make([][7]uint64, 24*10)
+	dub := make([][7]uint64, len(base)+24)
+	for i := range base {
+		for j := range base[i] {
+			base[i][j] = rng.Uint64()
+		}
+	}
+	copy(dub[:24*5], base[:24*5])
+	copy(dub[24*5+12:], base[24*5:])
+	matches := []VisualLocation{}
+	for i := 0; i < 3; i++ {
+		matches = append(matches, VisualLocation{TimeA: float64(i * 2), TimeB: float64(i * 2)})
+		matches = append(matches, VisualLocation{TimeA: float64(12 + i*2), TimeB: float64(13 + i*2)})
+	}
+	windows := visualWindows(base, dub, matches)
+	if len(windows) != 10 {
+		t.Fatalf("got %d windows", len(windows))
+	}
+	if windows[0].Lag != 0 || windows[9].Lag != -1 {
+		t.Fatalf("wrong edit: %+v", windows)
+	}
+	clear(base)
+	clear(dub)
+	if got := visualWindows(base, dub, matches); len(got) != 0 {
+		t.Fatal("static frames must be inconclusive")
+	}
+}
+
 func TestVisualCandidatesRequireMatchingAudio(t *testing.T) {
 	rng := rand.New(rand.NewSource(912))
 	frames := make([][7]uint64, 100)

@@ -270,6 +270,21 @@ This command is **read-only**. Its coarse timestamps are diagnostic evidence,
 not proof of audio synchronization: it neither feeds the alignment algorithm nor
 changes the quality gate. Check corresponding scenes and verify audio separately.
 
+For a read-only map of distinctive scenes across an episode, run:
+
+```bash
+animeup dualaudio visual --base episode.en.mkv --dub episode.pt-br.mp4 --timeline
+```
+
+This searches every ten seconds and refines distinctive three-second sequences
+at 12 frames per second. The JSON contains accepted scene matches and two-second
+comparison windows using offsets supported by at least three scene matches.
+Missing windows are inconclusive; they are not proof of a gap. This is not a
+continuous edit map and does not identify exact cut boundaries. Sampling
+limits timestamp resolution, and the audio may already be out of sync with its
+own source video. Do not infer that the audio is synchronized from a visual
+match. This mode decodes both videos twice and rejects inputs over two hours.
+
 ### Experimental visual assistance in merge jobs
 
 The opt-in **Experimental visual assistance** setting proposes offsets from

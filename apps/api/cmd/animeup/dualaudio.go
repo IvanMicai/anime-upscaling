@@ -340,11 +340,19 @@ func dualaudioVisual(ctx context.Context, tools dualaudio.Tools, args []string) 
 	b := fs.String("dub", "", "second video")
 	at := fs.Float64("time", -1, "timestamp in the first video, in seconds")
 	radius := fs.Float64("radius", 30, "search radius in seconds (5–240)")
+	timeline := fs.Bool("timeline", false, "map distinctive scenes throughout both videos at 12 fps")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *a == "" || *b == "" {
 		return errors.New("--base and --dub are required")
+	}
+	if *timeline {
+		result, err := dualaudio.LocateVisualTimeline(ctx, tools, *a, *b)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(result)
 	}
 	result, err := dualaudio.LocateVisual(ctx, tools, *a, *b, *at, *radius)
 	if err != nil {
