@@ -20,7 +20,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-audio> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-refine|visual-audio> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -35,8 +35,38 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioVisual(ctx, tools, args[1:])
 	case "visual-audio":
 		return dualaudioVisualAudio(ctx, tools, args[1:])
+	case "visual-refine":
+		return dualaudioVisualRefine(ctx, tools, args[1:])
 	}
 	return fmt.Errorf("unknown dualaudio command: %s", args[0])
+}
+
+func dualaudioVisualRefine(ctx context.Context, tools dualaudio.Tools, args []string) error {
+	fs := flag.NewFlagSet("dualaudio visual-refine", flag.ContinueOnError)
+	base := fs.String("base", "", "file that provides the video")
+	dub := fs.String("dub", "", "file that provides the dubbed audio")
+	timeline := fs.String("timeline", "", "JSON from dualaudio visual --timeline")
+	limit := fs.Int("limit", 8, "maximum rejected windows to examine (1-100)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *base == "" || *dub == "" || *timeline == "" {
+		return errors.New("--base, --dub and --timeline are required")
+	}
+	data, err := os.ReadFile(*timeline)
+	if err != nil {
+		return err
+	}
+	var visual dualaudio.VisualTimeline
+	if err := json.Unmarshal(data, &visual); err != nil {
+		return fmt.Errorf("visual timeline: %w", err)
+	}
+	result, err := dualaudio.RefineVisualRejections(ctx, tools, *base, *dub, &visual, *limit)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "examined %d rejected windows; recovered %d; result remains review-only\n", result.Attempted, result.Recovered)
+	return json.NewEncoder(os.Stdout).Encode(result.Timeline)
 }
 
 // dualaudioVisualAudio evaluates a saved timeline without writing media. The

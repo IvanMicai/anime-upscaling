@@ -41,6 +41,7 @@ func VisualAudioAlign(timeline *VisualTimeline, base, dub *Features, baseDuratio
 	type group struct {
 		start, end, lag float64
 		windows         []VisualWindow
+		fine            bool
 	}
 	var groups []group
 	lastEnd := 0.0
@@ -67,11 +68,13 @@ func VisualAudioAlign(timeline *VisualTimeline, base, dub *Features, baseDuratio
 	}
 	for _, w := range clean {
 		n := len(groups)
-		if n > 0 && w.Start-groups[n-1].end <= 30 && math.Abs(w.Lag-groups[n-1].lag) <= 0.10 {
+		differentFineLag := n > 0 && (w.FineRefined || groups[n-1].fine) && math.Abs(w.Lag-groups[n-1].lag) > 0.02
+		if n > 0 && w.Start-groups[n-1].end <= 30 && math.Abs(w.Lag-groups[n-1].lag) <= 0.10 && !differentFineLag {
 			groups[n-1].end = w.End
 			groups[n-1].windows = append(groups[n-1].windows, w)
+			groups[n-1].fine = groups[n-1].fine || w.FineRefined
 		} else {
-			groups = append(groups, group{start: w.Start, end: w.End, lag: w.Lag, windows: []VisualWindow{w}})
+			groups = append(groups, group{start: w.Start, end: w.End, lag: w.Lag, windows: []VisualWindow{w}, fine: w.FineRefined})
 		}
 	}
 	result := &VisualAudioCandidate{Alignment: &Alignment{BaseDuration: baseDuration, DubDuration: dubDuration}, Regions: []VisualAudioRegion{}}

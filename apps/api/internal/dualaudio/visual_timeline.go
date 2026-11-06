@@ -11,22 +11,25 @@ import (
 // Timestamps refer to the video streams; the dub's own audio/video sync must
 // be established separately. Missing matches must not be interpolated blindly.
 type VisualTimeline struct {
-	SampleRate int              `json:"sample_rate"`
-	Matches    []VisualLocation `json:"matches"`
-	Windows    []VisualWindow   `json:"windows"`
-	Rejected   []Gap            `json:"rejected,omitempty"` // pixel check failed; do not bridge
+	SampleRate         int              `json:"sample_rate"`
+	Matches            []VisualLocation `json:"matches"`
+	Windows            []VisualWindow   `json:"windows"`
+	Rejected           []Gap            `json:"rejected,omitempty"`            // pixel check failed; do not bridge
+	RejectedCandidates []VisualWindow   `json:"rejected_candidates,omitempty"` // evidence retained for optional refinement
 }
 
 // VisualWindow is a two-second comparison using offsets supported by several
 // independent scene matches. A missing window is inconclusive, not a gap.
 type VisualWindow struct {
-	Start           float64 `json:"start"`
-	End             float64 `json:"end"`
-	Lag             float64 `json:"lag"` // base timestamp minus dub timestamp
-	Distance        float64 `json:"distance"`
-	Margin          float64 `json:"margin"`
-	Contextual      bool    `json:"contextual,omitempty"`       // inferred using neighboring matches
-	PixelSimilarity float64 `json:"pixel_similarity,omitempty"` // independent grayscale check at midpoint
+	Start            float64 `json:"start"`
+	End              float64 `json:"end"`
+	Lag              float64 `json:"lag"` // base timestamp minus dub timestamp
+	Distance         float64 `json:"distance"`
+	Margin           float64 `json:"margin"`
+	Contextual       bool    `json:"contextual,omitempty"`       // inferred using neighboring matches
+	PixelSimilarity  float64 `json:"pixel_similarity,omitempty"` // independent grayscale check at midpoint
+	FineRefined      bool    `json:"fine_refined,omitempty"`     // 24-fps sequence passed distinct-peak checks
+	RefinementMargin float64 `json:"refinement_margin,omitempty"`
 }
 
 // pixelCorrelation compares brightness patterns, independently of the
@@ -148,7 +151,13 @@ func LocateVisualTimeline(ctx context.Context, t Tools, basePath, dubPath string
 		return nil, err
 	}
 	result := visualTimeline(baseCoarse, dubCoarse, baseFine, dubFine)
-	result.Windows, result.Rejected = filterVisualPixelDisagreements(result.Windows, basePixels, dubPixels)
+	allWindows := result.Windows
+	result.Windows, result.Rejected = filterVisualPixelDisagreements(allWindows, basePixels, dubPixels)
+	for _, w := range allWindows {
+		if overlapsRejected(w.Start, w.End, result.Rejected) {
+			result.RejectedCandidates = append(result.RejectedCandidates, w)
+		}
+	}
 	return result, nil
 }
 

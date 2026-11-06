@@ -286,6 +286,14 @@ An independent grayscale-correlation check compares each midpoint against the
 proposed frame and five-second-away controls. Rejected windows are recorded
 separately and the audio map will not bridge those ranges. This check samples
 one frame per window and does not prove frame-accurate alignment.
+
+For a targeted, slower second look, `dualaudio visual-refine --base ... --dub
+... --timeline timeline.json --limit 8 > refined.json` decodes three-second
+sequences at 24 fps around rejected candidates. A window is recovered only
+when its nearby timing peak is distinctive and beats five-second controls.
+The limit is 1–100 per invocation; the resulting JSON remains compatible with
+`visual-audio`. Recoveries are marked `fine_refined` and remain experimental:
+24-fps sampling and matched imagery do not prove dialogue or source lip sync.
 Missing windows are inconclusive; they are not proof of a gap. This is not a
 continuous edit map and does not identify exact cut boundaries. Sampling
 limits timestamp resolution, and the audio may already be out of sync with its
