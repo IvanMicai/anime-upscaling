@@ -85,7 +85,7 @@ func absInt(x int) int {
 }
 
 func (t Tools) visualFrames(ctx context.Context, path string, start, dur float64) ([][7]uint64, error) {
-	raw, err := t.run(ctx, t.FFmpeg, nil, "-v", "error", "-nostdin", "-ss", strconv.FormatFloat(start, 'f', 3, 64), "-t", strconv.FormatFloat(dur, 'f', 3, 64), "-i", path, "-map", "0:v:0", "-vf", "fps=1,scale=32:24,format=gray", "-an", "-f", "rawvideo", "-")
+	raw, err := t.run(ctx, t.FFmpeg, nil, "-v", "error", "-nostdin", "-ss", strconv.FormatFloat(start, 'f', 3, 64), "-t", strconv.FormatFloat(dur, 'f', 3, 64), "-threads", "2", "-i", path, "-map", "0:v:0", "-vf", "fps=1,scale=32:24,format=gray", "-an", "-f", "rawvideo", "-")
 	if err != nil {
 		return nil, err
 	}
@@ -120,6 +120,9 @@ func LocateVisual(ctx context.Context, t Tools, pathA, pathB string, at, radius 
 	qStart := math.Floor(at) - 2
 	start := math.Max(0, qStart-radius)
 	end := math.Min(db, qStart+radius+5)
+	if end-start < 5 {
+		return result, nil
+	}
 	query, err := t.visualFrames(ctx, pathA, qStart, 5)
 	if err != nil {
 		return result, err
@@ -137,4 +140,62 @@ func LocateVisual(ctx context.Context, t Tools, pathA, pathB string, at, radius 
 		result.TimeB = 0
 	}
 	return result, nil
+}
+
+// visualCandidates proposes offsets only when a distinctive five-frame visual
+// sequence is independently confirmed by audio at subsecond resolution.
+// Visual evidence never bypasses the existing audio quality gate.
+func visualCandidates(baseFrames, dubFrames [][7]uint64, base, dub *Features, minConfidence float64) []estimate {
+	var out []estimate
+	const halfWindow = 5
+	const bucketSeconds = 120
+	for second := 10; second+5 < len(dubFrames); second += 15 {
+		lo := max(0, second-240)
+		hi := min(len(baseFrames), second+245)
+		if hi-lo < 9 {
+			continue
+		}
+		idx, _, _, matched := matchVisual(dubFrames[second-2:second+3], baseFrames[lo:hi])
+		if !matched {
+			continue
+		}
+		baseTime := float64(lo + idx + 2)
+		p0 := (second - halfWindow) * int(fps)
+		length := 2 * halfWindow * int(fps)
+		if p0 < 0 || p0+length > dub.Frames {
+			continue
+		}
+		center := (baseTime - float64(second)) * fps
+		lag, confidence, ok := matchWindow(base, dub.slice(p0, p0+length), p0, center, 3*int(fps))
+		if ok && confidence >= minConfidence && math.Abs(lag-center) <= 2*fps {
+			proposal := estimate{frame: p0, lag: lag, conf: confidence}
+			// Keep only the strongest proposal in each two-minute region.
+			// Thousands of near-duplicate lags make the solver quadratic.
+			if len(out) > 0 && out[len(out)-1].frame/(bucketSeconds*int(fps)) == p0/(bucketSeconds*int(fps)) {
+				if confidence > out[len(out)-1].conf {
+					out[len(out)-1] = proposal
+				}
+			} else {
+				out = append(out, proposal)
+			}
+		}
+	}
+	return out
+}
+
+func (t Tools) visualCandidatesFor(ctx context.Context, basePath, dubPath string, baseDur, dubDur float64, base, dub *Features, minConfidence float64) ([]estimate, error) {
+	// Bound resource use for unexpectedly long inputs; opting in fails explicitly
+	// instead of silently analysing a truncated feature sequence.
+	if baseDur > 7200 || dubDur > 7200 {
+		return nil, fmt.Errorf("visual assistance supports videos up to two hours")
+	}
+	bf, err := t.visualFrames(ctx, basePath, 0, baseDur)
+	if err != nil {
+		return nil, err
+	}
+	df, err := t.visualFrames(ctx, dubPath, 0, dubDur)
+	if err != nil {
+		return nil, err
+	}
+	return visualCandidates(bf, df, base, dub, minConfidence), nil
 }

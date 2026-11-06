@@ -19,6 +19,7 @@ type MergeOptions struct {
 	Video        string // dualaudio.VideoAuto or a language tag
 	TickSec      float64
 	GapFill      dualaudio.GapFill
+	VisualAssist bool
 	Force        bool
 	DefaultAudio string
 }
@@ -63,7 +64,7 @@ func MergeFile(ctx context.Context, cfg config.Config, pair dualaudio.NamePair, 
 		PathA: filepath.Join(sourceDir, filepath.FromSlash(pair.A)), LangA: pair.LangA,
 		PathB: filepath.Join(sourceDir, filepath.FromSlash(pair.B)), LangB: pair.LangB,
 		OutPath: outPath, Video: opt.Video, GapFill: opt.GapFill, TickSec: opt.TickSec,
-		Force: opt.Force, DefaultAudio: opt.DefaultAudio,
+		Force: opt.Force, VisualAssist: opt.VisualAssist, DefaultAudio: opt.DefaultAudio,
 		OnPhase: func(phase string) {
 			onProgress(runner.Progress{Source: logSource, Filename: pair.Output,
 				Phase: mergePhaseLabel[phase], Percent: mergePhasePercent[phase]})
@@ -78,6 +79,9 @@ func MergeFile(ctx context.Context, cfg config.Config, pair dualaudio.NamePair, 
 		return false
 	}
 	sync := res.SyncInfo()
+	if opt.VisualAssist {
+		say("INFO", fmt.Sprintf("Visual assistance: %d audio-confirmed candidates", res.VisualCandidates))
+	}
 	if !res.Written {
 		// Held back by the gate: nothing was written, and the reason is the
 		// useful part — it says where the sync could not be guaranteed.

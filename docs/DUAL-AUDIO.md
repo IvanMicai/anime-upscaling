@@ -269,3 +269,18 @@ still cause incorrect matches. An unmatched result has `t_b` set to zero.
 This command is **read-only**. Its coarse timestamps are diagnostic evidence,
 not proof of audio synchronization: it neither feeds the alignment algorithm nor
 changes the quality gate. Check corresponding scenes and verify audio separately.
+
+### Experimental visual assistance in merge jobs
+
+The opt-in **Experimental visual assistance** setting proposes offsets from
+five-second image sequences sampled once per second. A candidate is only added
+after the original audio matcher independently refines it near that location.
+The solver compares the resulting alignment against the audio-only result and
+keeps it only if the existing quality checks improve; the audio quality gate is
+never relaxed. Enabling this decodes both videos and may substantially increase
+processing time. Videos longer than two hours are rejected by this mode.
+
+Visual matches can be wrong in repeated scenes, cuts, mirrored or heavily edited
+releases; the option does not guarantee that a rejected merge will succeed.
+API clients can opt in with `merge_visual_assist: true` in `POST /api/jobs`;
+`dualaudio analyze --visual-assist` exercises it without producing an output.

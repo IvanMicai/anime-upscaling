@@ -83,6 +83,7 @@ type MergeParams struct {
 	TickSec      float64              `json:"tick_sec"`
 	GapFill      string               `json:"gap_fill"`
 	Force        bool                 `json:"force,omitempty"`
+	VisualAssist bool                 `json:"visual_assist,omitempty"`
 	DefaultAudio string               `json:"default_audio,omitempty"`
 	Pairs        []dualaudio.NamePair `json:"pairs"`
 	Unpaired     []dualaudio.Unpaired `json:"unpaired,omitempty"`
@@ -589,7 +590,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				byOutput[pr.Output] = pr
 			}
 			opt := process.MergeOptions{Video: p.Merge.Video, TickSec: p.Merge.TickSec,
-				GapFill: dualaudio.GapFill(p.Merge.GapFill), Force: p.Merge.Force, DefaultAudio: p.Merge.DefaultAudio}
+				GapFill: dualaudio.GapFill(p.Merge.GapFill), Force: p.Merge.Force, VisualAssist: p.Merge.VisualAssist, DefaultAudio: p.Merge.DefaultAudio}
 			for i, f := range toProcess {
 				wg.Add(1)
 				idx := i + 1

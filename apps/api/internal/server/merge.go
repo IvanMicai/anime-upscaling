@@ -27,6 +27,7 @@ type mergeRequest struct {
 	MergeVideo        string   `json:"merge_video"`         // "auto" or a language tag
 	MergeTick         float64  `json:"merge_tick"`          // seconds between sync checks
 	MergeGapFill      string   `json:"merge_gap_fill"`      // "base" or "silence"
+	MergeVisualAssist bool     `json:"merge_visual_assist"` // experimental visual proposals, audio gate unchanged
 	MergeForce        bool     `json:"merge_force"`         // write even if the sync is not guaranteed
 	MergeDefaultAudio string   `json:"merge_default_audio"` // language tag of the default track
 }
@@ -161,7 +162,7 @@ func handleCreateMergeJob(jm *JobManager, cfg config.Config, w http.ResponseWrit
 	job := jm.StartJob(StartJobParams{
 		Type: "merge", Files: outputs, Source: source, SourceDir: sourceDir,
 		Merge: &MergeParams{Video: m.MergeVideo, TickSec: m.MergeTick, GapFill: m.MergeGapFill,
-			Force: m.MergeForce, DefaultAudio: m.MergeDefaultAudio, Pairs: pairs, Unpaired: unpaired},
+			Force: m.MergeForce, VisualAssist: m.MergeVisualAssist, DefaultAudio: m.MergeDefaultAudio, Pairs: pairs, Unpaired: unpaired},
 	})
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id": job.ID, "type": job.Type, "status": job.Status, "files": job.Files,

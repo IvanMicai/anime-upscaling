@@ -158,6 +158,7 @@ export interface MergeConfig {
   tick: number; // seconds between sync checks
   gapFill: MergeGapFill;
   force: boolean;
+  visualAssist: boolean;
   defaultAudio: string; // "" = the language that did not supply the video
 }
 
@@ -167,6 +168,7 @@ export interface MergeJobInfo {
   gap_fill: MergeGapFill;
   force?: boolean;
   default_audio?: string;
+  visual_assist?: boolean;
   pairs: MergePair[];
   unpaired?: MergeUnpaired[];
 }
@@ -262,6 +264,7 @@ export interface CreateJobRequest {
   merge_tick?: number;
   merge_gap_fill?: MergeGapFill;
   merge_force?: boolean;
+  merge_visual_assist?: boolean;
   merge_default_audio?: string;
   // Upscale
   scale?: 2 | 3 | 4;

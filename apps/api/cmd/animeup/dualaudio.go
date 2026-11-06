@@ -165,6 +165,7 @@ func dualaudioAnalyze(ctx context.Context, t dualaudio.Tools, args []string) err
 	// a 1 s tick and analyze to 5 s, and the number of validation windows the
 	// grade is computed over changes with it.
 	tick := fs.Float64("tick", 0, "seconds between sync checks (0 = default)")
+	visual := fs.Bool("visual-assist", false, "propose audio-confirmed offsets from video")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -174,6 +175,7 @@ func dualaudioAnalyze(ctx context.Context, t dualaudio.Tools, args []string) err
 	j := jobDefaults("base", "por", "Português (BR)")
 	j.BasePath, j.DubPath, j.DubStream = *base, *dub, *dubStream
 	j.TickSec = *tick
+	j.VisualAssist = *visual
 	res, err := dualaudio.Process(ctx, t, j)
 	if err != nil {
 		return err
@@ -184,6 +186,7 @@ func dualaudioAnalyze(ctx context.Context, t dualaudio.Tools, args []string) err
 
 func printResult(name string, r *dualaudio.Result) {
 	fmt.Printf("%-7s %s\n", r.Status, name)
+	fmt.Printf("        visual candidates: %d\n", r.VisualCandidates)
 	if al := r.Alignment; al != nil {
 		fmt.Printf("        coverage %.1f%%, windows %d/%d, validated %d/%d, off %.0f s, residual %.0f ms (p95 %.0f ms)\n",
 			al.Coverage*100, al.WindowsLocked, al.WindowsTotal, r.Validated, r.ValidatedOf, r.OffSec,

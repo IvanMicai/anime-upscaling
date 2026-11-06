@@ -15,10 +15,11 @@ type MergeRequest struct {
 	LangA, LangB Language
 	OutPath      string
 	// Video is VideoAuto, or the language tag of the file whose picture to keep.
-	Video   string
-	GapFill GapFill
-	TickSec float64
-	Force   bool
+	Video        string
+	GapFill      GapFill
+	TickSec      float64
+	VisualAssist bool
+	Force        bool
 	// DefaultAudio is the language tag of the default track; empty means the
 	// language that did NOT supply the video — the one the merge was done for.
 	DefaultAudio string
@@ -85,7 +86,7 @@ func Merge(ctx context.Context, t Tools, m MergeRequest) (*Result, error) {
 	res, err := Process(ctx, t, Job{
 		BasePath: base, DubPath: dub, OutPath: m.OutPath,
 		Options: DefaultOptions(), Gate: DefaultGate(), GapFill: fill,
-		Force: m.Force, TickSec: m.TickSec, VideoFrom: baseLang.Tag, OnPhase: m.OnPhase,
+		Force: m.Force, VisualAssist: m.VisualAssist, TickSec: m.TickSec, VideoFrom: baseLang.Tag, OnPhase: m.OnPhase,
 		Mux: MuxOptions{
 			BaseLang: baseLang.ISO3, BaseTitle: baseLang.Title,
 			DubLang: dubLang.ISO3, DubTitle: dubLang.Title,

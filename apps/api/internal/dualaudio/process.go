@@ -11,6 +11,7 @@ package dualaudio
 import (
 	"context"
 	"fmt"
+	"math"
 )
 
 // Phases reported through Job.OnPhase, in order.
@@ -51,20 +52,21 @@ func DefaultGate() Gate {
 
 // Result is what one episode produced.
 type Result struct {
-	Base           string     `json:"base"`
-	Dub            string     `json:"dub"`
-	Status         Status     `json:"status"`
-	Notes          []string   `json:"notes,omitempty"`
-	Alignment      *Alignment `json:"alignment,omitempty"`
-	ResidualMedian float64    `json:"residual_median"`
-	ResidualP95    float64    `json:"residual_p95"`
-	Validated      int        `json:"validated"`    // validation windows with the peak on zero
-	ValidatedOf    int        `json:"validated_of"` // ... out of this many eligible
-	Misses         []Miss     `json:"misses,omitempty"`
-	OffSec         float64    `json:"off_sec"` // seconds at a consistently wrong offset
-	TickSec        float64    `json:"tick_sec"`
-	Written        bool       `json:"written"`
-	VideoFrom      string     `json:"video_from,omitempty"` // language tag of the video's file
+	Base             string     `json:"base"`
+	Dub              string     `json:"dub"`
+	Status           Status     `json:"status"`
+	Notes            []string   `json:"notes,omitempty"`
+	Alignment        *Alignment `json:"alignment,omitempty"`
+	ResidualMedian   float64    `json:"residual_median"`
+	ResidualP95      float64    `json:"residual_p95"`
+	Validated        int        `json:"validated"`    // validation windows with the peak on zero
+	ValidatedOf      int        `json:"validated_of"` // ... out of this many eligible
+	Misses           []Miss     `json:"misses,omitempty"`
+	OffSec           float64    `json:"off_sec"` // seconds at a consistently wrong offset
+	TickSec          float64    `json:"tick_sec"`
+	Written          bool       `json:"written"`
+	VisualCandidates int        `json:"visual_candidates,omitempty"`
+	VideoFrom        string     `json:"video_from,omitempty"` // language tag of the video's file
 }
 
 // Job describes one episode to build.
@@ -75,6 +77,8 @@ type Job struct {
 	Gate                       Gate
 	GapFill                    GapFill
 	Mux                        MuxOptions
+	// VisualAssist adds audio-confirmed offsets proposed by video matching.
+	VisualAssist bool
 	// Force writes the file even when the gate says "review".
 	Force bool
 	// TickSec is the spacing of the sync checks; 0 means DefaultTickSec.
@@ -136,6 +140,37 @@ func Process(ctx context.Context, t Tools, j Job) (*Result, error) {
 	}
 	phase(PhaseValidate)
 	rendered, best := Refine(al, baseFeat, dubFeat, dubPCM, basePCM, j.GapFill, j.Options.MinConfidence, j.TickSec)
+	if j.VisualAssist {
+		proposals, err := t.visualCandidatesFor(ctx, j.BasePath, j.DubPath, baseDur, dubDur, baseFeat, dubFeat, j.Options.MinConfidence)
+		if err != nil {
+			return res, fmt.Errorf("visual assistance: %w", err)
+		}
+		res.VisualCandidates = len(proposals)
+		if len(proposals) > 0 {
+			originalSegs := append([]Segment(nil), al.Segments...)
+			originalGaps := append([]Gap(nil), al.Gaps...)
+			originalCoverage := al.Coverage
+			for _, p := range proposals {
+				al.addCandidate(int(math.Round(p.lag)), float64(p.frame)+p.lag)
+			}
+			al.Solve(baseFeat, dubFeat)
+			if len(al.Segments) > 0 {
+				candidateAudio, candidate := Refine(al, baseFeat, dubFeat, dubPCM, basePCM, j.GapFill, j.Options.MinConfidence, j.TickSec)
+				oldAlign := *al
+				oldAlign.Segments, oldAlign.Gaps, oldAlign.Coverage = originalSegs, originalGaps, originalCoverage
+				oldStatus, _ := grade(&oldAlign, best, j.Gate)
+				newStatus, _ := grade(al, candidate, j.Gate)
+				if preferVisualResult(oldStatus, newStatus, best, candidate, originalCoverage, al.Coverage) {
+					rendered, best = candidateAudio, candidate
+				} else {
+					al.Segments, al.Gaps, al.Coverage = originalSegs, originalGaps, originalCoverage
+				}
+			} else {
+				al.Segments, al.Gaps, al.Coverage = originalSegs, originalGaps, originalCoverage
+			}
+		}
+	}
+
 	res.TickSec = best.TickSec
 	res.ResidualMedian, res.ResidualP95 = best.Median, best.P95
 	res.Validated, res.ValidatedOf, res.Misses, res.OffSec = best.Hits, best.Eligible, best.Misses, best.OffSec
@@ -159,6 +194,24 @@ func Process(ctx context.Context, t Tools, j Job) (*Result, error) {
 		res.Written = true
 	}
 	return res, nil
+}
+
+// A proposed visual alignment must not discard audio evidence, even if the
+// count of confident off-offset windows decreases.
+func preferVisualResult(oldStatus, newStatus Status, old, candidate Validation, oldCoverage, newCoverage float64) bool {
+	if candidate.Eligible == 0 || newCoverage < oldCoverage-0.01 {
+		return false
+	}
+	if old.Eligible > 0 && candidate.Hits*old.Eligible < old.Hits*candidate.Eligible {
+		return false
+	}
+	if oldStatus == StatusOK && newStatus != StatusOK {
+		return false
+	}
+	if oldStatus == StatusOK && (candidate.Median > old.Median || candidate.P95 > old.P95) {
+		return false
+	}
+	return (newStatus == StatusOK && oldStatus != StatusOK) || (newStatus == oldStatus && betterThan(candidate, old))
 }
 
 const maxSolveRounds = 4

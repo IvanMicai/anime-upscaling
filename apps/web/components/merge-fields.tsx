@@ -9,6 +9,7 @@ export const MERGE_DEFAULTS: MergeConfig = {
   tick: 5,
   gapFill: "base",
   force: false,
+  visualAssist: false,
   defaultAudio: "",
 };
 
@@ -105,6 +106,20 @@ export function MergeFields({
           columns={Math.min(audioOptions.length, 3)}
         />
       </div>
+
+      <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <Checkbox
+          checked={config.visualAssist}
+          onCheckedChange={(v) => onChange({ visualAssist: v === true })}
+          className="mt-0.5"
+        />
+        <span>
+          Experimental visual assistance
+          <span className="block text-xs text-muted-foreground">
+            Uses video to suggest offsets and confirms them with audio. The sync check still applies and processing can take longer.
+          </span>
+        </span>
+      </label>
 
       <label className="flex cursor-pointer items-start gap-2 text-sm">
         <Checkbox

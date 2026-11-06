@@ -64,3 +64,47 @@ func TestMatchVisualNeedsIndependentAlternative(t *testing.T) {
 		t.Fatalf("matched=%v margin=%v", ok, margin)
 	}
 }
+
+func TestVisualCandidatesRequireMatchingAudio(t *testing.T) {
+	rng := rand.New(rand.NewSource(912))
+	frames := make([][7]uint64, 100)
+	for i := range frames {
+		for j := range frames[i] {
+			frames[i][j] = rng.Uint64()
+		}
+	}
+	source := ExtractFeatures(toPCM(music(100, 33)))
+	got := visualCandidates(frames, frames, source, source, 6)
+	if len(got) == 0 {
+		t.Fatal("expected an audio-confirmed visual match")
+	}
+	for _, p := range got {
+		if p.lag > 1 || p.lag < -1 {
+			t.Fatalf("incorrect offset: %+v", p)
+		}
+	}
+	// Identical video with silent audio cannot establish a precise offset.
+	silent := ExtractFeatures(make([]int16, 100*featRate))
+	if p := visualCandidates(frames, frames, source, silent, 6); len(p) != 0 {
+		t.Fatalf("accepted visual match without audio evidence: %+v", p)
+	}
+}
+
+func TestPreferVisualResultKeepsAudioEvidence(t *testing.T) {
+	old := Validation{Hits: 90, Eligible: 100, Median: 0.01, P95: 0.02, OffSec: 10}
+	better := Validation{Hits: 92, Eligible: 100, Median: 0.01, P95: 0.02, OffSec: 0}
+	if !preferVisualResult(StatusReview, StatusOK, old, better, 0.95, 0.95) {
+		t.Fatal("rejected better validated result")
+	}
+	worse := better
+	worse.Hits = 80
+	if preferVisualResult(StatusReview, StatusOK, old, worse, 0.95, 0.95) {
+		t.Fatal("accepted fewer validated windows")
+	}
+	if preferVisualResult(StatusOK, StatusReview, old, better, 0.95, 0.95) {
+		t.Fatal("downgraded a passing alignment")
+	}
+	if preferVisualResult(StatusReview, StatusOK, old, better, 0.95, 0.80) {
+		t.Fatal("accepted reduced coverage")
+	}
+}
