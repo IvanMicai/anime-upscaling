@@ -20,11 +20,20 @@ type SourceValidation struct {
 // segments, excluding joins and gaps. It independently compares rendered audio
 // to the original dub around the source position specified by the map.
 func ValidateDubSource(rendered []int16, dub *Features, segs []Segment, minConfidence float64) SourceValidation {
+	return validateDubSourceFeatures(ExtractFeatures(downmix16k(rendered)), dub, segs, minConfidence)
+}
+
+// ValidateDubSourceStereo compares both original dub channels independently.
+// As with the mono check, it verifies the map's execution, not its correctness.
+func ValidateDubSourceStereo(rendered []int16, dub *Features, segs []Segment, minConfidence float64) SourceValidation {
+	return validateDubSourceFeatures(ExtractStereoFeatures(downsampleStereo16k(rendered)), dub, segs, minConfidence)
+}
+
+func validateDubSourceFeatures(output, dub *Features, segs []Segment, minConfidence float64) SourceValidation {
 	var result SourceValidation
-	if dub == nil || len(rendered) == 0 {
+	if dub == nil || output == nil || len(dub.Bands) != len(output.Bands) || output.Frames == 0 {
 		return result
 	}
-	output := ExtractFeatures(downmix16k(rendered))
 	var residuals []float64
 	length := int(10 * fps)
 	for _, s := range segs {

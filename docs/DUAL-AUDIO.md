@@ -331,6 +331,29 @@ lip sync is correct; it also does not verify a muxed or encoded output file.
 The report gives mapped and examined seconds separately because short segments,
 gaps and joins are excluded from the source check.
 
+Add `--stereo` to `visual-audio` to experimentally extract and compare left and
+right audio features separately instead of downmixing first. This can retain
+shared sounds that partly cancel in a mono mix, but different channel layouts,
+swapped channels or unrelated mixes can still give misleading results. The
+source-audio reconstruction check also compares channels separately in this
+mode. It remains `review` and does not change the normal merge gate.
+
+With `--stereo --holdout`, corrections are estimated on non-overlapping
+10-second windows; different windows are reserved for evaluation, with
+padding between reference searches and exclusion of overlapping dubbed source
+samples. Feature normalization still uses whole-track statistics, and this is
+not an independently annotated sync verdict. In this mode `off_sec` counts
+only confidently off sampled seconds and does not imply a continuous run.
+`--stereo --repair-audio` instead
+tests small corrections on consistently off runs and retains them only if the
+same validation set improves without reducing coverage or worsening aggregates.
+That repair comparison is not a holdout and cannot be combined with `--holdout`.
+The report separately flags mapped intervals where dubbed-audio source time
+differs by more than 150 ms from the corresponding visual source time. An
+experimental repair is not kept if it increases those flagged intervals. This
+flag does not determine which source is correct: the dub may itself be out of
+sync, and visual estimates are sampled. Gaps and unobserved images are excluded.
+
 The native AAC/Matroska mux path retains the complete rendered PCM. An
 integration test measures the decoded track against its source to detect an
 encoder-priming timing shift; this behavior should be rechecked if the encoder

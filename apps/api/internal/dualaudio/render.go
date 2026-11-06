@@ -121,6 +121,22 @@ func downmix16k(pcm []int16) []int16 {
 	return out
 }
 
+func downsampleStereo16k(pcm []int16) []int16 {
+	const ratio = outRate / featRate
+	frames := len(pcm) / outChannels / ratio
+	out := make([]int16, frames*outChannels)
+	for i := 0; i < frames; i++ {
+		for c := 0; c < outChannels; c++ {
+			var acc int
+			for j := 0; j < ratio; j++ {
+				acc += int(pcm[(i*ratio+j)*outChannels+c])
+			}
+			out[i*outChannels+c] = int16(acc / ratio)
+		}
+	}
+	return out
+}
+
 // Validation is what re-correlating the REBUILT track against the base found.
 type Validation struct {
 	Median, P95 float64 // absolute residual of confident windows, seconds
@@ -184,10 +200,50 @@ func ClampTick(sec float64) float64 {
 // tick — a shorter one does not hold enough score to lock — so a finer tick
 // means more overlapping checks, not shorter ones.
 func Validate(rendered []int16, base *Features, segs []Segment, minConf, tickSec float64) Validation {
-	tickSec = ClampTick(tickSec)
+	return validateFeatures(ExtractFeatures(downmix16k(rendered)), base, segs, minConf, ClampTick(tickSec), 0, nil)
+}
+
+// ValidateStereo checks a stereo reconstruction against stereo base features.
+// It remains an experimental audio comparison, not proof of visual sync.
+func ValidateStereo(rendered []int16, base *Features, segs []Segment, minConf, tickSec float64) Validation {
+	return validateFeatures(ExtractStereoFeatures(downsampleStereo16k(rendered)), base, segs, minConf, ClampTick(tickSec), 0, nil)
+}
+
+// ValidateStereoHoldout measures windows not used by VisualAudioAlignHoldout.
+// It also excludes mapped dub intervals that overlap training source audio.
+func ValidateStereoHoldout(rendered []int16, base *Features, segs []Segment, trainingSource []Gap, minConf float64) Validation {
+	allowed := func(start, end float64) bool { return !sourceOverlapTraining(start, end, segs, trainingSource) }
+	v := validateFeatures(ExtractStereoFeatures(downsampleStereo16k(rendered)), base, segs, minConf, 60, 24.5, allowed)
+	// Holdout windows are sparse: count only confidently off examined seconds
+	// and do not imply the unmeasured gaps form continuous error runs.
+	v.OffSec = float64(len(v.Offs)) * validateWinSec
+	v.Runs = nil
+	return v
+}
+
+func sourceOverlapTraining(start, end float64, segs []Segment, training []Gap) bool {
+	for _, s := range segs {
+		lo, hi := math.Max(start, s.BaseStart), math.Min(end, s.BaseEnd)
+		if hi <= lo {
+			continue
+		}
+		// Include padding for crossfades, feature windows and sample rounding.
+		lo, hi = lo-s.Lag-.1, hi-s.Lag+.1
+		for _, g := range training {
+			if lo < g.End+.1 && hi > g.Start-.1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func validateFeatures(feat, base *Features, segs []Segment, minConf, tickSec, startSec float64, allowed func(float64, float64) bool) Validation {
 	var v Validation
 	v.TickSec = tickSec
-	feat := ExtractFeatures(downmix16k(rendered))
+	if feat == nil || base == nil || len(feat.Bands) != len(base.Bands) {
+		return v
+	}
 	if feat.Frames < 100 {
 		return v
 	}
@@ -210,7 +266,7 @@ func Validate(rendered []int16, base *Features, segs []Segment, minConf, tickSec
 		}
 		covered = append(covered, Gap{s.BaseStart, s.BaseEnd})
 	}
-	for p0 := 0; p0+wm <= feat.Frames; p0 += hm {
+	for p0 := int(math.Round(startSec * fps)); p0+wm <= feat.Frames; p0 += hm {
 		t0, t1 := float64(p0)/fps, float64(p0+wm)/fps
 		inside := false
 		for _, c := range covered {
@@ -220,6 +276,9 @@ func Validate(rendered []int16, base *Features, segs []Segment, minConf, tickSec
 			}
 		}
 		if !inside {
+			continue
+		}
+		if allowed != nil && !allowed(t0, t1) {
 			continue
 		}
 		v.Eligible++

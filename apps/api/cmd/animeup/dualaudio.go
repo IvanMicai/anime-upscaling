@@ -107,11 +107,23 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 	dub := fs.String("dub", "", "file that provides the dubbed audio")
 	timeline := fs.String("timeline", "", "JSON from dualaudio visual --timeline")
 	stream := fs.Int("dub-stream", 0, "audio stream index inside --dub")
+	stereo := fs.Bool("stereo", false, "experimentally analyze left and right channels separately")
+	repair := fs.Bool("repair-audio", false, "experimentally test localized stereo audio corrections")
+	holdout := fs.Bool("holdout", false, "reserve non-overlapping stereo windows for evaluation")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *base == "" || *dub == "" || *timeline == "" {
 		return errors.New("--base, --dub and --timeline are required")
+	}
+	if *repair && !*stereo {
+		return errors.New("--repair-audio requires --stereo")
+	}
+	if *holdout && !*stereo {
+		return errors.New("--holdout requires --stereo")
+	}
+	if *holdout && *repair {
+		return errors.New("--holdout cannot be combined with --repair-audio")
 	}
 	data, err := os.ReadFile(*timeline)
 	if err != nil {
@@ -129,16 +141,30 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 	if err != nil {
 		return err
 	}
-	baseMono, err := tools.DecodePCM(ctx, *base, 16000, 1, 0)
+	channels := 1
+	if *stereo {
+		channels = 2
+	}
+	baseMono, err := tools.DecodePCM(ctx, *base, 16000, channels, 0)
 	if err != nil {
 		return err
 	}
-	dubMono, err := tools.DecodePCM(ctx, *dub, 16000, 1, *stream)
+	dubMono, err := tools.DecodePCM(ctx, *dub, 16000, channels, *stream)
 	if err != nil {
 		return err
 	}
-	baseFeat, dubFeat := dualaudio.ExtractFeatures(baseMono), dualaudio.ExtractFeatures(dubMono)
-	candidate, err := dualaudio.VisualAudioAlign(&visual, baseFeat, dubFeat, baseDur, dubDur, dualaudio.DefaultOptions().MinConfidence)
+	var baseFeat, dubFeat *dualaudio.Features
+	if *stereo {
+		baseFeat, dubFeat = dualaudio.ExtractStereoFeatures(baseMono), dualaudio.ExtractStereoFeatures(dubMono)
+	} else {
+		baseFeat, dubFeat = dualaudio.ExtractFeatures(baseMono), dualaudio.ExtractFeatures(dubMono)
+	}
+	var candidate *dualaudio.VisualAudioCandidate
+	if *holdout {
+		candidate, err = dualaudio.VisualAudioAlignHoldout(&visual, baseFeat, dubFeat, baseDur, dubDur, dualaudio.DefaultOptions().MinConfidence)
+	} else {
+		candidate, err = dualaudio.VisualAudioAlign(&visual, baseFeat, dubFeat, baseDur, dubDur, dualaudio.DefaultOptions().MinConfidence)
+	}
 	if err != nil {
 		return err
 	}
@@ -151,18 +177,54 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 		return err
 	}
 	rendered := dualaudio.Render(candidate.Alignment, dubPCM, basePCM, dualaudio.GapFillBase)
-	v := dualaudio.Validate(rendered, baseFeat, candidate.Alignment.Segments, dualaudio.DefaultOptions().MinConfidence, 5)
-	source := dualaudio.ValidateDubSource(rendered, dubFeat, candidate.Alignment.Segments, dualaudio.DefaultOptions().MinConfidence)
+	var v dualaudio.Validation
+	if *holdout {
+		v = dualaudio.ValidateStereoHoldout(rendered, baseFeat, candidate.Alignment.Segments, candidate.TrainingSourceWindows, dualaudio.DefaultOptions().MinConfidence)
+	} else if *stereo {
+		v = dualaudio.ValidateStereo(rendered, baseFeat, candidate.Alignment.Segments, dualaudio.DefaultOptions().MinConfidence, 5)
+	} else {
+		v = dualaudio.Validate(rendered, baseFeat, candidate.Alignment.Segments, dualaudio.DefaultOptions().MinConfidence, 5)
+	}
+	var repairs []dualaudio.OffRun
+	if *repair && len(v.Runs) > 0 {
+		proposed, runs := dualaudio.ProposeVisualAudioRepairs(candidate.Alignment, v.Runs)
+		if len(runs) > 0 {
+			_, oldConflict := dualaudio.FindVisualAudioConflicts(&visual, candidate.Alignment.Segments, .15)
+			_, newConflict := dualaudio.FindVisualAudioConflicts(&visual, proposed.Segments, .15)
+			proposedAudio := dualaudio.Render(proposed, dubPCM, basePCM, dualaudio.GapFillBase)
+			newValidation := dualaudio.ValidateStereo(proposedAudio, baseFeat, proposed.Segments, dualaudio.DefaultOptions().MinConfidence, 5)
+			// Keep a repair only when the same set of validation windows improves
+			// without worsening the existing aggregate evidence. This comparison
+			// is exploratory, not an independent holdout or a sync verdict.
+			if dualaudio.ShouldKeepVisualAudioRepair(v, newValidation, oldConflict, newConflict) {
+				candidate.Alignment, rendered, v, repairs = proposed, proposedAudio, newValidation, runs
+			}
+		}
+	}
+	var source dualaudio.SourceValidation
+	if *stereo {
+		source = dualaudio.ValidateDubSourceStereo(rendered, dubFeat, candidate.Alignment.Segments, dualaudio.DefaultOptions().MinConfidence)
+	} else {
+		source = dualaudio.ValidateDubSource(rendered, dubFeat, candidate.Alignment.Segments, dualaudio.DefaultOptions().MinConfidence)
+	}
+	conflicts, conflictSeconds := dualaudio.FindVisualAudioConflicts(&visual, candidate.Alignment.Segments, .15)
 	return json.NewEncoder(os.Stdout).Encode(struct {
-		Status    string                          `json:"status"`
-		Candidate *dualaudio.VisualAudioCandidate `json:"candidate"`
-		Hits      int                             `json:"hits"`
-		Eligible  int                             `json:"eligible"`
-		Median    float64                         `json:"median"`
-		P95       float64                         `json:"p95"`
-		OffSec    float64                         `json:"off_sec"`
-		Source    dualaudio.SourceValidation      `json:"source_validation"`
-	}{"review", candidate, v.Hits, v.Eligible, v.Median, v.P95, v.OffSec, source})
+		Status                string                          `json:"status"`
+		Candidate             *dualaudio.VisualAudioCandidate `json:"candidate"`
+		Hits                  int                             `json:"hits"`
+		Eligible              int                             `json:"eligible"`
+		Median                float64                         `json:"median"`
+		P95                   float64                         `json:"p95"`
+		OffSec                float64                         `json:"off_sec"`
+		Source                dualaudio.SourceValidation      `json:"source_validation"`
+		Stereo                bool                            `json:"stereo"`
+		Holdout               bool                            `json:"holdout"`
+		Misses                []dualaudio.Miss                `json:"misses,omitempty"`
+		Runs                  []dualaudio.OffRun              `json:"off_runs,omitempty"`
+		Repairs               []dualaudio.OffRun              `json:"audio_repairs,omitempty"`
+		VisualConflictSeconds float64                         `json:"visual_conflict_seconds"`
+		VisualConflicts       []dualaudio.VisualAudioConflict `json:"visual_conflicts,omitempty"`
+	}{"review", candidate, v.Hits, v.Eligible, v.Median, v.P95, v.OffSec, source, *stereo, *holdout, v.Misses, v.Runs, repairs, conflictSeconds, conflicts})
 }
 
 // mappingFile is what `match` writes and `build` reads. It is plain JSON on
