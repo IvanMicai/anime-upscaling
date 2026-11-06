@@ -67,6 +67,7 @@ type Result struct {
 	Written          bool       `json:"written"`
 	VisualCandidates int        `json:"visual_candidates,omitempty"`
 	VideoFrom        string     `json:"video_from,omitempty"` // language tag of the video's file
+	GapFill          GapFill    `json:"gap_fill,omitempty"`   // content used where no dub was aligned
 }
 
 // Job describes one episode to build.
@@ -95,7 +96,7 @@ type Job struct {
 // one episode. The point of the gate is that an episode which did not line up
 // is reported with its reason rather than shipped quietly out of sync.
 func Process(ctx context.Context, t Tools, j Job) (*Result, error) {
-	res := &Result{Base: j.BasePath, Dub: j.DubPath, Status: StatusFail, VideoFrom: j.VideoFrom}
+	res := &Result{Base: j.BasePath, Dub: j.DubPath, Status: StatusFail, VideoFrom: j.VideoFrom, GapFill: j.GapFill}
 	phase := func(p string) {
 		if j.OnPhase != nil {
 			j.OnPhase(p)

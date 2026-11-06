@@ -82,6 +82,9 @@ func MergeFile(ctx context.Context, cfg config.Config, pair dualaudio.NamePair, 
 	if opt.VisualAssist {
 		say("INFO", fmt.Sprintf("Visual assistance: %d audio-confirmed candidates", res.VisualCandidates))
 	}
+	if msg := unmatchedAudioMessage(res); msg != "" {
+		say("WARN", msg)
+	}
 	if !res.Written {
 		// Held back by the gate: nothing was written, and the reason is the
 		// useful part — it says where the sync could not be guaranteed.
@@ -92,9 +95,36 @@ func MergeFile(ctx context.Context, cfg config.Config, pair dualaudio.NamePair, 
 	level, verdict := "OK", "Sincronizado"
 	if res.Status != dualaudio.StatusOK {
 		verdict = "Gravado SEM garantia de sincronia (forçado)"
+	} else if res.Alignment != nil && len(res.Alignment.Gaps) > 0 {
+		verdict = "Sincronia validada com trechos sem dublagem alinhada"
 	}
 	say(level, fmt.Sprintf("%s: %s — vídeo de [%s], %s", verdict, pair.Output, res.VideoFrom, sync.Summary()))
 	return true
+}
+
+// unmatchedAudioMessage reports alignment gaps without claiming whether the
+// original source actually contains a dub or whether a gap includes speech.
+func unmatchedAudioMessage(res *dualaudio.Result) string {
+	if res == nil || res.Alignment == nil || len(res.Alignment.Gaps) == 0 {
+		return ""
+	}
+	fill := "sem preenchimento identificado"
+	switch res.GapFill {
+	case dualaudio.GapFillBase:
+		fill = "áudio do vídeo base"
+	case dualaudio.GapFillSilence:
+		fill = "silêncio"
+	}
+	gaps := res.Alignment.Gaps
+	msg := fmt.Sprintf("%d trecho(s) sem dublagem alinhada (%s):", len(gaps), fill)
+	const limit = 8
+	for _, g := range gaps[:min(len(gaps), limit)] {
+		msg += fmt.Sprintf(" %.2f–%.2f s;", g.Start, g.End)
+	}
+	if len(gaps) > limit {
+		msg += fmt.Sprintf(" e mais %d", len(gaps)-limit)
+	}
+	return msg
 }
 
 func joinNotes(notes []string) string {

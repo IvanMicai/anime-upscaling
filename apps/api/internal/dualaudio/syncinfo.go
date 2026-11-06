@@ -25,6 +25,7 @@ type SyncInfo struct {
 	Coverage   float64  `json:"coverage"` // share of the video that has dub audio
 	Segments   int      `json:"segments"`
 	Gaps       int      `json:"gaps"`
+	GapFill    GapFill  `json:"gap_fill,omitempty"` // older files do not record this
 	TickSec    float64  `json:"tick_s"`
 	VideoFrom  string   `json:"video,omitempty"` // language tag of the file the video came from
 	Notes      []string `json:"notes,omitempty"`
@@ -34,7 +35,7 @@ type SyncInfo struct {
 func (r *Result) SyncInfo() SyncInfo {
 	s := SyncInfo{Version: 1, Status: r.Status, ResidualMs: round1(r.ResidualMedian * 1000),
 		P95Ms: round1(r.ResidualP95 * 1000), InPlace: r.Validated, Checked: r.ValidatedOf,
-		OffSec: round1(r.OffSec), TickSec: r.TickSec, VideoFrom: r.VideoFrom, Notes: r.Notes}
+		OffSec: round1(r.OffSec), TickSec: r.TickSec, VideoFrom: r.VideoFrom, Notes: r.Notes, GapFill: r.GapFill}
 	if r.Alignment != nil {
 		s.Coverage = round3(r.Alignment.Coverage)
 		s.Segments, s.Gaps = len(r.Alignment.Segments), len(r.Alignment.Gaps)
@@ -57,8 +58,15 @@ func (s SyncInfo) Summary() string {
 	if s.Checked > 0 {
 		share = float64(s.InPlace) / float64(s.Checked) * 100
 	}
-	return fmt.Sprintf("%s — residual %.0f ms, %d/%d checks in place (%.0f%%), %.0f s off, every %.0f s",
+	summary := fmt.Sprintf("%s — residual %.0f ms, %d/%d checks in place (%.0f%%), %.0f s off, every %.0f s",
 		s.Status, s.ResidualMs, s.InPlace, s.Checked, share, s.OffSec, s.TickSec)
+	if s.Gaps > 0 {
+		summary += fmt.Sprintf(", %d unmatched intervals", s.Gaps)
+		if s.GapFill != "" {
+			summary += fmt.Sprintf(" (fill: %s)", s.GapFill)
+		}
+	}
+	return summary
 }
 
 // ParseSyncInfo reads the verdict back from container tags; keys are matched

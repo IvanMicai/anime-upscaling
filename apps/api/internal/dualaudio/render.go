@@ -11,8 +11,8 @@ type GapFill string
 const (
 	// GapFillBase plays the base track. A stretch that exists only in the base
 	// (credits, preview, a scene the dub's rip cut) would otherwise be a minute
-	// of silence, which reads as a playback fault; the original language says at
-	// once that this part was never dubbed.
+	// of silence. A gap means no dub was aligned; it does not prove the source
+	// lacks a dub or that a viewer will recognize the language change.
 	GapFillBase    GapFill = "base"
 	GapFillSilence GapFill = "silence"
 )
