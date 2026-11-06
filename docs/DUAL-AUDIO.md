@@ -426,6 +426,12 @@ this is not independent truth or an automatic merge approval. Thresholds are
 exploratory, and a rejected probe is inconclusive. It does not change the
 candidate map or the normal merge gate.
 
+The optional `waveform_visual_disagreements` report groups at least three
+accepted, non-overlapping probes whose signed offsets differ by at most 80 ms
+and whose absolute offset is at least 150 ms. Its start and end bound the
+supporting probes, not necessarily continuous coverage. These thresholds are
+heuristics; the report identifies a mismatch, not which source is correct.
+
 ### Review shared audio in a rendered file
 
 `animeup dualaudio shared-audio --file review.mkv --reference-stream 0 --candidate-stream 1`

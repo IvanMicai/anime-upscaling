@@ -645,26 +645,27 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 		probes = append(probes, probe)
 	}
 	return json.NewEncoder(os.Stdout).Encode(struct {
-		Status                string                          `json:"status"`
-		Candidate             *dualaudio.VisualAudioCandidate `json:"candidate"`
-		Hits                  int                             `json:"hits"`
-		Eligible              int                             `json:"eligible"`
-		Median                float64                         `json:"median"`
-		P95                   float64                         `json:"p95"`
-		OffSec                float64                         `json:"off_sec"`
-		Source                dualaudio.SourceValidation      `json:"source_validation"`
-		Stereo                bool                            `json:"stereo"`
-		Holdout               bool                            `json:"holdout"`
-		Misses                []dualaudio.Miss                `json:"misses,omitempty"`
-		Runs                  []dualaudio.OffRun              `json:"off_runs,omitempty"`
-		Repairs               []dualaudio.OffRun              `json:"audio_repairs,omitempty"`
-		VisualConflictSeconds float64                         `json:"visual_conflict_seconds"`
-		VisualConflicts       []dualaudio.VisualAudioConflict `json:"visual_conflicts,omitempty"`
-		WaveformProbes        []dualaudio.WaveformEvidence    `json:"waveform_probes,omitempty"`
-		WaveformInterval      float64                         `json:"waveform_interval,omitempty"`
-		WaveformSkipped       []skippedWaveformProbe          `json:"waveform_skipped,omitempty"`
-		SeamJumps             []dualaudio.VisualAudioSeamJump `json:"seam_jumps,omitempty"`
-	}{"review", candidate, v.Hits, v.Eligible, v.Median, v.P95, v.OffSec, source, *stereo, *holdout, v.Misses, v.Runs, repairs, conflictSeconds, conflicts, probes, *waveformEvery, skippedProbes, seamJumps})
+		Status                      string                                 `json:"status"`
+		Candidate                   *dualaudio.VisualAudioCandidate        `json:"candidate"`
+		Hits                        int                                    `json:"hits"`
+		Eligible                    int                                    `json:"eligible"`
+		Median                      float64                                `json:"median"`
+		P95                         float64                                `json:"p95"`
+		OffSec                      float64                                `json:"off_sec"`
+		Source                      dualaudio.SourceValidation             `json:"source_validation"`
+		Stereo                      bool                                   `json:"stereo"`
+		Holdout                     bool                                   `json:"holdout"`
+		Misses                      []dualaudio.Miss                       `json:"misses,omitempty"`
+		Runs                        []dualaudio.OffRun                     `json:"off_runs,omitempty"`
+		Repairs                     []dualaudio.OffRun                     `json:"audio_repairs,omitempty"`
+		VisualConflictSeconds       float64                                `json:"visual_conflict_seconds"`
+		VisualConflicts             []dualaudio.VisualAudioConflict        `json:"visual_conflicts,omitempty"`
+		WaveformProbes              []dualaudio.WaveformEvidence           `json:"waveform_probes,omitempty"`
+		WaveformInterval            float64                                `json:"waveform_interval,omitempty"`
+		WaveformSkipped             []skippedWaveformProbe                 `json:"waveform_skipped,omitempty"`
+		SeamJumps                   []dualaudio.VisualAudioSeamJump        `json:"seam_jumps,omitempty"`
+		WaveformVisualDisagreements []dualaudio.WaveformVisualDisagreement `json:"waveform_visual_disagreements,omitempty"`
+	}{"review", candidate, v.Hits, v.Eligible, v.Median, v.P95, v.OffSec, source, *stereo, *holdout, v.Misses, v.Runs, repairs, conflictSeconds, conflicts, probes, *waveformEvery, skippedProbes, seamJumps, dualaudio.FindWaveformVisualDisagreements(probes)})
 }
 
 // mappingFile is what `match` writes and `build` reads. It is plain JSON on

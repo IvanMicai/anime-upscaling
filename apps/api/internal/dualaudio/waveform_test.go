@@ -75,3 +75,20 @@ func TestProbeVisualWaveformRequiresContinuousConsistentVisualEvidence(t *testin
 		}
 	}
 }
+
+func TestFindWaveformVisualDisagreementsRequiresSeparateConsistentProbes(t *testing.T) {
+	p := func(t, offset float64) WaveformEvidence {
+		return WaveformEvidence{BaseStart: t, OffsetSec: offset, Accepted: true}
+	}
+	probes := []WaveformEvidence{p(17, -.256), p(5, -.262), p(9, -.308), p(13, -.308), p(21, -.257), p(25, -.249), p(29, -.249), p(5.5, -.262)}
+	got := FindWaveformVisualDisagreements(probes)
+	if len(got) != 1 || got[0].Start != 5 || got[0].End != 32 || got[0].Windows != 7 {
+		t.Fatalf("unexpected groups: %+v", got)
+	}
+	if got := FindWaveformVisualDisagreements([]WaveformEvidence{p(1, -.3), p(2, -.3), p(3, -.3)}); len(got) != 0 {
+		t.Fatalf("overlapping probes counted: %+v", got)
+	}
+	if got := FindWaveformVisualDisagreements([]WaveformEvidence{p(1, -.3), p(5, -.3), p(9, .3)}); len(got) != 0 {
+		t.Fatalf("conflicting signs combined: %+v", got)
+	}
+}

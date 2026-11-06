@@ -3,7 +3,56 @@ package dualaudio
 import (
 	"fmt"
 	"math"
+	"sort"
 )
+
+// WaveformVisualDisagreement is repeated evidence that shared sound and the
+// image imply different offsets. It does not decide which source is in sync.
+type WaveformVisualDisagreement struct {
+	Start     float64 `json:"start"`
+	End       float64 `json:"end"`
+	MinOffset float64 `json:"min_offset_seconds"`
+	MaxOffset float64 `json:"max_offset_seconds"`
+	Windows   int     `json:"non_overlapping_windows"`
+}
+
+// FindWaveformVisualDisagreements groups accepted, non-overlapping 3-second
+// probes with consistent signed offsets. Probes are measured against a visual
+// timeline by ProbeVisualWaveform. Repeated sound is not proof of lip sync.
+func FindWaveformVisualDisagreements(probes []WaveformEvidence) []WaveformVisualDisagreement {
+	sorted := append([]WaveformEvidence(nil), probes...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].BaseStart < sorted[j].BaseStart })
+	var out []WaveformVisualDisagreement
+	var group WaveformVisualDisagreement
+	flush := func() {
+		if group.Windows >= 3 {
+			out = append(out, group)
+		}
+		group = WaveformVisualDisagreement{}
+	}
+	for _, p := range sorted {
+		if !p.Accepted || !finiteSeam(p.BaseStart) || !finiteSeam(p.OffsetSec) || p.BaseStart < 0 || math.Abs(p.OffsetSec) < .15 {
+			flush()
+			continue
+		}
+		if group.Windows > 0 && p.BaseStart < group.End {
+			continue
+		}
+		if group.Windows > 0 && (p.BaseStart-group.End > 15 || math.Max(group.MaxOffset, p.OffsetSec)-math.Min(group.MinOffset, p.OffsetSec) > .08) {
+			flush()
+		}
+		if group.Windows == 0 {
+			group = WaveformVisualDisagreement{Start: p.BaseStart, End: p.BaseStart + 3, MinOffset: p.OffsetSec, MaxOffset: p.OffsetSec, Windows: 1}
+		} else {
+			group.End = p.BaseStart + 3
+			group.MinOffset = math.Min(group.MinOffset, p.OffsetSec)
+			group.MaxOffset = math.Max(group.MaxOffset, p.OffsetSec)
+			group.Windows++
+		}
+	}
+	flush()
+	return out
+}
 
 // WaveformEvidence is an experimental comparison of shared stereo sound. A
 // positive offset means the corresponding sound occurs later in base than in
