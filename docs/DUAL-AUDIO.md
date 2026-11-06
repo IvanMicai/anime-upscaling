@@ -279,6 +279,9 @@ animeup dualaudio visual --base episode.en.mkv --dub episode.pt-br.mp4 --timelin
 This searches every five seconds and refines distinctive three-second sequences
 at 12 frames per second. The JSON contains accepted scene matches and two-second
 comparison windows using offsets supported by at least three scene matches.
+Short intervals between agreeing windows may also be included when every
+intermediate sequence visually resembles the proposed match. These windows are
+marked `contextual` because a static scene or short edit can remain ambiguous.
 Missing windows are inconclusive; they are not proof of a gap. This is not a
 continuous edit map and does not identify exact cut boundaries. Sampling
 limits timestamp resolution, and the audio may already be out of sync with its

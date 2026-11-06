@@ -19,11 +19,12 @@ type VisualTimeline struct {
 // VisualWindow is a two-second comparison using offsets supported by several
 // independent scene matches. A missing window is inconclusive, not a gap.
 type VisualWindow struct {
-	Start    float64 `json:"start"`
-	End      float64 `json:"end"`
-	Lag      float64 `json:"lag"` // base timestamp minus dub timestamp
-	Distance float64 `json:"distance"`
-	Margin   float64 `json:"margin"`
+	Start      float64 `json:"start"`
+	End        float64 `json:"end"`
+	Lag        float64 `json:"lag"` // base timestamp minus dub timestamp
+	Distance   float64 `json:"distance"`
+	Margin     float64 `json:"margin"`
+	Contextual bool    `json:"contextual,omitempty"` // inferred using neighboring matches
 }
 
 // refineVisual compares a three-second sequence at 12 fps around a coarse
@@ -169,7 +170,51 @@ func visualWindows(base, dub [][7]uint64, matches []VisualLocation) []VisualWind
 			windows = append(windows, VisualWindow{Start: float64(start) / 12, End: float64(start+24) / 12, Lag: float64(bestLag) / 12, Distance: best, Margin: second - best})
 		}
 	}
-	return rejectIsolatedVisualWindows(windows)
+	return supplementVisualWindows(base, dub, rejectIsolatedVisualWindows(windows))
+}
+
+// supplementVisualWindows examines short inconclusive intervals bounded by
+// agreeing, independently matched windows. Every intermediate two-second
+// sequence must itself resemble the proposed corresponding frames. These
+// windows are contextual: static frames and very short edits can still be
+// ambiguous, so they must not become an automatic synchronization verdict.
+func supplementVisualWindows(base, dub [][7]uint64, windows []VisualWindow) []VisualWindow {
+	if len(windows) < 2 {
+		return windows
+	}
+	out := make([]VisualWindow, 0, len(windows))
+	for i, left := range windows {
+		out = append(out, left)
+		if i+1 == len(windows) {
+			continue
+		}
+		right := windows[i+1]
+		gap := right.Start - left.End
+		if gap <= 0 || gap > 12 || math.Abs(left.Lag-right.Lag) > 1.0/12+0.001 {
+			continue
+		}
+		lag := int(math.Round((left.Lag + right.Lag) * 6))
+		var proposed []VisualWindow
+		for start := int(math.Round(left.End * 12)); start+24 <= int(math.Round(right.Start*12)); start += 24 {
+			p := start - lag
+			if start < 0 || start+24 > len(base) || p < 0 || p+24 > len(dub) {
+				proposed = nil
+				break
+			}
+			distance := 0
+			for k := 0; k < 24; k++ {
+				distance += visualDistance(base[start+k], dub[p+k])
+			}
+			score := float64(distance) / float64(24*414)
+			if score >= 0.18 {
+				proposed = nil
+				break
+			}
+			proposed = append(proposed, VisualWindow{Start: float64(start) / 12, End: float64(start+24) / 12, Lag: float64(lag) / 12, Distance: score, Contextual: true})
+		}
+		out = append(out, proposed...)
+	}
+	return out
 }
 
 // An isolated disagreement between nearby windows with the same offset can be

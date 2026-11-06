@@ -180,6 +180,34 @@ func TestRejectIsolatedVisualWindows(t *testing.T) {
 	}
 }
 
+func TestSupplementVisualWindowsRequiresMatchingFramesAndBoundaries(t *testing.T) {
+	rng := rand.New(rand.NewSource(44))
+	base := make([][7]uint64, 120)
+	for i := range base {
+		for j := range base[i] {
+			base[i][j] = rng.Uint64()
+		}
+	}
+	dub := append([][7]uint64(nil), base...)
+	windows := []VisualWindow{{Start: 0, End: 2}, {Start: 6, End: 8}}
+	got := supplementVisualWindows(base, dub, windows)
+	if len(got) != 4 || !got[1].Contextual || !got[2].Contextual {
+		t.Fatalf("expected contextual windows: %+v", got)
+	}
+	for i := 24; i < 72; i++ {
+		for j := range dub[i] {
+			dub[i][j] = ^dub[i][j]
+		}
+	}
+	if got := supplementVisualWindows(base, dub, windows); len(got) != 2 {
+		t.Fatal("dissimilar frames must remain unverified")
+	}
+	windows[1].Lag = 1
+	if got := supplementVisualWindows(base, base, windows); len(got) != 2 {
+		t.Fatal("different boundary offsets must not be bridged")
+	}
+}
+
 func TestVisualCandidatesRequireMatchingAudio(t *testing.T) {
 	rng := rand.New(rand.NewSource(912))
 	frames := make([][7]uint64, 100)
