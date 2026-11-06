@@ -22,7 +22,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-motion|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio|waveform-gap|waveform-probe|source-waveform-audit> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-motion|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio|waveform-gap|waveform-probe|source-waveform-audit|track-overlap> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -43,6 +43,8 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioWaveformProbe(ctx, tools, args[1:])
 	case "source-waveform-audit":
 		return dualaudioSourceWaveformAudit(ctx, tools, args[1:])
+	case "track-overlap":
+		return dualaudioTrackOverlap(ctx, tools, args[1:])
 	case "visual-audio":
 		return dualaudioVisualAudio(ctx, tools, args[1:])
 	case "visual-refine":
@@ -61,6 +63,46 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioVisualFill(ctx, tools, args[1:])
 	}
 	return fmt.Errorf("unknown dualaudio command: %s", args[0])
+}
+
+func dualaudioTrackOverlap(ctx context.Context, tools dualaudio.Tools, args []string) error {
+	fs := flag.NewFlagSet("dualaudio track-overlap", flag.ContinueOnError)
+	file := fs.String("file", "", "file containing both audio tracks")
+	ref := fs.Int("reference-stream", 0, "reference audio stream index")
+	track := fs.Int("candidate-stream", 1, "candidate audio stream index")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *file == "" || *ref < 0 || *track < 0 || *ref == *track {
+		return errors.New("file and two different nonnegative audio stream indexes are required")
+	}
+	duration, err := tools.Duration(ctx, *file)
+	if err != nil {
+		return err
+	}
+	if math.IsNaN(duration) || math.IsInf(duration, 0) || duration <= 0 || duration > 7200 {
+		return errors.New("file duration must be at most two hours")
+	}
+	a, err := tools.DecodePCM(ctx, *file, 8000, 2, *ref)
+	if err != nil {
+		return err
+	}
+	b, err := tools.DecodePCM(ctx, *file, 8000, 2, *track)
+	if err != nil {
+		return err
+	}
+	windows, err := dualaudio.ScreenTrackOverlap(ctx, a, b)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(struct {
+		Status          string                         `json:"status"`
+		Warning         string                         `json:"warning"`
+		ReferenceStream int                            `json:"reference_stream"`
+		CandidateStream int                            `json:"candidate_stream"`
+		SampleRate      int                            `json:"sample_rate"`
+		Windows         []dualaudio.TrackOverlapWindow `json:"windows"`
+	}{"review", "Matches can be shared music or effects, not proof of language; nonmatches do not prove dubbed speech. Edges and offsets beyond 40 ms are not screened. No media was written.", *ref, *track, 8000, windows})
 }
 
 func dualaudioSourceWaveformAudit(ctx context.Context, tools dualaudio.Tools, args []string) error {
