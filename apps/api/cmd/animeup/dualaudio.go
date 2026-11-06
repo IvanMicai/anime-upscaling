@@ -22,7 +22,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-refine|visual-fill|visual-audio> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -39,10 +39,31 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioVisualAudio(ctx, tools, args[1:])
 	case "visual-refine":
 		return dualaudioVisualRefine(ctx, tools, args[1:])
+	case "visual-regions":
+		return dualaudioVisualRegions(ctx, tools, args[1:])
 	case "visual-fill":
 		return dualaudioVisualFill(ctx, tools, args[1:])
 	}
 	return fmt.Errorf("unknown dualaudio command: %s", args[0])
+}
+
+func dualaudioVisualRegions(ctx context.Context, tools dualaudio.Tools, args []string) error {
+	fs := flag.NewFlagSet("dualaudio visual-regions", flag.ContinueOnError)
+	base := fs.String("base", "", "file providing the reference video")
+	dub := fs.String("dub", "", "file providing the comparison video")
+	baseStart := fs.Float64("base-start", math.NaN(), "start of the two-second reference window")
+	dubCenter := fs.Float64("dub-center", math.NaN(), "expected start of the matching window in the comparison video")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *base == "" || *dub == "" {
+		return errors.New("--base and --dub are required")
+	}
+	result, err := dualaudio.CompareVisualRegions(ctx, tools, *base, *dub, *baseStart, *dubCenter)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(result)
 }
 
 func dualaudioVisualFill(ctx context.Context, tools dualaudio.Tools, args []string) error {

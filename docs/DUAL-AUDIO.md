@@ -287,6 +287,17 @@ proposed frame and five-second-away controls. Rejected windows are recorded
 separately and the audio map will not bridge those ranges. This check samples
 one frame per window and does not prove frame-accurate alignment.
 
+For an exploratory check of one two-second scene, run `animeup dualaudio
+visual-regions --base BASE --dub DUB --base-start 808 --dub-center 819`.
+It compares a 4×4 grid at 24 fps within ±1.5 seconds of the expected dubbed
+timestamp. The JSON reports each region's score, peak margin and reversed-time
+control, plus a consensus requiring at least three individually passing regions
+and agreement from 70% of passing regions within one frame. `offset_frames` is
+relative to `--dub-center`; a positive value means the matching image was found
+later in the dub. This diagnostic neither modifies a timeline nor validates
+audio or lip sync. Static imagery, repeated animation, subtitles and differing
+edits can still mislead it; thresholds are experimental.
+
 For a targeted, slower second look, `dualaudio visual-refine --base ... --dub
 ... --timeline timeline.json --limit 8 > refined.json` decodes three-second
 sequences at 24 fps around rejected candidates. A window is recovered only
