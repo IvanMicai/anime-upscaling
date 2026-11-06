@@ -423,3 +423,14 @@ channels, differing mixes, repeated music and imperfect source lip sync mean
 this is not independent truth or an automatic merge approval. Thresholds are
 exploratory, and a rejected probe is inconclusive. It does not change the
 candidate map or the normal merge gate.
+
+### Review shared audio in a rendered file
+
+`animeup dualaudio shared-audio --file review.mkv --reference-stream 0 --candidate-stream 1`
+compares timestamp-aligned audio streams in one-second windows. The diagnostic
+reports unusually similar windows, allowing up to 6 ms of codec or resampling
+phase difference. It skips low-energy windows and the file edges. A match can
+be an English fallback, shared music, or a sound effect; it does not identify
+speech or establish lip synchronization. Thresholds are exploratory, and an
+unreported window is not evidence that no fallback is present. Inspect the
+reported intervals in context and compare the source audio before editing.

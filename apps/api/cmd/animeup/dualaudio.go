@@ -22,7 +22,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio|shared-audio> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -35,6 +35,8 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioAnalyze(ctx, tools, args[1:])
 	case "visual":
 		return dualaudioVisual(ctx, tools, args[1:])
+	case "shared-audio":
+		return dualaudioSharedAudio(ctx, tools, args[1:])
 	case "visual-audio":
 		return dualaudioVisualAudio(ctx, tools, args[1:])
 	case "visual-refine":
@@ -45,6 +47,38 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioVisualFill(ctx, tools, args[1:])
 	}
 	return fmt.Errorf("unknown dualaudio command: %s", args[0])
+}
+
+// shared-audio is an exploratory review aid, not a language or lip-sync check.
+func dualaudioSharedAudio(ctx context.Context, tools dualaudio.Tools, args []string) error {
+	fs := flag.NewFlagSet("dualaudio shared-audio", flag.ContinueOnError)
+	file := fs.String("file", "", "file containing both audio streams")
+	reference := fs.Int("reference-stream", 0, "reference audio stream index")
+	candidate := fs.Int("candidate-stream", 1, "candidate audio stream index")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *file == "" || *reference < 0 || *candidate < 0 || *reference == *candidate {
+		return errors.New("--file and two different nonnegative audio stream indexes are required")
+	}
+	a, err := tools.DecodePCM(ctx, *file, 8000, 1, *reference)
+	if err != nil {
+		return err
+	}
+	b, err := tools.DecodePCM(ctx, *file, 8000, 1, *candidate)
+	if err != nil {
+		return err
+	}
+	windows, err := dualaudio.FindSharedAudioWindows(a, b)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(struct {
+		Warning string                        `json:"warning"`
+		Windows []dualaudio.SharedAudioWindow `json:"windows"`
+	}{
+		"Exploratory shared audio only: music/effects may match, and unmatched windows are not proof of different audio or speech.", windows,
+	})
 }
 
 func dualaudioVisualRegions(ctx context.Context, tools dualaudio.Tools, args []string) error {
