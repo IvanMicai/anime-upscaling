@@ -20,7 +20,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze|visual> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-audio> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -33,8 +33,74 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioAnalyze(ctx, tools, args[1:])
 	case "visual":
 		return dualaudioVisual(ctx, tools, args[1:])
+	case "visual-audio":
+		return dualaudioVisualAudio(ctx, tools, args[1:])
 	}
 	return fmt.Errorf("unknown dualaudio command: %s", args[0])
+}
+
+// dualaudioVisualAudio evaluates a saved timeline without writing media. The
+// report is explicitly review-only even if audio metrics happen to pass.
+func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []string) error {
+	fs := flag.NewFlagSet("dualaudio visual-audio", flag.ContinueOnError)
+	base := fs.String("base", "", "file that provides the video")
+	dub := fs.String("dub", "", "file that provides the dubbed audio")
+	timeline := fs.String("timeline", "", "JSON from dualaudio visual --timeline")
+	stream := fs.Int("dub-stream", 0, "audio stream index inside --dub")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *base == "" || *dub == "" || *timeline == "" {
+		return errors.New("--base, --dub and --timeline are required")
+	}
+	data, err := os.ReadFile(*timeline)
+	if err != nil {
+		return err
+	}
+	var visual dualaudio.VisualTimeline
+	if err := json.Unmarshal(data, &visual); err != nil {
+		return fmt.Errorf("visual timeline: %w", err)
+	}
+	baseDur, err := tools.Duration(ctx, *base)
+	if err != nil {
+		return err
+	}
+	dubDur, err := tools.Duration(ctx, *dub)
+	if err != nil {
+		return err
+	}
+	baseMono, err := tools.DecodePCM(ctx, *base, 16000, 1, 0)
+	if err != nil {
+		return err
+	}
+	dubMono, err := tools.DecodePCM(ctx, *dub, 16000, 1, *stream)
+	if err != nil {
+		return err
+	}
+	baseFeat, dubFeat := dualaudio.ExtractFeatures(baseMono), dualaudio.ExtractFeatures(dubMono)
+	candidate, err := dualaudio.VisualAudioAlign(&visual, baseFeat, dubFeat, baseDur, dubDur, dualaudio.DefaultOptions().MinConfidence)
+	if err != nil {
+		return err
+	}
+	dubPCM, err := tools.DecodePCM(ctx, *dub, 48000, 2, *stream)
+	if err != nil {
+		return err
+	}
+	basePCM, err := tools.DecodePCM(ctx, *base, 48000, 2, 0)
+	if err != nil {
+		return err
+	}
+	rendered := dualaudio.Render(candidate.Alignment, dubPCM, basePCM, dualaudio.GapFillBase)
+	v := dualaudio.Validate(rendered, baseFeat, candidate.Alignment.Segments, dualaudio.DefaultOptions().MinConfidence, 5)
+	return json.NewEncoder(os.Stdout).Encode(struct {
+		Status    string                          `json:"status"`
+		Candidate *dualaudio.VisualAudioCandidate `json:"candidate"`
+		Hits      int                             `json:"hits"`
+		Eligible  int                             `json:"eligible"`
+		Median    float64                         `json:"median"`
+		P95       float64                         `json:"p95"`
+		OffSec    float64                         `json:"off_sec"`
+	}{"review", candidate, v.Hits, v.Eligible, v.Median, v.P95, v.OffSec})
 }
 
 // mappingFile is what `match` writes and `build` reads. It is plain JSON on

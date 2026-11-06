@@ -285,6 +285,23 @@ limits timestamp resolution, and the audio may already be out of sync with its
 own source video. Do not infer that the audio is synchronized from a visual
 match. This mode decodes both videos twice and rejects inputs over two hours.
 
+To investigate whether the audio supports a correction within each visually
+matched region, save the timeline and run the separate read-only analysis:
+
+```bash
+animeup dualaudio visual --base episode.en.mkv --dub episode.pt-br.mp4 --timeline > timeline.json
+animeup dualaudio visual-audio --base episode.en.mkv --dub episode.pt-br.mp4 --timeline timeline.json
+```
+
+The report groups nearby windows with similar visual offsets and estimates an
+audio correction only when at least three non-overlapping audio windows agree.
+Use the same base and dub used to create the timeline: the JSON does not bind
+itself to the source files.
+It reports gaps, the candidate map, audio evidence and validation statistics.
+Each report is `review`: a soundtrack match can disagree with the dub's own
+picture, and the report does not establish whether the original dub is itself
+in sync. No media is written and this analysis does not change the merge gate.
+
 ### Experimental visual assistance in merge jobs
 
 The opt-in **Experimental visual assistance** setting proposes offsets from
