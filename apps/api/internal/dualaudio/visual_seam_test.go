@@ -71,3 +71,45 @@ func TestVisualBoundaryReviewRejectsDuplicateWindows(t *testing.T) {
 		t.Fatalf("duplicate observations accepted: %+v", got)
 	}
 }
+
+func TestProposeVisualBoundaryPreservesGapAndOriginal(t *testing.T) {
+	a := &Alignment{BaseDuration: 100, DubDuration: 120, Segments: []Segment{{BaseStart: 0, BaseEnd: 19.5, Lag: -1}, {BaseStart: 20, BaseEnd: 90, Lag: -.5}}, Gaps: []Gap{{Start: 19.5, End: 20}, {Start: 90, End: 100}}}
+	r := VisualBoundaryReview{AudioBoundary: 20, Earliest: 30, Latest: 32, PreviousLag: -1, NextLag: -.5}
+	b, err := ProposeVisualBoundaryAlignment(a, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Segments) != 3 || b.Segments[1].BaseStart != 20 || b.Segments[1].BaseEnd != 30 || b.Segments[1].Lag != -1 || b.Segments[2].BaseStart != 30 {
+		t.Fatalf("unexpected candidate: %+v", b.Segments)
+	}
+	if len(b.Gaps) != 2 || b.Gaps[0] != a.Gaps[0] || len(a.Segments) != 2 || a.Segments[1].BaseStart != 20 {
+		t.Fatal("gap or original changed")
+	}
+	r.Earliest = 100
+	if _, err = ProposeVisualBoundaryAlignment(a, r); err == nil {
+		t.Fatal("out-of-range proposal accepted")
+	}
+	r.Earliest = 30
+	r.PreviousLag = 2
+	if _, err = ProposeVisualBoundaryAlignment(a, r); err == nil {
+		t.Fatal("stale proposal accepted")
+	}
+}
+
+func TestBetterVisualBoundaryEvidenceRequiresComparableImprovement(t *testing.T) {
+	before := Validation{Eligible: 100, Hits: 80, OffSec: 21, Median: .01, P95: .03}
+	after := Validation{Eligible: 100, Hits: 83, OffSec: 0, Median: .01, P95: .03}
+	if !BetterVisualBoundaryEvidence(before, after) {
+		t.Fatal("expected same-window improvement")
+	}
+	cases := []Validation{after, after, after, after}
+	cases[0].Eligible = 99
+	cases[1].Hits = 79
+	cases[2].OffSec = 21
+	cases[3].P95 = .05
+	for _, c := range cases {
+		if BetterVisualBoundaryEvidence(before, c) {
+			t.Fatalf("accepted incomparable or worse result: %+v", c)
+		}
+	}
+}

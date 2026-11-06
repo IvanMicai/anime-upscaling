@@ -1,6 +1,9 @@
 package dualaudio
 
-import "math"
+import (
+	"fmt"
+	"math"
+)
 
 // VisualAudioSeamJump reports an abrupt change in source-audio position at an
 // adjacent segment boundary. A jump is a review signal, not proof of an
@@ -132,3 +135,47 @@ func FindVisualBoundaryReviews(timeline *VisualTimeline, segments []Segment) []V
 }
 
 func finiteSeam(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
+
+// ProposeVisualBoundaryAlignment creates a candidate that extends the preceding
+// source offset only as far as the last visually supported time. Existing gaps
+// remain untouched. The candidate must be validated before any use; neither
+// the image evidence nor the selected lower bound proves audio synchronization.
+func ProposeVisualBoundaryAlignment(al *Alignment, review VisualBoundaryReview) (*Alignment, error) {
+	if al == nil || !finiteSeam(review.AudioBoundary) || !finiteSeam(review.Earliest) || !finiteSeam(review.Latest) || !finiteSeam(review.PreviousLag) || !finiteSeam(review.NextLag) || review.Earliest <= review.AudioBoundary || review.Latest < review.Earliest || !finiteSeam(al.DubDuration) || al.DubDuration <= 0 {
+		return nil, fmt.Errorf("invalid visual boundary candidate")
+	}
+	for i := 1; i < len(al.Segments); i++ {
+		previous, next := al.Segments[i-1], al.Segments[i]
+		if math.Abs(next.BaseStart-review.AudioBoundary) > .001 || math.Abs(previous.Lag-review.PreviousLag) > .001 || math.Abs(next.Lag-review.NextLag) > .001 {
+			continue
+		}
+		if previous.BaseEnd > next.BaseStart+.001 || next.BaseStart-previous.BaseEnd > 1 || review.Earliest >= next.BaseEnd || review.Latest > next.BaseEnd || next.BaseStart-previous.Lag < 0 || review.Earliest-previous.Lag > al.DubDuration {
+			return nil, fmt.Errorf("visual boundary candidate is outside the mapped source")
+		}
+		extension := previous
+		extension.BaseStart = next.BaseStart
+		extension.BaseEnd = review.Earliest
+		next.BaseStart = review.Earliest
+		out := *al
+		out.Segments = make([]Segment, 0, len(al.Segments)+1)
+		out.Segments = append(out.Segments, al.Segments[:i]...)
+		out.Segments = append(out.Segments, extension, next)
+		out.Segments = append(out.Segments, al.Segments[i+1:]...)
+		out.Gaps = append([]Gap(nil), al.Gaps...)
+		return &out, nil
+	}
+	return nil, fmt.Errorf("visual boundary no longer matches the alignment")
+}
+
+// BetterVisualBoundaryEvidence compares the same audio-validation windows before
+// and after a proposed boundary change. It is exploratory evidence on the
+// same material, not an independent evaluation or permission to write media.
+func BetterVisualBoundaryEvidence(before, after Validation) bool {
+	if before.Eligible <= 0 || before.Eligible != after.Eligible || before.Hits < 0 || after.Hits < 0 || before.Hits > before.Eligible || after.Hits > after.Eligible || after.Hits < before.Hits {
+		return false
+	}
+	if !finiteSeam(before.OffSec) || !finiteSeam(after.OffSec) || !finiteSeam(before.Median) || !finiteSeam(after.Median) || !finiteSeam(before.P95) || !finiteSeam(after.P95) {
+		return false
+	}
+	return after.OffSec < before.OffSec && after.Median <= before.Median+.005 && after.P95 <= before.P95+.005
+}

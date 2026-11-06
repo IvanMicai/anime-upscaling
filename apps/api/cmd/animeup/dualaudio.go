@@ -22,7 +22,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio|visual-seams|shared-audio> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|shared-audio> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -41,6 +41,8 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioVisualAudio(ctx, tools, args[1:])
 	case "visual-refine":
 		return dualaudioVisualRefine(ctx, tools, args[1:])
+	case "visual-seams-evaluate":
+		return dualaudioVisualSeamsEvaluate(ctx, tools, args[1:])
 	case "visual-seams":
 		return dualaudioVisualSeams(args[1:])
 	case "visual-regions":
@@ -130,6 +132,114 @@ func dualaudioVisualSeams(args []string) error {
 		Boundaries []dualaudio.VisualBoundaryReview `json:"boundaries"`
 	}{
 		"Review only: visual evidence does not prove audio or lip synchronization, and intervals are not automatic edits.", reviews,
+	})
+}
+
+// dualaudioVisualSeamsEvaluate tests one proposed correction in memory only.
+func dualaudioVisualSeamsEvaluate(ctx context.Context, tools dualaudio.Tools, args []string) error {
+	fs := flag.NewFlagSet("dualaudio visual-seams-evaluate", flag.ContinueOnError)
+	base := fs.String("base", "", "video and reference audio file")
+	dub := fs.String("dub", "", "dubbed audio file")
+	stream := fs.Int("dub-stream", 0, "audio stream index in dub")
+	timeline := fs.String("timeline", "", "visual timeline JSON")
+	alignment := fs.String("alignment", "", "alignment JSON or analyze --json result")
+	tick := fs.Float64("tick", 1, "seconds between validation windows (1-30)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *base == "" || *dub == "" || *timeline == "" || *alignment == "" || *stream < 0 || math.IsNaN(*tick) || math.IsInf(*tick, 0) || *tick < dualaudio.MinTickSec || *tick > dualaudio.MaxTickSec {
+		return errors.New("--base, --dub, --timeline, --alignment and a tick between 1 and 30 are required")
+	}
+	raw, err := os.ReadFile(*timeline)
+	if err != nil {
+		return err
+	}
+	var visual dualaudio.VisualTimeline
+	if err = json.Unmarshal(raw, &visual); err != nil {
+		return fmt.Errorf("visual timeline: %w", err)
+	}
+	raw, err = os.ReadFile(*alignment)
+	if err != nil {
+		return err
+	}
+	var wrapper struct {
+		Alignment *dualaudio.Alignment `json:"alignment"`
+	}
+	if err = json.Unmarshal(raw, &wrapper); err != nil {
+		return fmt.Errorf("alignment: %w", err)
+	}
+	if wrapper.Alignment == nil {
+		wrapper.Alignment = &dualaudio.Alignment{}
+		if err = json.Unmarshal(raw, wrapper.Alignment); err != nil {
+			return fmt.Errorf("alignment: %w", err)
+		}
+	}
+	a := wrapper.Alignment
+	if len(a.Segments) == 0 || a.BaseDuration <= 0 || a.DubDuration <= 0 {
+		return errors.New("alignment requires segments and positive durations")
+	}
+	reviews := dualaudio.FindVisualBoundaryReviews(&visual, a.Segments)
+	if len(reviews) == 0 {
+		return json.NewEncoder(os.Stdout).Encode(struct {
+			Status string `json:"status"`
+			Reason string `json:"reason"`
+		}{"review", "no supported visual boundary candidate"})
+	}
+	candidate, err := dualaudio.ProposeVisualBoundaryAlignment(a, reviews[0])
+	if err != nil {
+		return err
+	}
+	// The supplied map must describe these files; otherwise the in-memory
+	// comparison could be misleading or allocate for an unrelated duration.
+	baseDuration, err := tools.Duration(ctx, *base)
+	if err != nil {
+		return err
+	}
+	dubDuration, err := tools.Duration(ctx, *dub)
+	if err != nil {
+		return err
+	}
+	if baseDuration > 7200 || dubDuration > 7200 || math.Abs(baseDuration-a.BaseDuration) > .25 || math.Abs(dubDuration-a.DubDuration) > .25 {
+		return errors.New("alignment durations do not match the supplied files or exceed two hours")
+	}
+	baseMono, err := tools.DecodePCM(ctx, *base, 16000, 1, 0)
+	if err != nil {
+		return err
+	}
+	baseFeat := dualaudio.ExtractFeatures(baseMono)
+	baseMono = nil
+	dubPCM, err := tools.DecodePCM(ctx, *dub, 48000, 2, *stream)
+	if err != nil {
+		return err
+	}
+	basePCM, err := tools.DecodePCM(ctx, *base, 48000, 2, 0)
+	if err != nil {
+		return err
+	}
+	measure := func(al *dualaudio.Alignment) dualaudio.Validation {
+		rendered := dualaudio.Render(al, dubPCM, basePCM, dualaudio.GapFillBase)
+		return dualaudio.Validate(rendered, baseFeat, al.Segments, dualaudio.DefaultOptions().MinConfidence, *tick)
+	}
+	before := measure(a)
+	after := measure(candidate)
+	type metrics struct {
+		Hits     int     `json:"hits"`
+		Eligible int     `json:"eligible"`
+		OffSec   float64 `json:"off_seconds"`
+		Median   float64 `json:"median_seconds"`
+		P95      float64 `json:"p95_seconds"`
+	}
+	compact := func(v dualaudio.Validation) metrics { return metrics{v.Hits, v.Eligible, v.OffSec, v.Median, v.P95} }
+	return json.NewEncoder(os.Stdout).Encode(struct {
+		Status    string                         `json:"status"`
+		Warning   string                         `json:"warning"`
+		Boundary  dualaudio.VisualBoundaryReview `json:"boundary"`
+		Baseline  metrics                        `json:"baseline"`
+		Candidate metrics                        `json:"candidate"`
+		Improved  bool                           `json:"audio_metric_improved"`
+		Alignment *dualaudio.Alignment           `json:"candidate_alignment"`
+	}{
+		"review", "Same-material validation is not independent proof of lip sync; no media was written.", reviews[0], compact(before), compact(after), dualaudio.BetterVisualBoundaryEvidence(before, after), candidate,
 	})
 }
 

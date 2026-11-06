@@ -450,3 +450,16 @@ cannot establish a boundary. The interval is a review hint, not an exact edit,
 proof of dubbed-source lip sync, or permission to bypass the normal merge gate.
 This diagnostic currently detects only a visual transition later than the audio
 boundary, so an empty result is not evidence that all boundaries are correct.
+
+For an in-memory, review-only comparison of the first supported later boundary,
+`dualaudio visual-seams-evaluate --base BASE --dub DUB --timeline timeline.json --alignment alignment.json --tick 1`
+constructs a candidate using the earliest visually supported bound, preserves
+existing gaps, checks the alignment durations against the supplied files,
+renders both alternatives in memory, and compares the same validation windows.
+It reports audio-metric improvement only when the window
+count is unchanged, hits do not decrease, consistent off-time decreases, and
+median/p95 do not worsen beyond 5 ms. The same material helps select and
+measure the candidate: this is not independent validation or proof of lip
+sync. The command keeps `status: review` and writes no media. It evaluates only
+the first candidate, can take substantial time and memory, and does not replace
+the existing merge gate.
