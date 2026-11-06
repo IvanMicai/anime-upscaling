@@ -70,6 +70,18 @@ func TestVisualAudioAlignPreservesFineRefinedLag(t *testing.T) {
 	}
 }
 
+func TestVisualAudioAlignPreservesGapRecoveredLag(t *testing.T) {
+	f := ExtractFeatures(make([]int16, 30*featRate))
+	timeline := &VisualTimeline{Windows: []VisualWindow{{Start: 2, End: 4}, {Start: 4, End: 6, Lag: 1.0 / 12, GapRecovered: true}, {Start: 6, End: 8}}}
+	got, err := VisualAudioAlign(timeline, f, f, 30, 30, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Alignment.Segments) != 3 || math.Abs(got.Alignment.Segments[1].Lag-1.0/12) > .001 {
+		t.Fatalf("recovered lag was lost: %+v", got.Alignment.Segments)
+	}
+}
+
 func TestVisualAudioAlignDoesNotTrustSilentAudio(t *testing.T) {
 	f := ExtractFeatures(make([]int16, 40*featRate))
 	timeline := &VisualTimeline{}

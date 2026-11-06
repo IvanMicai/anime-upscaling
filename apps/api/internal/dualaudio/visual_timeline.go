@@ -21,15 +21,20 @@ type VisualTimeline struct {
 // VisualWindow is a two-second comparison using offsets supported by several
 // independent scene matches. A missing window is inconclusive, not a gap.
 type VisualWindow struct {
-	Start            float64 `json:"start"`
-	End              float64 `json:"end"`
-	Lag              float64 `json:"lag"` // base timestamp minus dub timestamp
-	Distance         float64 `json:"distance"`
-	Margin           float64 `json:"margin"`
-	Contextual       bool    `json:"contextual,omitempty"`       // inferred using neighboring matches
-	PixelSimilarity  float64 `json:"pixel_similarity,omitempty"` // independent grayscale check at midpoint
-	FineRefined      bool    `json:"fine_refined,omitempty"`     // 24-fps sequence passed distinct-peak checks
-	RefinementMargin float64 `json:"refinement_margin,omitempty"`
+	Start                float64 `json:"start"`
+	End                  float64 `json:"end"`
+	Lag                  float64 `json:"lag"` // base timestamp minus dub timestamp
+	Distance             float64 `json:"distance"`
+	Margin               float64 `json:"margin"`
+	Contextual           bool    `json:"contextual,omitempty"`       // inferred using neighboring matches
+	PixelSimilarity      float64 `json:"pixel_similarity,omitempty"` // independent grayscale check at midpoint
+	FineRefined          bool    `json:"fine_refined,omitempty"`     // 24-fps sequence passed distinct-peak checks
+	RefinementMargin     float64 `json:"refinement_margin,omitempty"`
+	GapRecovered         bool    `json:"gap_recovered,omitempty"`
+	SequenceSimilarity   float64 `json:"sequence_similarity,omitempty"`
+	SequenceMargin       float64 `json:"sequence_margin,omitempty"`
+	SequenceHashDistance float64 `json:"sequence_hash_distance,omitempty"`
+	SequenceHashMargin   float64 `json:"sequence_hash_margin,omitempty"`
 }
 
 // pixelCorrelation compares brightness patterns, independently of the

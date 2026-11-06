@@ -294,6 +294,15 @@ when its nearby timing peak is distinctive and beats five-second controls.
 The limit is 1–100 per invocation; the resulting JSON remains compatible with
 `visual-audio`. Recoveries are marked `fine_refined` and remain experimental:
 24-fps sampling and matched imagery do not prove dialogue or source lip sync.
+
+`dualaudio visual-fill --base ... --dub ... --timeline refined.json --limit 100
+> filled.json` optionally searches missing two-second windows near existing
+anchors using three-second grayscale sequences and distant controls. It never
+fills explicitly rejected intervals or uses newly recovered windows as anchors.
+It also checks a cropped difference hash of the same sampled frames against
+both distant controls; the two metrics are not independent source material.
+The pass decodes both full videos at 12 fps and marks its additions
+`gap_recovered`; they remain contextual, not an automatic merge approval.
 Missing windows are inconclusive; they are not proof of a gap. This is not a
 continuous edit map and does not identify exact cut boundaries. Sampling
 limits timestamp resolution, and the audio may already be out of sync with its
