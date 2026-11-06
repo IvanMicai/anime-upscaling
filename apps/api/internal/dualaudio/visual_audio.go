@@ -9,12 +9,13 @@ import (
 // A correction is a hypothesis, not proof that the dubbed source has correct
 // lip sync: two releases can use different music and effects edits.
 type VisualAudioRegion struct {
-	Start      float64 `json:"start"`
-	End        float64 `json:"end"`
-	VisualLag  float64 `json:"visual_lag"`
-	Correction float64 `json:"audio_correction"`
-	Evidence   int     `json:"evidence"`
-	Accepted   bool    `json:"accepted"`
+	Start        float64   `json:"start"`
+	End          float64   `json:"end"`
+	VisualLag    float64   `json:"visual_lag"`
+	Correction   float64   `json:"audio_correction"`
+	Evidence     int       `json:"evidence"`
+	Accepted     bool      `json:"accepted"`
+	SupportTimes []float64 `json:"support_times,omitempty"`
 }
 
 // VisualAudioCandidate is an experimental map. Gaps are filled separately;
@@ -57,6 +58,7 @@ func VisualAudioAlign(timeline *VisualTimeline, base, dub *Features, baseDuratio
 	for _, g := range groups {
 		region := VisualAudioRegion{Start: g.start, End: g.end, VisualLag: g.lag}
 		var corrections []float64
+		var correctionTimes []float64
 		// Non-overlapping windows avoid counting the same sound repeatedly.
 		for at := g.start; at+10 <= g.end; at += 10 {
 			// Only measure where the full window is covered by visual evidence.
@@ -85,12 +87,25 @@ func VisualAudioAlign(timeline *VisualTimeline, base, dub *Features, baseDuratio
 			correction := lag/fps - g.lag
 			if ok && confidence >= minConfidence && math.Abs(correction) <= 0.5 {
 				corrections = append(corrections, correction)
+				correctionTimes = append(correctionTimes, at+5)
 			}
 		}
 		region.Correction, region.Evidence, region.Accepted = consistentAudioCorrection(corrections)
+		var supportTimes []float64
+		if region.Accepted {
+			for i, correction := range corrections {
+				if math.Abs(correction-region.Correction) <= 0.04 {
+					supportTimes = append(supportTimes, correctionTimes[i])
+				}
+			}
+		}
+		region.SupportTimes = supportTimes
 		result.Regions = append(result.Regions, region)
 		for _, w := range g.windows {
-			lag := g.lag + region.Correction
+			lag := g.lag
+			if nearAudioEvidence((w.Start+w.End)/2, supportTimes) {
+				lag += region.Correction
+			}
 			segs := result.Alignment.Segments
 			if n := len(segs); n > 0 && w.Start-segs[n-1].BaseEnd <= 4 && math.Abs(lag-segs[n-1].Lag) < 0.001 {
 				result.Alignment.Segments[n-1].BaseEnd = w.End
@@ -102,6 +117,17 @@ func VisualAudioAlign(timeline *VisualTimeline, base, dub *Features, baseDuratio
 	}
 	result.Alignment.Gaps, result.Alignment.Coverage = gapsAndCoverage(result.Alignment.Segments, baseDuration)
 	return result, nil
+}
+
+// Do not extend a correction through long stretches without independent
+// measurements: the dub or soundtrack may have a local edit in between.
+func nearAudioEvidence(at float64, times []float64) bool {
+	for _, t := range times {
+		if math.Abs(t-at) <= 30 {
+			return true
+		}
+	}
+	return false
 }
 
 func consistentAudioCorrection(corrections []float64) (float64, int, bool) {

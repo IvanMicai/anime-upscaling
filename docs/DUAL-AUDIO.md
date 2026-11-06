@@ -295,6 +295,8 @@ animeup dualaudio visual-audio --base episode.en.mkv --dub episode.pt-br.mp4 --t
 
 The report groups nearby windows with similar visual offsets and estimates an
 audio correction only when at least three non-overlapping audio windows agree.
+The candidate applies that correction only within 30 seconds of an agreeing
+audio window; elsewhere it retains the visual offset as an unverified hypothesis.
 Use the same base and dub used to create the timeline: the JSON does not bind
 itself to the source files.
 It reports gaps, the candidate map, audio evidence and validation statistics.
