@@ -162,3 +162,82 @@ func refineVisualSequence24(query, search []byte) (int, float64, float64, bool) 
 	ok := okBefore && okAfter && scores[best] >= .90 && blocks[best] >= .85 && margin >= .01 && scores[best]-math.Max(before, after) >= .02
 	return best - 6, scores[best], margin, ok
 }
+
+// RefineVisualAccepted rechecks explicitly selected accepted windows at 24 fps.
+// An ambiguous result leaves the existing window unchanged; it never changes
+// rejected ranges or approves a merge.
+func RefineVisualAccepted(ctx context.Context, t Tools, basePath, dubPath string, input *VisualTimeline, starts []float64) (*VisualRefinement, error) {
+	indices, err := selectAcceptedVisualWindows(input, starts)
+	if err != nil {
+		return nil, err
+	}
+	baseDur, err := t.Duration(ctx, basePath)
+	if err != nil {
+		return nil, err
+	}
+	dubDur, err := t.Duration(ctx, dubPath)
+	if err != nil {
+		return nil, err
+	}
+	copyTimeline := *input
+	copyTimeline.Windows = append([]VisualWindow(nil), input.Windows...)
+	result := &VisualRefinement{Timeline: &copyTimeline}
+	for _, i := range indices {
+		w := input.Windows[i]
+		if !validVisualWindow(w, baseDur) || overlapsRejected(w.Start, w.End, input.Rejected) {
+			return nil, fmt.Errorf("invalid accepted window at index %d", i)
+		}
+		queryStart := w.Start - .5
+		searchStart := queryStart - w.Lag - 5.5
+		if queryStart < 0 || queryStart+3 > baseDur || searchStart < 0 || searchStart+14 > dubDur {
+			continue
+		}
+		result.Attempted++
+		_, query, err := t.visualFramesAndPixelsAt(ctx, basePath, queryStart, 3, 24)
+		if err != nil {
+			return nil, err
+		}
+		_, search, err := t.visualFramesAndPixelsAt(ctx, dubPath, searchStart, 14, 24)
+		if err != nil {
+			return nil, err
+		}
+		shift, score, margin, ok := refineVisualSequence24(query, search)
+		if !ok {
+			continue
+		}
+		w.Lag -= float64(shift) / 24
+		w.PixelSimilarity, w.RefinementMargin = score, margin
+		w.Contextual, w.FineRefined = true, true
+		copyTimeline.Windows[i] = w
+		result.Recovered++
+	}
+	return result, nil
+}
+
+func selectAcceptedVisualWindows(input *VisualTimeline, starts []float64) ([]int, error) {
+	if input == nil || input.SampleRate != 12 || len(starts) == 0 || len(starts) > 20 {
+		return nil, fmt.Errorf("12-fps timeline and 1–20 accepted start times are required")
+	}
+	indices := make([]int, 0, len(starts))
+	seen := make(map[int]bool)
+	for _, at := range starts {
+		if math.IsNaN(at) || math.IsInf(at, 0) || at < 0 {
+			return nil, fmt.Errorf("invalid accepted start time")
+		}
+		found := -1
+		for i, w := range input.Windows {
+			if math.Abs(w.Start-at) < 1e-6 {
+				if found >= 0 {
+					return nil, fmt.Errorf("duplicate window start %.3f", at)
+				}
+				found = i
+			}
+		}
+		if found < 0 || seen[found] {
+			return nil, fmt.Errorf("accepted window %.3f is missing or repeated", at)
+		}
+		seen[found] = true
+		indices = append(indices, found)
+	}
+	return indices, nil
+}

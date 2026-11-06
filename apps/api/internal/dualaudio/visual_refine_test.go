@@ -2,6 +2,7 @@ package dualaudio
 
 import (
 	"context"
+	"math"
 	"math/rand"
 	"testing"
 )
@@ -71,5 +72,21 @@ func TestRefineVisualSequence24RejectsStaticAndShortInput(t *testing.T) {
 	}
 	if _, _, _, ok := refineVisualSequence24(query[:100], search); ok {
 		t.Fatal("short sequence accepted")
+	}
+}
+
+func TestSelectAcceptedVisualWindows(t *testing.T) {
+	tl := &VisualTimeline{SampleRate: 12, Windows: []VisualWindow{{Start: 2, End: 4}, {Start: 4, End: 6}, {Start: 10, End: 12}}}
+	ids, err := selectAcceptedVisualWindows(tl, []float64{10, 2})
+	if err != nil || len(ids) != 2 || ids[0] != 2 || ids[1] != 0 {
+		t.Fatalf("selection: %v %v", ids, err)
+	}
+	for _, starts := range [][]float64{nil, {2, 2}, {3}, {math.NaN()}, {math.Inf(1)}} {
+		if _, err := selectAcceptedVisualWindows(tl, starts); err == nil {
+			t.Fatalf("invalid selection accepted: %v", starts)
+		}
+	}
+	if _, err := selectAcceptedVisualWindows(&VisualTimeline{SampleRate: 24}, []float64{2}); err == nil {
+		t.Fatal("wrong sample rate accepted")
 	}
 }

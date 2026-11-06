@@ -78,7 +78,8 @@ func dualaudioVisualRefine(ctx context.Context, tools dualaudio.Tools, args []st
 	base := fs.String("base", "", "file that provides the video")
 	dub := fs.String("dub", "", "file that provides the dubbed audio")
 	timeline := fs.String("timeline", "", "JSON from dualaudio visual --timeline")
-	limit := fs.Int("limit", 8, "maximum rejected windows to examine (1-100)")
+	limit := fs.Int("limit", 8, "maximum windows to examine (1-100)")
+	acceptedAt := fs.String("accepted-at", "", "comma-separated start times of accepted windows to recheck at 24 fps")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -93,11 +94,28 @@ func dualaudioVisualRefine(ctx context.Context, tools dualaudio.Tools, args []st
 	if err := json.Unmarshal(data, &visual); err != nil {
 		return fmt.Errorf("visual timeline: %w", err)
 	}
-	result, err := dualaudio.RefineVisualRejections(ctx, tools, *base, *dub, &visual, *limit)
+	var result *dualaudio.VisualRefinement
+	if *acceptedAt != "" {
+		parts := strings.Split(*acceptedAt, ",")
+		if *limit < 1 || *limit > 100 || len(parts) > *limit {
+			return errors.New("--accepted-at exceeds --limit or the limit is invalid")
+		}
+		var starts []float64
+		for _, part := range parts {
+			v, e := strconv.ParseFloat(strings.TrimSpace(part), 64)
+			if e != nil {
+				return fmt.Errorf("invalid accepted window start %q", part)
+			}
+			starts = append(starts, v)
+		}
+		result, err = dualaudio.RefineVisualAccepted(ctx, tools, *base, *dub, &visual, starts)
+	} else {
+		result, err = dualaudio.RefineVisualRejections(ctx, tools, *base, *dub, &visual, *limit)
+	}
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "examined %d rejected windows; recovered %d; result remains review-only\n", result.Attempted, result.Recovered)
+	fmt.Fprintf(os.Stderr, "examined %d windows; refined %d; result remains review-only\n", result.Attempted, result.Recovered)
 	return json.NewEncoder(os.Stdout).Encode(result.Timeline)
 }
 
@@ -243,6 +261,7 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 		source = dualaudio.ValidateDubSource(rendered, dubFeat, candidate.Alignment.Segments, dualaudio.DefaultOptions().MinConfidence)
 	}
 	conflicts, conflictSeconds := dualaudio.FindVisualAudioConflicts(&visual, candidate.Alignment.Segments, .15)
+	seamJumps := dualaudio.FindVisualAudioSeamJumps(candidate.Alignment.Segments, .04)
 	var probes []dualaudio.WaveformEvidence
 	type skippedWaveformProbe struct {
 		BaseStart float64 `json:"base_start"`
@@ -279,7 +298,8 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 		WaveformProbes        []dualaudio.WaveformEvidence    `json:"waveform_probes,omitempty"`
 		WaveformInterval      float64                         `json:"waveform_interval,omitempty"`
 		WaveformSkipped       []skippedWaveformProbe          `json:"waveform_skipped,omitempty"`
-	}{"review", candidate, v.Hits, v.Eligible, v.Median, v.P95, v.OffSec, source, *stereo, *holdout, v.Misses, v.Runs, repairs, conflictSeconds, conflicts, probes, *waveformEvery, skippedProbes})
+		SeamJumps             []dualaudio.VisualAudioSeamJump `json:"seam_jumps,omitempty"`
+	}{"review", candidate, v.Hits, v.Eligible, v.Median, v.P95, v.OffSec, source, *stereo, *holdout, v.Misses, v.Runs, repairs, conflictSeconds, conflicts, probes, *waveformEvery, skippedProbes, seamJumps})
 }
 
 // mappingFile is what `match` writes and `build` reads. It is plain JSON on

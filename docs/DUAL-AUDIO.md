@@ -294,6 +294,9 @@ when its nearby timing peak is distinctive and beats five-second controls.
 The limit is 1–100 per invocation; the resulting JSON remains compatible with
 `visual-audio`. Recoveries are marked `fine_refined` and remain experimental:
 24-fps sampling and matched imagery do not prove dialogue or source lip sync.
+Use `visual-refine --accepted-at 836,838 --limit 2` to recheck specific already
+accepted two-second windows instead. A weak or ambiguous result leaves that
+window unchanged; rechecked windows remain contextual and review-only.
 
 `dualaudio visual-fill --base ... --dub ... --timeline refined.json --limit 100
 > filled.json` optionally searches missing two-second windows near existing
@@ -330,7 +333,10 @@ Only directly observed visual windows are mapped; unobserved intervals remain
 gaps even when the offsets of their neighbors agree.
 Use the same base and dub used to create the timeline: the JSON does not bind
 itself to the source files.
-It reports gaps, the candidate map, audio evidence and validation statistics.
+It reports gaps, the candidate map, audio evidence and validation statistics. It also
+reports adjacent mapped boundaries with source-time jumps of at least 40 ms as
+`seam_jumps`. A jump is a review signal, not proof of an audible defect, and
+gap transitions are not covered by this report.
 The separate `source_validation` compares the in-memory reconstruction to the
 original dubbed audio at the candidate map's positions. This checks whether
 audio was placed as the map specifies, not whether the map or the dub's own
