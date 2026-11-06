@@ -101,7 +101,7 @@ func ProposeWaveformGap(ctx context.Context, t Tools, basePath, dubPath string, 
 		if e != nil {
 			return nil, e
 		}
-		if len(raw)%2 != 0 {
+		if len(raw)%4 != 0 {
 			return nil, fmt.Errorf("incomplete PCM")
 		}
 		pcm := make([]int16, len(raw)/2)
