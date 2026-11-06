@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -110,6 +111,7 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 	stereo := fs.Bool("stereo", false, "experimentally analyze left and right channels separately")
 	repair := fs.Bool("repair-audio", false, "experimentally test localized stereo audio corrections")
 	holdout := fs.Bool("holdout", false, "reserve non-overlapping stereo windows for evaluation")
+	waveformAt := fs.String("waveform-at", "", "comma-separated base start times for experimental three-second stereo waveform probes")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -124,6 +126,23 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 	}
 	if *holdout && *repair {
 		return errors.New("--holdout cannot be combined with --repair-audio")
+	}
+	var probeTimes []float64
+	if *waveformAt != "" {
+		if !*stereo || *holdout {
+			return errors.New("--waveform-at requires --stereo and cannot be combined with --holdout")
+		}
+		parts := strings.Split(*waveformAt, ",")
+		if len(parts) > 20 {
+			return errors.New("--waveform-at accepts at most 20 times")
+		}
+		for _, part := range parts {
+			t, err := strconv.ParseFloat(strings.TrimSpace(part), 64)
+			if err != nil {
+				return fmt.Errorf("invalid waveform probe time %q", part)
+			}
+			probeTimes = append(probeTimes, t)
+		}
 	}
 	data, err := os.ReadFile(*timeline)
 	if err != nil {
@@ -208,6 +227,14 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 		source = dualaudio.ValidateDubSource(rendered, dubFeat, candidate.Alignment.Segments, dualaudio.DefaultOptions().MinConfidence)
 	}
 	conflicts, conflictSeconds := dualaudio.FindVisualAudioConflicts(&visual, candidate.Alignment.Segments, .15)
+	var probes []dualaudio.WaveformEvidence
+	for _, at := range probeTimes {
+		probe, err := dualaudio.ProbeVisualWaveform(&visual, baseMono, dubMono, at)
+		if err != nil {
+			return fmt.Errorf("waveform probe at %.3f: %w", at, err)
+		}
+		probes = append(probes, probe)
+	}
 	return json.NewEncoder(os.Stdout).Encode(struct {
 		Status                string                          `json:"status"`
 		Candidate             *dualaudio.VisualAudioCandidate `json:"candidate"`
@@ -224,7 +251,8 @@ func dualaudioVisualAudio(ctx context.Context, tools dualaudio.Tools, args []str
 		Repairs               []dualaudio.OffRun              `json:"audio_repairs,omitempty"`
 		VisualConflictSeconds float64                         `json:"visual_conflict_seconds"`
 		VisualConflicts       []dualaudio.VisualAudioConflict `json:"visual_conflicts,omitempty"`
-	}{"review", candidate, v.Hits, v.Eligible, v.Median, v.P95, v.OffSec, source, *stereo, *holdout, v.Misses, v.Runs, repairs, conflictSeconds, conflicts})
+		WaveformProbes        []dualaudio.WaveformEvidence    `json:"waveform_probes,omitempty"`
+	}{"review", candidate, v.Hits, v.Eligible, v.Median, v.P95, v.OffSec, source, *stereo, *holdout, v.Misses, v.Runs, repairs, conflictSeconds, conflicts, probes})
 }
 
 // mappingFile is what `match` writes and `build` reads. It is plain JSON on

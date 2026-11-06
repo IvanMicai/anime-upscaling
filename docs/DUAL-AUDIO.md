@@ -386,3 +386,15 @@ Visual matches can be wrong in repeated scenes, cuts, mirrored or heavily edited
 releases; the option does not guarantee that a rejected merge will succeed.
 API clients can opt in with `merge_visual_assist: true` in `POST /api/jobs`;
 `dualaudio analyze --visual-assist` exercises it without producing an output.
+
+For targeted research, `visual-audio --stereo --waveform-at 133.083,187`
+adds experimental three-second waveform probes at base-video times. Each
+probe requires continuous visual coverage and a consistent visual offset,
+compares both 16-kHz stereo channels over a ±1.5-second base search, and
+reports channel peaks, ambiguity ratios and an `accepted` heuristic. It is
+limited to 20 probes and cannot be combined with `--holdout`. Two-channel
+agreement and shared waveform peaks can corroborate a common sound; duplicate
+channels, differing mixes, repeated music and imperfect source lip sync mean
+this is not independent truth or an automatic merge approval. Thresholds are
+exploratory, and a rejected probe is inconclusive. It does not change the
+candidate map or the normal merge gate.
