@@ -22,7 +22,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|shared-audio> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -41,6 +41,8 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioVisualAudio(ctx, tools, args[1:])
 	case "visual-refine":
 		return dualaudioVisualRefine(ctx, tools, args[1:])
+	case "compare-alignments":
+		return dualaudioCompareAlignments(ctx, tools, args[1:])
 	case "visual-seams-evaluate":
 		return dualaudioVisualSeamsEvaluate(ctx, tools, args[1:])
 	case "visual-seams":
@@ -240,6 +242,129 @@ func dualaudioVisualSeamsEvaluate(ctx context.Context, tools dualaudio.Tools, ar
 	}{
 		"review", "Same-material validation is not independent proof of lip sync; no media was written.", reviews[0], compact(before), compact(after), dualaudio.BetterVisualBoundaryEvidence(before, after), candidate,
 	})
+}
+
+// dualaudioCompareAlignments evaluates two maps on their common covered windows.
+func dualaudioCompareAlignments(ctx context.Context, tools dualaudio.Tools, args []string) error {
+	fs := flag.NewFlagSet("dualaudio compare-alignments", flag.ContinueOnError)
+	base := fs.String("base", "", "video and reference audio file")
+	dub := fs.String("dub", "", "dubbed audio file")
+	first := fs.String("first", "", "first alignment JSON or analyze --json result")
+	second := fs.String("second", "", "second alignment JSON or analyze --json result")
+	stream := fs.Int("dub-stream", 0, "audio stream index in dub")
+	tick := fs.Float64("tick", 1, "seconds between validation windows (1-30)")
+	stereo := fs.Bool("stereo", true, "compare stereo features instead of mono")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *base == "" || *dub == "" || *first == "" || *second == "" || *stream < 0 || math.IsNaN(*tick) || math.IsInf(*tick, 0) || *tick < dualaudio.MinTickSec || *tick > dualaudio.MaxTickSec {
+		return errors.New("--base, --dub, --first, --second and a tick between 1 and 30 are required")
+	}
+	load := func(path string) (*dualaudio.Alignment, error) {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		var result struct {
+			Alignment *dualaudio.Alignment `json:"alignment"`
+		}
+		if err = json.Unmarshal(raw, &result); err != nil {
+			return nil, fmt.Errorf("alignment: %w", err)
+		}
+		if result.Alignment == nil {
+			result.Alignment = &dualaudio.Alignment{}
+			if err = json.Unmarshal(raw, result.Alignment); err != nil {
+				return nil, fmt.Errorf("alignment: %w", err)
+			}
+		}
+		if len(result.Alignment.Segments) == 0 {
+			return nil, errors.New("alignment contains no segments")
+		}
+		return result.Alignment, nil
+	}
+	a, err := load(*first)
+	if err != nil {
+		return err
+	}
+	b, err := load(*second)
+	if err != nil {
+		return err
+	}
+	common, err := dualaudio.CommonCoverageSegments(a, b)
+	if err != nil {
+		return err
+	}
+	if len(common) == 0 {
+		return json.NewEncoder(os.Stdout).Encode(struct {
+			Status string `json:"status"`
+			Reason string `json:"reason"`
+		}{"review", "no common mapped intervals"})
+	}
+	baseDuration, err := tools.Duration(ctx, *base)
+	if err != nil {
+		return err
+	}
+	dubDuration, err := tools.Duration(ctx, *dub)
+	if err != nil {
+		return err
+	}
+	if baseDuration > 7200 || dubDuration > 7200 || math.Abs(baseDuration-a.BaseDuration) > .25 || math.Abs(dubDuration-a.DubDuration) > .25 {
+		return errors.New("alignment durations do not match the supplied files or exceed two hours")
+	}
+	channels := 1
+	if *stereo {
+		channels = 2
+	}
+	baseRaw, err := tools.DecodePCM(ctx, *base, 16000, channels, 0)
+	if err != nil {
+		return err
+	}
+	var baseFeat *dualaudio.Features
+	if *stereo {
+		baseFeat = dualaudio.ExtractStereoFeatures(baseRaw)
+	} else {
+		baseFeat = dualaudio.ExtractFeatures(baseRaw)
+	}
+	dubPCM, err := tools.DecodePCM(ctx, *dub, 48000, 2, *stream)
+	if err != nil {
+		return err
+	}
+	basePCM, err := tools.DecodePCM(ctx, *base, 48000, 2, 0)
+	if err != nil {
+		return err
+	}
+	measure := func(al *dualaudio.Alignment) dualaudio.Validation {
+		rendered := dualaudio.Render(al, dubPCM, basePCM, dualaudio.GapFillBase)
+		if *stereo {
+			return dualaudio.ValidateStereo(rendered, baseFeat, common, dualaudio.DefaultOptions().MinConfidence, *tick)
+		}
+		return dualaudio.Validate(rendered, baseFeat, common, dualaudio.DefaultOptions().MinConfidence, *tick)
+	}
+	before, after := measure(a), measure(b)
+	seconds := 0.0
+	for _, v := range common {
+		seconds += v.BaseEnd - v.BaseStart
+	}
+	type metrics struct {
+		Hits     int                `json:"hits"`
+		Eligible int                `json:"eligible"`
+		OffSec   float64            `json:"off_seconds"`
+		Median   float64            `json:"median_seconds"`
+		P95      float64            `json:"p95_seconds"`
+		OffRuns  []dualaudio.OffRun `json:"off_runs,omitempty"`
+	}
+	compact := func(v dualaudio.Validation) metrics {
+		return metrics{v.Hits, v.Eligible, v.OffSec, v.Median, v.P95, v.Runs}
+	}
+	return json.NewEncoder(os.Stdout).Encode(struct {
+		Status        string  `json:"status"`
+		Warning       string  `json:"warning"`
+		Stereo        bool    `json:"stereo"`
+		CommonSeconds float64 `json:"common_mapped_seconds"`
+		First         metrics `json:"first"`
+		Second        metrics `json:"second"`
+		Improved      bool    `json:"audio_metric_improved"`
+	}{"review", "Same-material audio metrics are not independent proof of lip sync; no media was written.", *stereo, seconds, compact(before), compact(after), dualaudio.BetterVisualBoundaryEvidence(before, after)})
 }
 
 func dualaudioVisualRegions(ctx context.Context, tools dualaudio.Tools, args []string) error {

@@ -43,8 +43,14 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Test
-        run: go test -race -coverprofile=coverage.out ./...
+      # Combining race and coverage instrumentation makes the DSP-heavy suite
+      # exceed Go's per-package timeout on hosted runners. Keep both checks,
+      # but run them separately to avoid multiplying their overhead.
+      - name: Test with race detector
+        run: go test -race ./...
+
+      - name: Test coverage
+        run: go test -coverprofile=coverage.out ./...
 
   lint:
     name: API lint

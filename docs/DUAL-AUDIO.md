@@ -463,3 +463,14 @@ measure the candidate: this is not independent validation or proof of lip
 sync. The command keeps `status: review` and writes no media. It evaluates only
 the first candidate, can take substantial time and memory, and does not replace
 the existing merge gate.
+
+### Compare two alignment maps fairly
+
+`dualaudio compare-alignments --base BASE --dub DUB --first first.json --second second.json --tick 1`
+renders two candidates in memory and validates only windows fully covered by
+both maps, using stereo features by default. It checks durations against the
+supplied files, reports common mapped seconds and each map's metrics, and does
+not write media. Use `--stereo=false` to inspect mono behavior separately. The
+same 50 ms gap tolerance as the regular validator applies. Higher audio scores
+are not proof of correct lip sync, especially when the same material was used
+to create the map; this diagnostic always returns review status.

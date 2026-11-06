@@ -102,3 +102,51 @@ func TestVisualSeamsEvaluateRejectsMismatchedDurations(t *testing.T) {
 		t.Fatalf("expected duration mismatch, got %v", err)
 	}
 }
+
+func TestCompareAlignmentsWithoutCommonCoverageDoesNotDecode(t *testing.T) {
+	dir := t.TempDir()
+	first := filepath.Join(dir, "first.json")
+	second := filepath.Join(dir, "second.json")
+	for path, data := range map[string]string{first: `{"base_duration":100,"dub_duration":100,"segments":[{"base_start":0,"base_end":10,"lag":0}]}`, second: `{"base_duration":100,"dub_duration":100,"segments":[{"base_start":20,"base_end":30,"lag":0}]}`} {
+		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	old := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = old }()
+	err = dualaudioCompareAlignments(context.Background(), dualaudio.Tools{}, []string{"--base", "missing-base", "--dub", "missing-dub", "--first", first, "--second", second})
+	_ = w.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct{ Status, Reason string }
+	if err = json.NewDecoder(r).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != "review" || out.Reason == "" {
+		t.Fatalf("unexpected response: %+v", out)
+	}
+}
+
+func TestCompareAlignmentsRejectsMismatchedFileDurations(t *testing.T) {
+	dir := t.TempDir()
+	first := filepath.Join(dir, "first.json")
+	second := filepath.Join(dir, "second.json")
+	probe := filepath.Join(dir, "probe")
+	a := `{"base_duration":100,"dub_duration":100,"segments":[{"base_start":0,"base_end":20,"lag":0}]}`
+	for path, data := range map[string]string{first: a, second: a, probe: "#!/bin/sh\nprintf '999\\n'\n"} {
+		if err := os.WriteFile(path, []byte(data), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := dualaudioCompareAlignments(context.Background(), dualaudio.Tools{FFprobe: probe}, []string{"--base", "base", "--dub", "dub", "--first", first, "--second", second})
+	if err == nil || !strings.Contains(err.Error(), "durations do not match") {
+		t.Fatalf("expected duration mismatch, got %v", err)
+	}
+}
