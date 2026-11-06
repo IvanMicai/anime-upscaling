@@ -433,6 +433,16 @@ and whose absolute offset is at least 150 ms. Its start and end bound the
 supporting probes, not necessarily continuous coverage. These thresholds are
 heuristics; the report identifies a mismatch, not which source is correct.
 
+`dualaudio waveform-gap --base BASE --dub DUB --alignment MAP.json --timeline
+TIMELINE.json --start 780 --end 782` proposes a map for a gap of at most two
+seconds when adjacent map offsets agree, both visual anchors are direct or
+fine-refined, and a three-second stereo shared-sound probe passes its checks.
+It decodes only short audio excerpts and returns an in-memory candidate with
+`status: review`; it does not write media or bypass the merge gate. The output
+explicitly reports `visual_rejected` when the original visual analysis rejected
+the gap. A matching soundtrack can be music or effects and can coexist with a
+different edit or misaligned dubbed source, so this is not a lip-sync verdict.
+
 ### Review shared audio in a rendered file
 
 `animeup dualaudio shared-audio --file review.mkv --reference-stream 0 --candidate-stream 1`

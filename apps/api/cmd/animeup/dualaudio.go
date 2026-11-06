@@ -22,7 +22,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio|waveform-gap> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -37,6 +37,8 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioVisual(ctx, tools, args[1:])
 	case "shared-audio":
 		return dualaudioSharedAudio(ctx, tools, args[1:])
+	case "waveform-gap":
+		return dualaudioWaveformGap(ctx, tools, args[1:])
 	case "visual-audio":
 		return dualaudioVisualAudio(ctx, tools, args[1:])
 	case "visual-refine":
@@ -53,6 +55,56 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioVisualFill(ctx, tools, args[1:])
 	}
 	return fmt.Errorf("unknown dualaudio command: %s", args[0])
+}
+
+func dualaudioWaveformGap(ctx context.Context, tools dualaudio.Tools, args []string) error {
+	fs := flag.NewFlagSet("dualaudio waveform-gap", flag.ContinueOnError)
+	base := fs.String("base", "", "reference video and audio")
+	dub := fs.String("dub", "", "dubbed video and audio")
+	mapPath := fs.String("alignment", "", "alignment JSON or analyze --json result")
+	timelinePath := fs.String("timeline", "", "visual timeline JSON")
+	start := fs.Float64("start", math.NaN(), "gap start in reference seconds")
+	end := fs.Float64("end", math.NaN(), "gap end in reference seconds")
+	stream := fs.Int("dub-stream", 0, "audio stream index in dub")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *base == "" || *dub == "" || *mapPath == "" || *timelinePath == "" {
+		return errors.New("--base, --dub, --alignment and --timeline are required")
+	}
+	raw, err := os.ReadFile(*mapPath)
+	if err != nil {
+		return err
+	}
+	var wrapped struct {
+		Alignment *dualaudio.Alignment `json:"alignment"`
+	}
+	if err = json.Unmarshal(raw, &wrapped); err != nil {
+		return fmt.Errorf("alignment: %w", err)
+	}
+	if wrapped.Alignment == nil {
+		wrapped.Alignment = &dualaudio.Alignment{}
+		if err = json.Unmarshal(raw, wrapped.Alignment); err != nil {
+			return fmt.Errorf("alignment: %w", err)
+		}
+	}
+	raw, err = os.ReadFile(*timelinePath)
+	if err != nil {
+		return err
+	}
+	var timeline dualaudio.VisualTimeline
+	if err = json.Unmarshal(raw, &timeline); err != nil {
+		return fmt.Errorf("visual timeline: %w", err)
+	}
+	result, err := dualaudio.ProposeWaveformGap(ctx, tools, *base, *dub, *stream, wrapped.Alignment, &timeline, dualaudio.Gap{Start: *start, End: *end})
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(struct {
+		Status    string                         `json:"status"`
+		Warning   string                         `json:"warning"`
+		Candidate *dualaudio.WaveformGapProposal `json:"candidate"`
+	}{"review", "Shared sound and visual anchors do not prove dubbed-source lip sync; no media was written.", result})
 }
 
 // shared-audio is an exploratory review aid, not a language or lip-sync check.
