@@ -16,7 +16,8 @@ type VisualComparison struct {
 	VisualMetricNotWorse  bool    `json:"visual_metric_not_worse"`
 }
 
-// CompareAlignmentVisualEvidence counts non-contextual observed image windows
+// CompareAlignmentVisualEvidence counts directly observed image windows,
+// including contextual windows separately confirmed by a motion comparison,
 // over mapped intervals whose audio lags differ. Unobserved or rejected image
 // regions are never treated as agreement. The coverage threshold is heuristic.
 func CompareAlignmentVisualEvidence(timeline *VisualTimeline, a, b *Alignment, threshold float64) (VisualComparison, error) {
@@ -46,7 +47,7 @@ func CompareAlignmentVisualEvidence(timeline *VisualTimeline, a, b *Alignment, t
 		if end > start && math.Abs(x.Lag-y.Lag) > threshold {
 			out.ChangedSeconds += end - start
 			for _, w := range timeline.Windows {
-				if w.Contextual || w.End <= start || w.Start >= end || overlapsRejected(w.Start, w.End, timeline.Rejected) {
+				if (w.Contextual && !w.MotionConfirmed) || w.End <= start || w.Start >= end || overlapsRejected(w.Start, w.End, timeline.Rejected) {
 					continue
 				}
 				lo, hi := math.Max(start, w.Start), math.Min(end, w.End)

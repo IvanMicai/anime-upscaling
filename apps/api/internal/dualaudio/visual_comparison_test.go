@@ -21,6 +21,11 @@ func TestCompareAlignmentVisualEvidenceCountsOnlyObservedChanges(t *testing.T) {
 	if got.ObservedSeconds != 8 || got.SufficientCoverage || got.VisualMetricNotWorse {
 		t.Fatalf("unobserved area treated as agreement: %+v", got)
 	}
+	v.Windows[1].MotionConfirmed = true
+	got, err = CompareAlignmentVisualEvidence(v, a, b, .15)
+	if err != nil || got.ObservedSeconds != 10 || !got.SufficientCoverage {
+		t.Fatalf("motion-confirmed window omitted: %+v %v", got, err)
+	}
 }
 func TestCompareAlignmentVisualEvidenceRejectsDuplicateWindows(t *testing.T) {
 	a := &Alignment{BaseDuration: 10, DubDuration: 10, Segments: []Segment{{BaseStart: 0, BaseEnd: 5}}}

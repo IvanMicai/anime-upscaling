@@ -29,6 +29,7 @@ type VisualWindow struct {
 	Contextual           bool    `json:"contextual,omitempty"`       // inferred using neighboring matches
 	PixelSimilarity      float64 `json:"pixel_similarity,omitempty"` // independent grayscale check at midpoint
 	FineRefined          bool    `json:"fine_refined,omitempty"`     // 24-fps sequence passed distinct-peak checks
+	MotionConfirmed      bool    `json:"motion_confirmed,omitempty"` // separate motion check of this contextual window
 	RefinementMargin     float64 `json:"refinement_margin,omitempty"`
 	GapRecovered         bool    `json:"gap_recovered,omitempty"`
 	SequenceSimilarity   float64 `json:"sequence_similarity,omitempty"`

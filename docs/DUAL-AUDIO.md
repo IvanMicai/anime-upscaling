@@ -529,3 +529,12 @@ two maps differ by more than 150 ms. Only directly observed, non-rejected image
 windows count. The 90% observation threshold is a heuristic; agreement does not
 prove that the dubbed source itself has correct lip sync. This comparison does
 not apply changes or bypass the merge gate.
+
+For a contextual two-second visual window, `dualaudio visual-motion-confirm
+--base BASE --dub DUB --timeline timeline.json --at START > checked.json` runs
+the experimental 24-fps central-motion check at the existing visual offset. It
+records a separate motion confirmation only if that check is accepted and its
+offset agrees with the window. The comparison above then counts this window as
+observed. The motion check uses the same footage and a bounded search; it is
+not independent truth, can miss small or static motion, and cannot establish
+the dub's internal audio synchronization. No media is written or approved.

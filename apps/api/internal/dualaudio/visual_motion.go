@@ -30,6 +30,39 @@ type MotionFrameWarning struct {
 	Score    float64 `json:"score"`
 }
 
+// ConfirmContextualMotion returns a copy with one contextual window marked as
+// directly checked by motion. The check is experimental and does not prove
+// source audio sync. Offsets and timestamps must agree within one 24-fps frame.
+func ConfirmContextualMotion(input *VisualTimeline, at float64, motion VisualMotionEvidence) (*VisualTimeline, error) {
+	if input == nil || input.SampleRate != 12 || !finiteSeam(at) || !finiteSeam(motion.BaseStart) || !finiteSeam(motion.DubCenter) || !motion.Accepted || len(motion.FrameWarnings) != 0 || math.Abs(motion.BaseStart-at) > 1e-6 {
+		return nil, fmt.Errorf("accepted motion evidence for the requested window is required")
+	}
+	out := *input
+	out.Windows = append([]VisualWindow(nil), input.Windows...)
+	index := -1
+	for i, w := range input.Windows {
+		if math.Abs(w.Start-at) < 1e-6 {
+			if index >= 0 {
+				return nil, fmt.Errorf("duplicate visual window")
+			}
+			index = i
+		}
+	}
+	if index < 0 {
+		return nil, fmt.Errorf("visual window not found")
+	}
+	w := input.Windows[index]
+	if !w.Contextual || !validVisualWindow(w, math.Inf(1)) || overlapsRejected(w.Start, w.End, input.Rejected) {
+		return nil, fmt.Errorf("window must be contextual, valid, and unrejected")
+	}
+	motionLag := motion.BaseStart - (motion.DubCenter + float64(motion.OffsetFrames)/24)
+	if math.Abs(motionLag-w.Lag) > 1.0/24+1e-6 {
+		return nil, fmt.Errorf("motion offset conflicts with visual window")
+	}
+	out.Windows[index].MotionConfirmed = true
+	return &out, nil
+}
+
 // CompareVisualMotion suppresses a static background using temporal medians,
 // then compares motion in the central 80x80 region. It decodes bounded 24-fps
 // excerpts and is diagnostic only; small objects elsewhere may be missed.

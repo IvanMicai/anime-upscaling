@@ -22,7 +22,7 @@ var dualaudioExts = map[string]bool{".mkv": true, ".mp4": true, ".m4v": true}
 
 func cmdDualAudio(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-motion|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio|waveform-gap|waveform-probe|source-waveform-audit|track-overlap> [flags]")
+		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-motion|visual-motion-confirm|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio|waveform-gap|waveform-probe|source-waveform-audit|track-overlap> [flags]")
 	}
 	cfg := config.NewConfig()
 	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
@@ -59,10 +59,56 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return dualaudioVisualRegions(ctx, tools, args[1:])
 	case "visual-motion":
 		return dualaudioVisualMotion(ctx, tools, args[1:])
+	case "visual-motion-confirm":
+		return dualaudioVisualMotionConfirm(ctx, tools, args[1:])
 	case "visual-fill":
 		return dualaudioVisualFill(ctx, tools, args[1:])
 	}
 	return fmt.Errorf("unknown dualaudio command: %s", args[0])
+}
+
+func dualaudioVisualMotionConfirm(ctx context.Context, tools dualaudio.Tools, args []string) error {
+	fs := flag.NewFlagSet("dualaudio visual-motion-confirm", flag.ContinueOnError)
+	base := fs.String("base", "", "reference video")
+	dub := fs.String("dub", "", "dubbed video")
+	timeline := fs.String("timeline", "", "visual timeline JSON")
+	at := fs.Float64("at", math.NaN(), "contextual visual window start")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *base == "" || *dub == "" || *timeline == "" || math.IsNaN(*at) || math.IsInf(*at, 0) {
+		return errors.New("base, dub, timeline and window start are required")
+	}
+	raw, err := os.ReadFile(*timeline)
+	if err != nil {
+		return err
+	}
+	var visual dualaudio.VisualTimeline
+	if err = json.Unmarshal(raw, &visual); err != nil {
+		return fmt.Errorf("visual timeline: %w", err)
+	}
+	var window *dualaudio.VisualWindow
+	for i := range visual.Windows {
+		if math.Abs(visual.Windows[i].Start-*at) < 1e-6 {
+			if window != nil {
+				return errors.New("duplicate visual window")
+			}
+			window = &visual.Windows[i]
+		}
+	}
+	if window == nil || !window.Contextual {
+		return errors.New("contextual visual window not found")
+	}
+	evidence, err := dualaudio.CompareVisualMotion(ctx, tools, *base, *dub, *at, *at-window.Lag)
+	if err != nil {
+		return err
+	}
+	confirmed, err := dualaudio.ConfirmContextualMotion(&visual, *at, evidence)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(os.Stderr, "Motion-confirmed image window remains review-only; audio sync is not proven.")
+	return json.NewEncoder(os.Stdout).Encode(confirmed)
 }
 
 func dualaudioTrackOverlap(ctx context.Context, tools dualaudio.Tools, args []string) error {

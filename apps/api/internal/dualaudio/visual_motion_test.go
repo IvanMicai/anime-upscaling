@@ -28,6 +28,34 @@ func TestVisualMotionDecodesRealFrames(t *testing.T) {
 	}
 }
 
+func TestConfirmContextualMotionChecksEvidenceAndCopiesTimeline(t *testing.T) {
+	input := &VisualTimeline{SampleRate: 12, Windows: []VisualWindow{{Start: 10, End: 12, Lag: 0, Contextual: true}}}
+	evidence := VisualMotionEvidence{BaseStart: 10, DubCenter: 10, Accepted: true}
+	out, err := ConfirmContextualMotion(input, 10, evidence)
+	if err != nil || !out.Windows[0].MotionConfirmed || input.Windows[0].MotionConfirmed || !out.Windows[0].Contextual {
+		t.Fatalf("bad confirmation: %+v %v", out, err)
+	}
+	evidence.OffsetFrames = 3
+	if _, err = ConfirmContextualMotion(input, 10, evidence); err == nil {
+		t.Fatal("conflicting offset accepted")
+	}
+	evidence.OffsetFrames = 0
+	evidence.Accepted = false
+	if _, err = ConfirmContextualMotion(input, 10, evidence); err == nil {
+		t.Fatal("unaccepted evidence allowed")
+	}
+	evidence.Accepted = true
+	evidence.FrameWarnings = []MotionFrameWarning{{Frame: 1}}
+	if _, err = ConfirmContextualMotion(input, 10, evidence); err == nil {
+		t.Fatal("warning ignored")
+	}
+	evidence.FrameWarnings = nil
+	input.Rejected = []Gap{{Start: 11, End: 12}}
+	if _, err = ConfirmContextualMotion(input, 10, evidence); err == nil {
+		t.Fatal("rejected window confirmed")
+	}
+}
+
 func motionTestFrames(frames int, seed int64) []byte {
 	r := rand.New(rand.NewSource(seed))
 	data := make([]byte, frames*regionPixels)
