@@ -717,7 +717,7 @@ func gapsAndCoverage(segs []Segment, baseDuration float64) ([]Gap, float64) {
 	var gaps []Gap
 	var covered, cursor float64
 	for _, s := range segs {
-		if s.BaseStart-cursor > 0.25 {
+		if math.Round(s.BaseStart*outRate) > math.Round(cursor*outRate) {
 			gaps = append(gaps, Gap{cursor, s.BaseStart})
 		}
 		if s.BaseEnd > cursor {
@@ -725,7 +725,7 @@ func gapsAndCoverage(segs []Segment, baseDuration float64) ([]Gap, float64) {
 			cursor = s.BaseEnd
 		}
 	}
-	if baseDuration-cursor > 0.25 {
+	if math.Round(baseDuration*outRate) > math.Round(cursor*outRate) {
 		gaps = append(gaps, Gap{cursor, baseDuration})
 	}
 	if baseDuration <= 0 {

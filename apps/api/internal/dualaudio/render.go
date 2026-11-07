@@ -39,16 +39,51 @@ func Render(a *Alignment, dub, base []int16, fill GapFill) []int16 {
 	if fade < 1 {
 		fade = 1
 	}
+	// Reconstruct the complement so older saved alignments, which omitted
+	// gaps of 250 ms or less, render those intervals consistently too.
+	gaps, _ := gapsAndCoverage(a.Segments, a.BaseDuration)
+	shortBoundaries := make(map[int]int)
+	limitShortSpan := func(start, end int) {
+		if width := end - start; width >= 0 && width < 2*fade {
+			for _, at := range []int{start, end} {
+				if old, ok := shortBoundaries[at]; !ok || width/2 < old {
+					shortBoundaries[at] = width / 2
+				}
+			}
+		}
+	}
+	for _, g := range gaps {
+		limitShortSpan(int(math.Round(g.Start*outRate)), int(math.Round(g.End*outRate)))
+	}
+	for _, s := range a.Segments {
+		limitShortSpan(int(math.Round(s.BaseStart*outRate)), int(math.Round(s.BaseEnd*outRate)))
+	}
 	// Both ramps span the same interval [join-fade, join+fade]. The
 	// incoming sin² and outgoing cos² weights therefore sum to one.
-	ramp := make([]float32, 2*fade+1)
-	for i := range ramp {
-		s := math.Sin(float64(i) / float64(2*fade) * math.Pi / 2)
-		ramp[i] = float32(s * s)
+	ramps := make(map[int][]float32)
+	rampFor := func(width int) []float32 {
+		if r, ok := ramps[width]; ok {
+			return r
+		}
+		r := make([]float32, 2*width+1)
+		if width > 0 {
+			for i := range r {
+				s := math.Sin(float64(i) / float64(2*width) * math.Pi / 2)
+				r[i] = float32(s * s)
+			}
+		}
+		ramps[width] = r
+		return r
 	}
-
-	place := func(src []int16, srcStart, dstStart, dstEnd int) {
-		lo, hi := dstStart-fade, dstEnd+fade
+	boundaryFade := func(at int) int {
+		if width, ok := shortBoundaries[at]; ok {
+			return width
+		}
+		return fade
+	}
+	place := func(src []int16, srcStart, dstStart, dstEnd, fadeIn, fadeOut int) {
+		lo, hi := dstStart-fadeIn, dstEnd+fadeOut
+		inRamp, outRamp := rampFor(fadeIn), rampFor(fadeOut)
 		if lo < 0 {
 			lo = 0
 		}
@@ -63,11 +98,11 @@ func Render(a *Alignment, dub, base []int16, fill GapFill) []int16 {
 		for i := 0; i < n; i++ {
 			pos := lo + i
 			g := float32(1)
-			if dstStart > 0 && pos < dstStart+fade {
-				g *= ramp[pos-(dstStart-fade)]
+			if fadeIn > 0 && dstStart > 0 && pos < dstStart+fadeIn {
+				g *= inRamp[pos-(dstStart-fadeIn)]
 			}
-			if dstEnd < total && pos >= dstEnd-fade {
-				g *= ramp[(dstEnd+fade)-pos]
+			if fadeOut > 0 && dstEnd < total && pos >= dstEnd-fadeOut {
+				g *= outRamp[(dstEnd+fadeOut)-pos]
 			}
 			si := srcStart + i
 			if si < 0 || (si+1)*outChannels > len(src) {
@@ -82,12 +117,13 @@ func Render(a *Alignment, dub, base []int16, fill GapFill) []int16 {
 	for _, s := range a.Segments {
 		e0 := int(math.Round(s.BaseStart * outRate))
 		e1 := int(math.Round(s.BaseEnd * outRate))
-		place(dub, int(math.Round((s.BaseStart-s.Lag)*outRate)), e0, e1)
+		place(dub, int(math.Round((s.BaseStart-s.Lag)*outRate)), e0, e1, boundaryFade(e0), boundaryFade(e1))
 	}
 	if fill == GapFillBase && base != nil {
-		for _, g := range a.Gaps {
+		for _, g := range gaps {
 			e0 := int(math.Round(g.Start * outRate))
-			place(base, e0, e0, int(math.Round(g.End*outRate)))
+			e1 := int(math.Round(g.End * outRate))
+			place(base, e0, e0, e1, boundaryFade(e0), boundaryFade(e1))
 		}
 	}
 

@@ -155,10 +155,12 @@ music-and-effects master: only the voices differ. The score is what lines up.
    plays the base audio — it used to be filled with repeated dub audio.
 6. **Render.** The dub's PCM is repositioned on the base timeline segment by
    segment, with a 40 ms crossfade centered on each join (20 ms on each side).
-7. **Gaps.** A stretch that exists only in the base (credits, preview, a scene
-   the dub's rip cut) plays the **base audio**. `--gap-fill silence` mutes it
-   instead, but a minute of silence reads as a playback fault, while the original
-   language says at once that this part was never dubbed.
+   Crossfades shrink around shorter spans so transitions do not overlap.
+7. **Gaps.** Where no dub was aligned, the default is to play the **base
+   audio**. `--gap-fill silence` mutes the gap instead. Gaps as short as one
+   output sample are retained; a gap indicates missing alignment evidence, not
+   necessarily that a dub does not exist. Older saved maps are handled by
+   reconstructing the uncovered spans when rendering.
 8. **Validation, in a closed loop.** The *rebuilt* track is correlated against
    the base again in 10 s windows. Three things are measured: the **residual** of
    confident windows; the **hit share** — windows whose peak lands within 60 ms of
