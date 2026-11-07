@@ -94,7 +94,14 @@ class ServerTest(unittest.TestCase):
     def test_no_temp_files_left_behind(self):
         before = set(os.listdir(tempfile.gettempdir()))
         self.separate(b"x")
-        left = {n for n in set(os.listdir(tempfile.gettempdir())) - before if n.startswith("separate-")}
+        # Cleanup runs right after the response is sent, so give it a moment.
+        deadline = time.monotonic() + 5
+        while True:
+            left = {n for n in set(os.listdir(tempfile.gettempdir())) - before
+                    if n.startswith("separate-")}
+            if not left or time.monotonic() > deadline:
+                break
+            time.sleep(0.05)
         self.assertEqual(left, set())
 
 
