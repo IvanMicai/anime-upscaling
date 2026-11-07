@@ -133,7 +133,7 @@ func Process(ctx context.Context, t Tools, j Job) (*Result, error) {
 		if err != nil {
 			return res, err
 		}
-		defer os.RemoveAll(dir)
+		defer func() { _ = os.RemoveAll(dir) }()
 		phase(PhaseSeparate)
 		res.VoiceSeparation = t.separateBoth(ctx, &j, dir)
 	}
@@ -469,7 +469,7 @@ func (t Tools) consensusCheck(ctx context.Context, j Job, al *Alignment, baseFea
 	if err != nil {
 		return rendered, best, err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	// Each check alone misses stretches the other sees, and reports some false
 	// ones. So candidates come from either, and each is TRIED: applied,

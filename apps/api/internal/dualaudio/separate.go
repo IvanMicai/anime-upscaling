@@ -38,7 +38,7 @@ func (t Tools) separateVoices(ctx context.Context, pcm []int16, dir, name string
 	if err != nil {
 		return "", fmt.Errorf("separator: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return "", fmt.Errorf("separator: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
