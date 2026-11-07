@@ -710,6 +710,161 @@ func refineBoundary(base, dub *Features, a, b Segment, wm int) (endA, startB flo
 	return cut, cut + hole
 }
 
+// Run-split tuning. A run inside one segment whose implied lag matches no
+// neighbour is a short stretch at its own offset: TV rips are re-edited around
+// breaks in steps of tens of milliseconds, and a coarse segment can straddle
+// several. Splits are bounded: a disagreement larger than splitMaxLagSec is a
+// different fault (wrong material, not a small step), and every split is kept
+// only if the caller's validation improves.
+const (
+	splitMaxLagSec = 0.5
+	splitPadSec    = 2.0
+	splitMinSec    = 3.0 // share of a stretch a segment needs to be split
+)
+
+// SplitRuns gives a stretch the validation measured at a consistent residual
+// its own segment, at the segment's lag plus that residual. Unlike SnapSeams
+// this INVENTS a lag, so it only touches runs SnapSeams cannot explain, and the
+// cut points come from the features, searched inside the run. Reports whether
+// anything changed.
+func (a *Alignment) SplitRuns(base, dub *Features, runs []OffRun) bool {
+	changed := false
+	for _, r := range runs {
+		if math.Abs(r.Lag) < hitToleranceSec || math.Abs(r.Lag) > splitMaxLagSec {
+			continue
+		}
+		if _, ok := seamFixFor(a.Segments, r); ok {
+			continue // a misplaced seam: SnapSeams' job
+		}
+		// A stretch can straddle a seam; each segment it covers gets its share,
+		// at that segment's lag plus the residual.
+		var out []Segment
+		for _, seg := range a.Segments {
+			lo, hi := math.Max(seg.BaseStart, r.Start), math.Min(seg.BaseEnd, r.End)
+			if hi-lo < splitMinSec {
+				out = append(out, seg)
+				continue
+			}
+			mid := Segment{Lag: math.Round((seg.Lag+r.Lag)*fps) / fps, Confidence: seg.Confidence, Windows: r.Windows}
+			c1, c2, ok := splitCuts(base, dub, seg, mid.Lag,
+				math.Max(seg.BaseStart, lo-splitPadSec), math.Min(seg.BaseEnd, hi+splitPadSec))
+			if !ok {
+				out = append(out, seg)
+				continue
+			}
+			left, right := seg, seg
+			left.BaseEnd = c1.endA
+			mid.BaseStart, mid.BaseEnd = c1.startB, c2.endA
+			right.BaseStart = c2.startB
+			var pieces []Segment
+			for _, p := range []Segment{left, mid, right} {
+				if p.BaseEnd-p.BaseStart >= seamMinSegSec {
+					pieces = append(pieces, p)
+				}
+			}
+			if len(pieces) < 2 && (len(pieces) == 0 || pieces[0].Lag == seg.Lag) {
+				out = append(out, seg)
+				continue
+			}
+			out = append(out, pieces...)
+			changed = true
+		}
+		a.Segments = out
+	}
+	if changed {
+		a.Gaps, a.Coverage = gapsAndCoverage(a.Segments, a.BaseDuration)
+	}
+	return changed
+}
+
+// GapRuns turns a stretch measured far off its segment's lag into a hole. A
+// residual beyond splitMaxLagSec is different material: a preview or montage
+// cut differently in each version, which no lag of the dub explains. Playing
+// the base audio there is what the map already does wherever the dub has no
+// counterpart; playing the dub from the wrong place is the fault the gate
+// exists to stop. The caller keeps the change only if validation improves.
+func (a *Alignment) GapRuns(runs []OffRun) bool {
+	changed := false
+	for _, r := range runs {
+		if math.Abs(r.Lag) <= splitMaxLagSec {
+			continue
+		}
+		var out []Segment
+		for _, s := range a.Segments {
+			if r.End <= s.BaseStart || s.BaseEnd <= r.Start {
+				out = append(out, s)
+				continue
+			}
+			changed = true
+			if left := s; r.Start-s.BaseStart >= seamMinSegSec {
+				left.BaseEnd = r.Start
+				out = append(out, left)
+			}
+			if right := s; s.BaseEnd-r.End >= seamMinSegSec {
+				right.BaseStart = r.End
+				out = append(out, right)
+			}
+		}
+		a.Segments = out
+	}
+	if changed {
+		a.Gaps, a.Coverage = gapsAndCoverage(a.Segments, a.BaseDuration)
+	}
+	return changed
+}
+
+type cut struct{ endA, startB float64 }
+
+// splitCuts finds where a stretch at lag inner begins and ends inside seg,
+// searching only [lo, hi]: everything before the first cut and after the second
+// is explained with seg's lag, the middle with inner. A lag rise means the base
+// holds content the dub lacks, so the next piece resumes after a hole, exactly
+// as in refineBoundary.
+func splitCuts(base, dub *Features, seg Segment, inner, lo, hi float64) (cut, cut, bool) {
+	const winSec, step = 3.0, 0.5
+	m := int(math.Round(winSec * fps))
+	var ts, sa, sb []float64
+	for t := lo; t+winSec <= hi; t += step {
+		va, _ := scoreAt(base, dub, int(math.Round((t-seg.Lag)*fps)), m, seg.Lag*fps)
+		vb, _ := scoreAt(base, dub, int(math.Round((t-inner)*fps)), m, inner*fps)
+		ts, sa, sb = append(ts, t), append(sa, va), append(sb, vb)
+	}
+	n := len(ts)
+	if n < 4 {
+		return cut{}, cut{}, false
+	}
+	cumA := make([]float64, n+1)
+	cumB := make([]float64, n+1)
+	for k := range ts {
+		cumA[k+1], cumB[k+1] = cumA[k]+sa[k], cumB[k]+sb[k]
+	}
+	hole1, hole2 := math.Max(0, inner-seg.Lag), math.Max(0, seg.Lag-inner)
+	skip1, skip2 := int(math.Round(hole1/step)), int(math.Round(hole2/step))
+	bi, bj, best := -1, -1, cumA[n] // the baseline: no split at all
+	for i := 0; i < n; i++ {
+		for j := i + skip1 + 2; j+skip2 <= n; j++ {
+			obj := cumA[i] + (cumB[j] - cumB[i+skip1]) + (cumA[n] - cumA[j+skip2])
+			if obj > best {
+				bi, bj, best = i, j, obj
+			}
+		}
+	}
+	if bi < 0 {
+		return cut{}, cut{}, false
+	}
+	// Each score covers the 3 s window STARTING at ts[k]; a window straddling
+	// the change half-fits both sides, so the change sits mid-window.
+	at := func(k int) float64 {
+		if k >= n {
+			return math.Min(hi, ts[n-1]+winSec)
+		}
+		return ts[k] + winSec/2
+	}
+	c1 := cut{at(bi), at(bi) + hole1}
+	c2 := cut{at(bj), at(bj) + hole2}
+	return c1, c2, true
+}
+
 // gapsAndCoverage measures the UNION of the segments. Summing durations double
 // counts overlaps, and a "101% coverage" would sail straight past the quality
 // gate.

@@ -17,6 +17,9 @@ import (
 type Tools struct {
 	FFmpeg  string
 	FFprobe string
+	// Separator is the base URL of the optional voice separator service
+	// (apps/separator); empty when none is deployed.
+	Separator string
 }
 
 const (

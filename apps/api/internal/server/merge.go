@@ -23,13 +23,14 @@ import (
 // source/path). Files are then paired by NAME: "ep01.pt-br.mp4" and
 // "ep01.en.mkv" become "ep01.mkv".
 type mergeRequest struct {
-	Paths             []string `json:"paths"`
-	MergeVideo        string   `json:"merge_video"`         // "auto" or a language tag
-	MergeTick         float64  `json:"merge_tick"`          // seconds between sync checks
-	MergeGapFill      string   `json:"merge_gap_fill"`      // "base" or "silence"
-	MergeVisualAssist bool     `json:"merge_visual_assist"` // experimental visual proposals, audio gate unchanged
-	MergeForce        bool     `json:"merge_force"`         // write even if the sync is not guaranteed
-	MergeDefaultAudio string   `json:"merge_default_audio"` // language tag of the default track
+	Paths                []string `json:"paths"`
+	MergeVideo           string   `json:"merge_video"`            // "auto" or a language tag
+	MergeTick            float64  `json:"merge_tick"`             // seconds between sync checks
+	MergeGapFill         string   `json:"merge_gap_fill"`         // "base" or "silence"
+	MergeVisualAssist    bool     `json:"merge_visual_assist"`    // experimental visual proposals, audio gate unchanged
+	MergeVoiceSeparation bool     `json:"merge_voice_separation"` // align and validate without voices (needs SEPARATOR_URL)
+	MergeForce           bool     `json:"merge_force"`            // write even if the sync is not guaranteed
+	MergeDefaultAudio    string   `json:"merge_default_audio"`    // language tag of the default track
 }
 
 // resolveMergeFiles turns the request into the list of candidate files,
@@ -162,7 +163,7 @@ func handleCreateMergeJob(jm *JobManager, cfg config.Config, w http.ResponseWrit
 	job := jm.StartJob(StartJobParams{
 		Type: "merge", Files: outputs, Source: source, SourceDir: sourceDir,
 		Merge: &MergeParams{Video: m.MergeVideo, TickSec: m.MergeTick, GapFill: m.MergeGapFill,
-			Force: m.MergeForce, VisualAssist: m.MergeVisualAssist, DefaultAudio: m.MergeDefaultAudio, Pairs: pairs, Unpaired: unpaired},
+			Force: m.MergeForce, VisualAssist: m.MergeVisualAssist, VoiceSeparation: m.MergeVoiceSeparation, DefaultAudio: m.MergeDefaultAudio, Pairs: pairs, Unpaired: unpaired},
 	})
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id": job.ID, "type": job.Type, "status": job.Status, "files": job.Files,

@@ -25,7 +25,7 @@ func cmdDualAudio(ctx context.Context, args []string) error {
 		return errors.New("usage: animeup dualaudio <match|build|analyze|visual|visual-regions|visual-motion|visual-motion-confirm|visual-refine|visual-fill|visual-audio|visual-seams|visual-seams-evaluate|compare-alignments|shared-audio|waveform-gap|waveform-probe|source-waveform-audit|track-overlap> [flags]")
 	}
 	cfg := config.NewConfig()
-	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin}
+	tools := dualaudio.Tools{FFmpeg: cfg.FFmpegBin, FFprobe: cfg.FFprobeBin, Separator: cfg.SeparatorURL}
 	switch args[0] {
 	case "match":
 		return dualaudioMatch(ctx, tools, args[1:])
@@ -1057,6 +1057,9 @@ func dualaudioAnalyze(ctx context.Context, t dualaudio.Tools, args []string) err
 	tick := fs.Float64("tick", 0, "seconds between sync checks (0 = default)")
 	visual := fs.Bool("visual-assist", false, "propose audio-confirmed offsets from video")
 	jsonOutput := fs.Bool("json", false, "output the full analysis as JSON")
+	anaBase := fs.String("analysis-base", "", "base track with voices removed, same timeline (aligns and validates on it)")
+	anaDub := fs.String("analysis-dub", "", "dub track with voices removed, same timeline")
+	voices := fs.Bool("voice-separation", false, "align and validate without voices (needs SEPARATOR_URL)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1067,6 +1070,8 @@ func dualaudioAnalyze(ctx context.Context, t dualaudio.Tools, args []string) err
 	j.BasePath, j.DubPath, j.DubStream = *base, *dub, *dubStream
 	j.TickSec = *tick
 	j.VisualAssist = *visual
+	j.BaseAnalysisPath, j.DubAnalysisPath = *anaBase, *anaDub
+	j.VoiceSeparation = *voices
 	res, err := dualaudio.Process(ctx, t, j)
 	if err != nil {
 		return err
@@ -1081,6 +1086,9 @@ func dualaudioAnalyze(ctx context.Context, t dualaudio.Tools, args []string) err
 func printResult(name string, r *dualaudio.Result) {
 	fmt.Printf("%-7s %s\n", r.Status, name)
 	fmt.Printf("        visual candidates: %d\n", r.VisualCandidates)
+	if r.VoiceSeparation != "" {
+		fmt.Printf("        voice separation: %s\n", r.VoiceSeparation)
+	}
 	if al := r.Alignment; al != nil {
 		fmt.Printf("        coverage %.1f%%, windows %d/%d, validated %d/%d, off %.0f s, residual %.0f ms (p95 %.0f ms)\n",
 			al.Coverage*100, al.WindowsLocked, al.WindowsTotal, r.Validated, r.ValidatedOf, r.OffSec,
@@ -1115,6 +1123,9 @@ func dualaudioBuild(ctx context.Context, t dualaudio.Tools, args []string) error
 	dubLang := fs.String("dub-lang", "por", "ISO 639-2 language of the dub")
 	dubTitle := fs.String("dub-title", "Português (BR)", "track title of the dub")
 	skip := fs.Bool("skip-existing", false, "leave finished episodes alone")
+	tick := fs.Float64("tick", 0, "seconds between sync checks (0 = default; merge jobs use 1)")
+	visual := fs.Bool("visual-assist", false, "propose audio-confirmed offsets from video (experimental)")
+	voices := fs.Bool("voice-separation", false, "align and validate without voices (needs SEPARATOR_URL)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1159,6 +1170,9 @@ func dualaudioBuild(ctx context.Context, t dualaudio.Tools, args []string) error
 				j.DubPath = filepath.Join(mf.DubDir, p.Dub)
 				j.OutPath = filepath.Join(*outDir, strings.TrimSuffix(p.Base, filepath.Ext(p.Base))+".dual.mkv")
 				j.Force = *force
+				j.TickSec = *tick
+				j.VisualAssist = *visual
+				j.VoiceSeparation = *voices
 				if *skip {
 					if _, err := os.Stat(j.OutPath); err == nil {
 						continue

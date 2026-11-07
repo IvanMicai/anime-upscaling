@@ -180,7 +180,11 @@ Every episode is graded `ok`, `review` or `fail`, and **only `ok` is written**
 (unless `--force`). An episode is `review` when the median residual exceeds
 50 ms, the 95th percentile exceeds 150 ms, more than 8 s play at a consistently
 wrong offset, fewer than 75 % of validation windows land in place, coverage falls
-below 90 %, fewer than half the sweep windows locked, or rate drift is suspected.
+below 90 %, or fewer than half the sweep windows locked. Suspected rate drift is
+reported with a failure but is not one on its own: the aligner approximates a
+slow drift with short constant segments, and the measurements above decide
+whether that approximation is fine enough (three Pokémon episodes flagged only
+for drift verified at 0–10 ms in their finished files).
 A held-back episode lists the timestamps that failed, so there is somewhere to
 look.
 
@@ -213,6 +217,58 @@ came close; adding mutuality accepted 82 of 82, still with none wrong. Mutuality
 is what keeps an episode with no counterpart refused: its least-bad dub already
 belongs, more strongly, to another base. `mapping.json` is plain JSON so a
 refused pair can be filled in by hand.
+
+## Voice separation
+
+Most held-back episodes were not misaligned; they were **unverifiable**. In a
+stretch of pure dialogue the shared music and effects are quiet under the
+voices, so the validation windows there have no clear peak, and short re-edit
+steps inside those stretches go unnoticed by the solver.
+
+With **voice separation** on, both tracks are sent to the optional separator
+service ([`apps/separator`](../apps/separator), Demucs `htdemucs` on a GPU) and
+alignment and validation run on what comes back: the same tracks without
+voices, on the same timeline. Ambience, footsteps and quiet music under the
+lines are identical in both languages and now dominate. The output is still
+rendered from the **original** dub audio.
+
+On the eight Pokémon S01 episodes the original pipeline held back (11, 13, 18,
+20, 25, 27, 56, 57), the share of validation windows in place went from 54–75 %
+to 81–97 %, and six of them passed the unchanged gate. Two episodes that already
+passed rose from 95.6 % to 98.5 % and 99.7 %.
+
+Seeing the dialogue stretches also exposes short errors the coarse segments
+hide: runs of 5–20 s at 0.06–0.19 s off. After seam repair, **run splitting**
+gives such a run its own segment at the segment's lag plus the measured
+residual, with both cuts found from the features inside the run. Splits are
+limited to residuals of at most 0.5 s (a larger one is different material, not a
+small step) and kept only if the validation improves without losing hits.
+
+Two more passes follow, both kept only when they improve the result:
+
+- **The finished-file check, built in.** Validation scores windows against the
+  map's own segments, so a stretch the map gives the wrong lag can hide inside
+  it. The rendered track is therefore aligned against the base from scratch, as
+  the manual finished-file check does; any stretch of 5 s or more measurably off
+  zero (0.06–0.5 s) is fed back — as a seam move when the corrected lag is a
+  neighbour's, otherwise as a split. Kept only if that check improves and the
+  validation does not get worse.
+- **Different material becomes a hole.** A stretch still measured more than
+  0.5 s off is not a small step but material cut differently in each version
+  (on EP 25, the next-episode preview). It is turned into a gap that plays the
+  base audio, like any stretch the dub has no counterpart for.
+
+The separator runs Demucs with no random shift (`shifts=0`, fixed seed): with
+the CLI's default random shift, one episode's verdict changed between runs.
+
+Deploy the separator with `docker-compose.separator.yml` (it sets
+`SEPARATOR_URL` on the API). Without it, a merge that asks for separation runs
+on the original audio and logs why. The CLI takes `--voice-separation`, or
+`--analysis-base`/`--analysis-dub` to supply voice-free tracks directly.
+
+Known limit: strongly rhythmic music can match equally well a fraction of a
+beat apart once voices are gone (EP 56 alternated between two lags 0.13 s
+apart in one run).
 
 ## Traps worth knowing
 
