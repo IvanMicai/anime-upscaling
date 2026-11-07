@@ -18,6 +18,7 @@ env:
   # people already pull it by this name. Renaming the source directory must not
   # rename a published artifact — do not "fix" this to match the folder.
   APP_IMAGE_NAME: anime-upscaling-app
+  SEPARATOR_IMAGE_NAME: anime-upscaling-separator
 
 jobs:
   validate:
@@ -180,3 +181,30 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.semantic.outputs.new_release_version }}
           cache-from: type=gha,scope=api
+
+      # The voice separator (PyTorch + CUDA runtime) is the other large image.
+      # Clear the SeedVR2 build first so both fit on the runner's disk.
+      - name: Free disk space for the separator image
+        if: steps.semantic.outputs.new_release_published == 'true'
+        run: |
+          docker buildx prune -af
+          docker system prune -af
+          df -h /
+
+      - name: Build and push separator image
+        if: steps.semantic.outputs.new_release_published == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: apps/separator
+          file: apps/separator/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.SEPARATOR_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.SEPARATOR_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.SEPARATOR_IMAGE_NAME }}:${{ steps.semantic.outputs.new_release_major_version }}.${{ steps.semantic.outputs.new_release_minor_version }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.SEPARATOR_IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.semantic.outputs.new_release_version }}

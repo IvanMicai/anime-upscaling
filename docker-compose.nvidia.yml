@@ -10,3 +10,17 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu, compute, utility, graphics, video]
+
+  # Demucs on one card: ~3 GB of VRAM, and only while a merge is separating.
+  separator:
+    environment:
+      - SEPARATOR_IDLE_SECONDS=${SEPARATOR_IDLE_SECONDS:-300}
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              # On a multi-GPU host pick the card encoding uses least.
+              device_ids: ["${SEPARATOR_GPU:-0}"]
+              capabilities: [gpu, compute, utility]

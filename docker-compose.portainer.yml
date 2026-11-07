@@ -12,6 +12,7 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics,video
       - VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
       - VK_DRIVER_FILES=/usr/share/vulkan/icd.d/nvidia_icd.json
+      - SEPARATOR_URL=${SEPARATOR_URL:-http://separator:4752}
       - AUTH_PASSWORD=${AUTH_PASSWORD:?Set AUTH_PASSWORD}
       - AUTH_SECRET=${AUTH_SECRET:?Set AUTH_SECRET}
     expose:
@@ -26,6 +27,30 @@ services:
               count: all
               capabilities: [gpu, compute, utility, graphics, video]
     mem_limit: ${API_MEM_LIMIT:-16g}
+    restart: unless-stopped
+
+  # Voice separator for dual-audio merges (Demucs). Always running, but idle it
+  # is a small Python process holding no model, RAM or VRAM: the model loads on
+  # the first request and unloads after SEPARATOR_IDLE_SECONDS without one.
+  # No published port; like the API it is only reachable on this network.
+  separator:
+    image: ivanmicai/anime-upscaling-separator:${SEPARATOR_IMAGE_TAG:-${IMAGE_TAG:-latest}}
+    container_name: anime-upscaling-separator
+    environment:
+      - SEPARATOR_IDLE_SECONDS=${SEPARATOR_IDLE_SECONDS:-300}
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    expose:
+      - "4752"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              # One card is plenty (~3 GB of VRAM while loaded); on a multi-GPU
+              # host pick the one encoding uses least.
+              device_ids: ["${SEPARATOR_GPU:-0}"]
+              capabilities: [gpu, compute, utility]
+    mem_limit: ${SEPARATOR_MEM_LIMIT:-12g}
     restart: unless-stopped
 
   web:

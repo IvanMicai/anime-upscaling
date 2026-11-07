@@ -93,6 +93,22 @@ jobs:
       - name: Run govulncheck
         run: govulncheck ./...
 
+  separator:
+    name: Separator
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: apps/separator
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The standby server is stdlib-only; the tests use a fake worker, so
+      # neither PyTorch nor the model is needed here.
+      - name: Test standby server
+        run: python3 -m unittest -v test_server
+
   app:
     name: App
     runs-on: ubuntu-latest

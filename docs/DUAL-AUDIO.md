@@ -225,7 +225,7 @@ stretch of pure dialogue the shared music and effects are quiet under the
 voices, so the validation windows there have no clear peak, and short re-edit
 steps inside those stretches go unnoticed by the solver.
 
-With **voice separation** on, both tracks are sent to the optional separator
+With **voice separation** on, both tracks are sent to the separator
 service ([`apps/separator`](../apps/separator), Demucs `htdemucs` on a GPU) and
 alignment and validation run on what comes back: the same tracks without
 voices, on the same timeline. Ambience, footsteps and quiet music under the
@@ -261,9 +261,20 @@ Two more passes follow, both kept only when they improve the result:
 The separator runs Demucs with no random shift (`shifts=0`, fixed seed): with
 the CLI's default random shift, one episode's verdict changed between runs.
 
-Deploy the separator with `docker-compose.separator.yml` (it sets
-`SEPARATOR_URL` on the API). Without it, a merge that asks for separation runs
-on the original audio and logs why. The CLI takes `--voice-separation`, or
+The separator is part of every Compose file (`separator` service, image
+`anime-upscaling-separator`) and the API finds it at `SEPARATOR_URL`
+(`http://separator:4752` by default). It is always running but holds nothing
+while idle: the standby server is plain Python with no PyTorch, using a few MB
+of RAM and no GPU memory. The first request starts a worker process that loads
+the model (a few seconds); after `SEPARATOR_IDLE_SECONDS` (default 300) without
+a request the worker exits, which frees its RAM and VRAM completely. Ending the
+process is necessary because a live CUDA context keeps VRAM even after the model
+is freed. `GET /health` reports `standby` or `loaded`. With the NVIDIA override
+it runs on the card in `SEPARATOR_GPU` (default 0; ~3 GB of VRAM while loaded);
+without a GPU it runs on the CPU, much more slowly.
+
+If the separator is unreachable, a merge that asks for separation runs on the
+original audio and logs why. The CLI takes `--voice-separation`, or
 `--analysis-base`/`--analysis-dub` to supply voice-free tracks directly.
 
 Known limit: strongly rhythmic music can match equally well a fraction of a
