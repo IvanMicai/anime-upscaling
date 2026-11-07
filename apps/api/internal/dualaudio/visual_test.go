@@ -1,0 +1,303 @@
+package dualaudio
+
+import (
+	"math/rand"
+	"testing"
+)
+
+func TestMatchVisualLocatesSequenceAndRejectsAmbiguity(t *testing.T) {
+	rng := rand.New(rand.NewSource(17))
+	seq := make([][7]uint64, 80)
+	for i := range seq {
+		for j := range seq[i] {
+			seq[i][j] = rng.Uint64()
+		}
+	}
+	query := append([][7]uint64(nil), seq[30:35]...)
+	index, distance, _, ok := matchVisual(query, seq)
+	if !ok || index != 30 || distance != 0 {
+		t.Fatalf("got index=%d distance=%f matched=%v", index, distance, ok)
+	}
+	copy(seq[60:65], query)
+	_, _, _, ok = matchVisual(query, seq)
+	if ok {
+		t.Fatal("repeated scene must be marked ambiguous")
+	}
+}
+
+func TestVisualFingerprintIgnoresBorders(t *testing.T) {
+	a, b := make([]byte, visualBytes), make([]byte, visualBytes)
+	for i := range b {
+		b[i] = 255
+	}
+	for y := 3; y < 21; y++ {
+		for x := 4; x <= 27; x++ {
+			a[y*visualWidth+x] = byte(x * 4)
+			b[y*visualWidth+x] = byte(x * 4)
+		}
+	}
+	if visualFingerprint(a) != visualFingerprint(b) {
+		t.Fatal("borders changed fingerprint")
+	}
+}
+
+func TestMatchVisualRejectsUnrelatedAndShortInput(t *testing.T) {
+	q := make([][7]uint64, 5)
+	s := make([][7]uint64, 12)
+	for i := range s {
+		for j := range s[i] {
+			s[i][j] = ^uint64(0)
+		}
+	}
+	if _, _, _, ok := matchVisual(q, s); ok {
+		t.Fatal("unrelated sequence matched")
+	}
+	if _, _, _, ok := matchVisual(q, s[:4]); ok {
+		t.Fatal("short search matched")
+	}
+}
+
+func TestMatchVisualNeedsIndependentAlternative(t *testing.T) {
+	q := make([][7]uint64, 5)
+	_, _, margin, ok := matchVisual(q, q)
+	if ok || margin != 0 {
+		t.Fatalf("matched=%v margin=%v", ok, margin)
+	}
+}
+
+func TestRefineVisualFindsSubsecondMatchAndRejectsRepetition(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
+	search := make([][7]uint64, 140)
+	for i := range search {
+		for j := range search[i] {
+			search[i][j] = rng.Uint64()
+		}
+	}
+	query := append([][7]uint64(nil), search[41:77]...)
+	idx, _, _, ok := refineVisual(query, search)
+	if !ok || idx != 41 {
+		t.Fatalf("match=%v index=%d", ok, idx)
+	}
+	copy(search[95:131], query)
+	if _, _, _, ok := refineVisual(query, search); ok {
+		t.Fatal("repeated sequence must be ambiguous")
+	}
+}
+
+func TestVisualTimelineHandlesShortDub(t *testing.T) {
+	got := visualTimeline(make([][7]uint64, 500), make([][7]uint64, 10), nil, nil)
+	if len(got.Matches) != 0 {
+		t.Fatal("unexpected matches")
+	}
+}
+
+func TestVisualTimelineMeasuresOffset(t *testing.T) {
+	rng := rand.New(rand.NewSource(13))
+	base := make([][7]uint64, 80)
+	fine := make([][7]uint64, 80*12)
+	for _, frames := range [][][7]uint64{base, fine} {
+		for i := range frames {
+			for j := range frames[i] {
+				frames[i][j] = rng.Uint64()
+			}
+		}
+	}
+	dub, dubFine := make([][7]uint64, len(base)+3), make([][7]uint64, len(fine)+36)
+	copy(dub[3:], base)
+	copy(dubFine[36:], fine)
+	result := visualTimeline(base, dub, fine, dubFine)
+	if len(result.Matches) == 0 {
+		t.Fatal("expected distinctive matches")
+	}
+	for _, m := range result.Matches {
+		if m.TimeB-m.TimeA != 3 {
+			t.Fatalf("incorrect offset: %+v", m)
+		}
+	}
+}
+
+func TestVisualWindowsIdentifiesEditAndRejectsStaticFrames(t *testing.T) {
+	rng := rand.New(rand.NewSource(18))
+	base := make([][7]uint64, 24*10)
+	dub := make([][7]uint64, len(base)+24)
+	for i := range base {
+		for j := range base[i] {
+			base[i][j] = rng.Uint64()
+		}
+	}
+	copy(dub[:24*5], base[:24*5])
+	copy(dub[24*5+12:], base[24*5:])
+	matches := []VisualLocation{}
+	for i := 0; i < 3; i++ {
+		matches = append(matches, VisualLocation{TimeA: float64(i * 2), TimeB: float64(i * 2)})
+		matches = append(matches, VisualLocation{TimeA: float64(12 + i*2), TimeB: float64(13 + i*2)})
+	}
+	windows := visualWindows(base, dub, matches)
+	if len(windows) != 10 {
+		t.Fatalf("got %d windows", len(windows))
+	}
+	if windows[0].Lag != 0 || windows[9].Lag != -1 {
+		t.Fatalf("wrong edit: %+v", windows)
+	}
+	clear(base)
+	clear(dub)
+	if got := visualWindows(base, dub, matches); len(got) != 0 {
+		t.Fatal("static frames must be inconclusive")
+	}
+}
+
+func TestVisualWindowsDoesNotTreatNearbyOffsetsAsIndependent(t *testing.T) {
+	frames := make([][7]uint64, 100)
+	rng := rand.New(rand.NewSource(19))
+	for i := range frames {
+		for j := range frames[i] {
+			frames[i][j] = rng.Uint64()
+		}
+	}
+	var matches []VisualLocation
+	for i := 0; i < 3; i++ {
+		matches = append(matches, VisualLocation{TimeA: float64(i), TimeB: float64(i)})
+		matches = append(matches, VisualLocation{TimeA: float64(i), TimeB: float64(i) + 0.25})
+	}
+	if got := visualWindows(frames, frames, matches); len(got) != 0 {
+		t.Fatal("nearby offsets do not provide an independent ambiguity check")
+	}
+}
+
+func TestRejectIsolatedVisualWindows(t *testing.T) {
+	windows := []VisualWindow{
+		{Start: 0, End: 2, Lag: 0},
+		{Start: 2, End: 4, Lag: 0},
+		{Start: 4, End: 6, Lag: -11},
+		{Start: 6, End: 8, Lag: 0},
+		{Start: 8, End: 10, Lag: 0},
+		{Start: 10, End: 12, Lag: -11},
+		{Start: 12, End: 14, Lag: -11},
+	}
+	got := rejectIsolatedVisualWindows(windows)
+	if len(got) != 6 || got[2].Start != 6 || got[4].Start != 10 {
+		t.Fatalf("expected isolated outlier removed and sustained cut retained: %+v", got)
+	}
+}
+
+func TestSupplementVisualWindowsRequiresMatchingFramesAndBoundaries(t *testing.T) {
+	rng := rand.New(rand.NewSource(44))
+	base := make([][7]uint64, 120)
+	for i := range base {
+		for j := range base[i] {
+			base[i][j] = rng.Uint64()
+		}
+	}
+	dub := append([][7]uint64(nil), base...)
+	windows := []VisualWindow{{Start: 0, End: 2}, {Start: 6, End: 8}}
+	got := supplementVisualWindows(base, dub, windows)
+	if len(got) != 4 || !got[1].Contextual || !got[2].Contextual {
+		t.Fatalf("expected contextual windows: %+v", got)
+	}
+	for i := 24; i < 72; i++ {
+		for j := range dub[i] {
+			dub[i][j] = ^dub[i][j]
+		}
+	}
+	if got := supplementVisualWindows(base, dub, windows); len(got) != 2 {
+		t.Fatal("dissimilar frames must remain unverified")
+	}
+	windows[1].Lag = 1
+	if got := supplementVisualWindows(base, base, windows); len(got) != 2 {
+		t.Fatal("different boundary offsets must not be bridged")
+	}
+}
+
+func TestPixelCheckRejectsDissimilarAndConstantFrames(t *testing.T) {
+	rng := rand.New(rand.NewSource(45))
+	base := make([]byte, 200*visualBytes)
+	if _, err := rng.Read(base); err != nil {
+		t.Fatal(err)
+	}
+	dub := append([]byte(nil), base...)
+	windows := []VisualWindow{{Start: 6, End: 8}}
+	got, rejected := filterVisualPixelDisagreements(windows, base, dub)
+	if len(got) != 1 || got[0].PixelSimilarity < .99 {
+		t.Fatalf("matching frame rejected: %+v", got)
+	}
+	if len(rejected) != 0 {
+		t.Fatal("matching frame was marked rejected")
+	}
+	index := 7 * 12 * visualBytes
+	for i := index; i < index+visualBytes; i++ {
+		dub[i] = 255 - dub[i]
+	}
+	if got, rejected = filterVisualPixelDisagreements(windows, base, dub); len(got) != 0 || len(rejected) != 1 {
+		t.Fatal("inverted frame accepted")
+	}
+	clear(base[index : index+visualBytes])
+	clear(dub[index : index+visualBytes])
+	if got, rejected = filterVisualPixelDisagreements(windows, base, dub); len(got) != 0 || len(rejected) != 1 {
+		t.Fatal("constant frame accepted")
+	}
+}
+
+func TestPixelCheckRejectsBetterDistantControl(t *testing.T) {
+	rng := rand.New(rand.NewSource(46))
+	base := make([]byte, 200*visualBytes)
+	if _, err := rng.Read(base); err != nil {
+		t.Fatal(err)
+	}
+	dub := append([]byte(nil), base...)
+	k := 7 * 12
+	copy(dub[(k+60)*visualBytes:(k+61)*visualBytes], base[k*visualBytes:(k+1)*visualBytes])
+	for i := 0; i < visualBytes; i++ {
+		dub[k*visualBytes+i] = byte((65*int(base[k*visualBytes+i]) + 35*rng.Intn(256)) / 100)
+	}
+	score, ok := pixelCorrelation(base[k*visualBytes:(k+1)*visualBytes], dub[k*visualBytes:(k+1)*visualBytes])
+	if !ok || score < .85 || score >= .9 {
+		t.Fatalf("fixture must pass basic threshold but lose to control: %.3f", score)
+	}
+	if got, _ := filterVisualPixelDisagreements([]VisualWindow{{Start: 6, End: 8}}, base, dub); len(got) != 0 {
+		t.Fatal("stronger distant control accepted")
+	}
+}
+
+func TestVisualCandidatesRequireMatchingAudio(t *testing.T) {
+	rng := rand.New(rand.NewSource(912))
+	frames := make([][7]uint64, 100)
+	for i := range frames {
+		for j := range frames[i] {
+			frames[i][j] = rng.Uint64()
+		}
+	}
+	source := ExtractFeatures(toPCM(music(100, 33)))
+	got := visualCandidates(frames, frames, source, source, 6)
+	if len(got) == 0 {
+		t.Fatal("expected an audio-confirmed visual match")
+	}
+	for _, p := range got {
+		if p.lag > 1 || p.lag < -1 {
+			t.Fatalf("incorrect offset: %+v", p)
+		}
+	}
+	// Identical video with silent audio cannot establish a precise offset.
+	silent := ExtractFeatures(make([]int16, 100*featRate))
+	if p := visualCandidates(frames, frames, source, silent, 6); len(p) != 0 {
+		t.Fatalf("accepted visual match without audio evidence: %+v", p)
+	}
+}
+
+func TestPreferVisualResultKeepsAudioEvidence(t *testing.T) {
+	old := Validation{Hits: 90, Eligible: 100, Median: 0.01, P95: 0.02, OffSec: 10}
+	better := Validation{Hits: 92, Eligible: 100, Median: 0.01, P95: 0.02, OffSec: 0}
+	if !preferVisualResult(StatusReview, StatusOK, old, better, 0.95, 0.95) {
+		t.Fatal("rejected better validated result")
+	}
+	worse := better
+	worse.Hits = 80
+	if preferVisualResult(StatusReview, StatusOK, old, worse, 0.95, 0.95) {
+		t.Fatal("accepted fewer validated windows")
+	}
+	if preferVisualResult(StatusOK, StatusReview, old, better, 0.95, 0.95) {
+		t.Fatal("downgraded a passing alignment")
+	}
+	if preferVisualResult(StatusReview, StatusOK, old, better, 0.95, 0.80) {
+		t.Fatal("accepted reduced coverage")
+	}
+}

@@ -128,6 +128,19 @@ func ExtractFeatures(pcm []int16) *Features {
 	return out
 }
 
+// ExtractStereoFeatures keeps left and right 16-kHz channels separate. A mono
+// downmix can cancel shared content when a release has unusual channel phase.
+// This is experimental: channel swaps or different stereo mixes can still
+// produce misleading correlations.
+func ExtractStereoFeatures(pcm []int16) *Features {
+	left, right := make([]int16, len(pcm)/2), make([]int16, len(pcm)/2)
+	for i := range left {
+		left[i], right[i] = pcm[2*i], pcm[2*i+1]
+	}
+	a, b := ExtractFeatures(left), ExtractFeatures(right)
+	return &Features{Bands: append(a.Bands, b.Bands...), Frames: a.Frames}
+}
+
 // zscore normalises in place. It removes level and EQ differences between the
 // two masters so correlation measures temporal shape only.
 func zscore(x []float64) {

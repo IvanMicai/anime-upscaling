@@ -154,11 +154,13 @@ music-and-effects master: only the voices differ. The score is what lines up.
    so that stretch is left as a **hole** (placed by a change-point search) and
    plays the base audio — it used to be filled with repeated dub audio.
 6. **Render.** The dub's PCM is repositioned on the base timeline segment by
-   segment, with a 20 ms crossfade at each join.
-7. **Gaps.** A stretch that exists only in the base (credits, preview, a scene
-   the dub's rip cut) plays the **base audio**. `--gap-fill silence` mutes it
-   instead, but a minute of silence reads as a playback fault, while the original
-   language says at once that this part was never dubbed.
+   segment, with a 40 ms crossfade centered on each join (20 ms on each side).
+   Crossfades shrink around shorter spans so transitions do not overlap.
+7. **Gaps.** Where no dub was aligned, the default is to play the **base
+   audio**. `--gap-fill silence` mutes the gap instead. Gaps as short as one
+   output sample are retained; a gap indicates missing alignment evidence, not
+   necessarily that a dub does not exist. Older saved maps are handled by
+   reconstructing the uncovered spans when rendering.
 8. **Validation, in a closed loop.** The *rebuilt* track is correlated against
    the base again in 10 s windows. Three things are measured: the **residual** of
    confident windows; the **hit share** — windows whose peak lands within 60 ms of
@@ -178,7 +180,11 @@ Every episode is graded `ok`, `review` or `fail`, and **only `ok` is written**
 (unless `--force`). An episode is `review` when the median residual exceeds
 50 ms, the 95th percentile exceeds 150 ms, more than 8 s play at a consistently
 wrong offset, fewer than 75 % of validation windows land in place, coverage falls
-below 90 %, fewer than half the sweep windows locked, or rate drift is suspected.
+below 90 %, or fewer than half the sweep windows locked. Suspected rate drift is
+reported with a failure but is not one on its own: the aligner approximates a
+slow drift with short constant segments, and the measurements above decide
+whether that approximation is fine enough (three Pokémon episodes flagged only
+for drift verified at 0–10 ms in their finished files).
 A held-back episode lists the timestamps that failed, so there is somewhere to
 look.
 
@@ -211,6 +217,69 @@ came close; adding mutuality accepted 82 of 82, still with none wrong. Mutuality
 is what keeps an episode with no counterpart refused: its least-bad dub already
 belongs, more strongly, to another base. `mapping.json` is plain JSON so a
 refused pair can be filled in by hand.
+
+## Voice separation
+
+Most held-back episodes were not misaligned; they were **unverifiable**. In a
+stretch of pure dialogue the shared music and effects are quiet under the
+voices, so the validation windows there have no clear peak, and short re-edit
+steps inside those stretches go unnoticed by the solver.
+
+With **voice separation** on, both tracks are sent to the separator
+service ([`apps/separator`](../apps/separator), Demucs `htdemucs` on a GPU) and
+alignment and validation run on what comes back: the same tracks without
+voices, on the same timeline. Ambience, footsteps and quiet music under the
+lines are identical in both languages and now dominate. The output is still
+rendered from the **original** dub audio.
+
+On the eight Pokémon S01 episodes the original pipeline held back (11, 13, 18,
+20, 25, 27, 56, 57), the share of validation windows in place went from 54–75 %
+to 81–97 %, and six of them passed the unchanged gate. Two episodes that already
+passed rose from 95.6 % to 98.5 % and 99.7 %.
+
+Seeing the dialogue stretches also exposes short errors the coarse segments
+hide: runs of 5–20 s at 0.06–0.19 s off. After seam repair, **run splitting**
+gives such a run its own segment at the segment's lag plus the measured
+residual, with both cuts found from the features inside the run. Splits are
+limited to residuals of at most 0.5 s (a larger one is different material, not a
+small step) and kept only if the validation improves without losing hits.
+
+Two more passes follow, both kept only when they improve the result:
+
+- **The finished-file check, built in.** Validation scores windows against the
+  map's own segments, so a stretch the map gives the wrong lag can hide inside
+  it. The rendered track is therefore aligned against the base from scratch, as
+  the manual finished-file check does; any stretch of 5 s or more measurably off
+  zero (0.06–0.5 s) is fed back — as a seam move when the corrected lag is a
+  neighbour's, otherwise as a split. Kept only if that check improves and the
+  validation does not get worse.
+- **Different material becomes a hole.** A stretch still measured more than
+  0.5 s off is not a small step but material cut differently in each version
+  (on EP 25, the next-episode preview). It is turned into a gap that plays the
+  base audio, like any stretch the dub has no counterpart for.
+
+The separator runs Demucs with no random shift (`shifts=0`, fixed seed): with
+the CLI's default random shift, one episode's verdict changed between runs.
+
+The separator is part of every Compose file (`separator` service, image
+`anime-upscaling-separator`) and the API finds it at `SEPARATOR_URL`
+(`http://separator:4752` by default). It is always running but holds nothing
+while idle: the standby server is plain Python with no PyTorch, using a few MB
+of RAM and no GPU memory. The first request starts a worker process that loads
+the model (a few seconds); after `SEPARATOR_IDLE_SECONDS` (default 300) without
+a request the worker exits, which frees its RAM and VRAM completely. Ending the
+process is necessary because a live CUDA context keeps VRAM even after the model
+is freed. `GET /health` reports `standby` or `loaded`. With the NVIDIA override
+it runs on the card in `SEPARATOR_GPU` (default 0; ~3 GB of VRAM while loaded);
+without a GPU it runs on the CPU, much more slowly.
+
+If the separator is unreachable, a merge that asks for separation runs on the
+original audio and logs why. The CLI takes `--voice-separation`, or
+`--analysis-base`/`--analysis-dub` to supply voice-free tracks directly.
+
+Known limit: strongly rhythmic music can match equally well a fraction of a
+beat apart once voices are gone (EP 56 alternated between two lags 0.13 s
+apart in one run).
 
 ## Traps worth knowing
 
@@ -249,3 +318,292 @@ Analysis is CPU-bound FFT work; nothing here touches the GPU. One episode takes
 about 40 s and ~1 GB of RAM at the default settings, so `--jobs` multiplies both.
 On a host shared with other services, cap the container (`--cpus`) — an unbounded
 batch will starve its neighbours.
+
+## Experimental visual diagnostics
+
+When audio has little common music or effects, `dualaudio visual` can look for a
+five-second image sequence near a timestamp in another release:
+
+```bash
+animeup dualaudio visual --base episode.en.mkv --dub episode.pt-br.mp4 --time 150 --radius 20
+```
+
+The JSON response gives `t_a`, `t_b`, normalized `distance`, `margin`, and
+`matched`. It decodes one frame per second, downscales to grayscale and compares
+cropped difference hashes. A match is rejected when the distance is too high or
+a non-adjacent sequence scores similarly. These thresholds are experimental;
+opening sequences, static scenes, watermarks, crops and differing edits can
+still cause incorrect matches. An unmatched result has `t_b` set to zero.
+
+This command is **read-only**. Its coarse timestamps are diagnostic evidence,
+not proof of audio synchronization: it neither feeds the alignment algorithm nor
+changes the quality gate. Check corresponding scenes and verify audio separately.
+
+For a read-only map of distinctive scenes across an episode, run:
+
+```bash
+animeup dualaudio visual --base episode.en.mkv --dub episode.pt-br.mp4 --timeline
+```
+
+This searches every five seconds and refines distinctive three-second sequences
+at 12 frames per second. The JSON contains accepted scene matches and two-second
+comparison windows using offsets supported by at least three scene matches.
+Short intervals between agreeing windows may also be included when every
+intermediate sequence visually resembles the proposed match. These windows are
+marked `contextual` because a static scene or short edit can remain ambiguous.
+An independent grayscale-correlation check compares each midpoint against the
+proposed frame and five-second-away controls. Rejected windows are recorded
+separately and the audio map will not bridge those ranges. This check samples
+one frame per window and does not prove frame-accurate alignment.
+
+For an exploratory check of one two-second scene, run `animeup dualaudio
+visual-regions --base BASE --dub DUB --base-start 808 --dub-center 819`.
+It compares a 4×4 grid at 24 fps within ±1.5 seconds of the expected dubbed
+timestamp. The JSON reports each region's score, peak margin and reversed-time
+control, plus a consensus requiring at least three individually passing regions
+and agreement from 70% of passing regions within one frame. Peaks within three
+frames of the search boundary are inconclusive, because a better match may lie
+outside the search interval. Seeks are rounded to a shared 24-fps time grid;
+the JSON `base_start` and `dub_center` report the effective timestamps.
+`offset_frames` is relative to that returned `dub_center`; a positive value means the matching image was found
+later in the dub. This diagnostic neither modifies a timeline nor validates
+audio or lip sync. Static imagery, repeated animation, subtitles and differing
+edits can still mislead it; thresholds are experimental. When regions agree,
+`frame_warnings` lists sampled frames whose median region similarity is low.
+An isolated flash, frame-rate phase or visual edit can trigger a warning; it
+does not automatically reject the sequence or identify which version is right.
+
+`dualaudio visual-motion --base BASE --dub DUB --base-start 1132 --dub-center
+1142.666667` is an experimental alternative for a small moving subject on a
+mostly static background. It subtracts a temporal median in the central image
+region, compares a two-second sequence at 24 fps, and reports the best peak,
+alternatives and a reversed-time control. The offset is in frames relative to
+the returned `dub_center`. Low-scoring individual moving frames are reported
+as `frame_warnings` and prevent a match from being accepted. Thresholds are
+heuristic; repeated movement,
+camera motion, color changes and subjects outside the central region can be
+misleading. It always returns review status, writes no media and does not
+establish that the dubbed source audio is synchronized.
+
+For a targeted, slower second look, `dualaudio visual-refine --base ... --dub
+... --timeline timeline.json --limit 8 > refined.json` decodes three-second
+sequences at 24 fps around rejected candidates. A window is recovered only
+when its nearby timing peak is distinctive and beats five-second controls.
+The limit is 1–100 per invocation; the resulting JSON remains compatible with
+`visual-audio`. Recoveries are marked `fine_refined` and remain experimental:
+24-fps sampling and matched imagery do not prove dialogue or source lip sync.
+Use `visual-refine --accepted-at 836,838 --limit 2` to recheck specific already
+accepted two-second windows instead. A weak or ambiguous result leaves that
+window unchanged; rechecked windows remain contextual and review-only.
+
+`dualaudio visual-fill --base ... --dub ... --timeline refined.json --limit 100
+> filled.json` optionally searches missing two-second windows near existing
+anchors using three-second grayscale sequences and distant controls. When the
+wider sequence fails, it can try the two-second window itself with stricter
+similarity and ambiguity thresholds; an edit just outside the window may
+otherwise hide a match. Near a file boundary it requires two distant controls
+on the available side and checks half-second starting positions near the
+beginning. It never
+fills explicitly rejected intervals or uses newly recovered windows as anchors.
+It also checks a cropped difference hash of the same sampled frames against
+both distant controls; the two metrics are not independent source material.
+The pass decodes both full videos at 12 fps and marks its additions
+`gap_recovered`; they remain contextual, not an automatic merge approval.
+Missing windows are inconclusive; they are not proof of a gap. This is not a
+continuous edit map and does not identify exact cut boundaries. Sampling
+limits timestamp resolution, and the audio may already be out of sync with its
+own source video. Do not infer that the audio is synchronized from a visual
+match. This mode decodes both videos twice and rejects inputs over two hours.
+
+To investigate whether the audio supports a correction within each visually
+matched region, save the timeline and run the separate read-only analysis:
+
+```bash
+animeup dualaudio visual --base episode.en.mkv --dub episode.pt-br.mp4 --timeline > timeline.json
+animeup dualaudio visual-audio --base episode.en.mkv --dub episode.pt-br.mp4 --timeline timeline.json
+```
+
+The report groups nearby windows with similar visual offsets and estimates an
+audio correction only when at least three non-overlapping audio windows agree.
+The candidate applies that correction only within 30 seconds of an agreeing
+audio window; elsewhere it retains the visual offset as an unverified hypothesis.
+Only directly observed visual windows are mapped; unobserved intervals remain
+gaps even when the offsets of their neighbors agree.
+Use the same base and dub used to create the timeline: the JSON does not bind
+itself to the source files.
+It reports gaps, the candidate map, audio evidence and validation statistics. It also
+reports adjacent mapped boundaries with source-time jumps of at least 40 ms as
+`seam_jumps`. A jump is a review signal, not proof of an audible defect, and
+gap transitions are not covered by this report.
+The separate `source_validation` compares the in-memory reconstruction to the
+original dubbed audio at the candidate map's positions. This checks whether
+audio was placed as the map specifies, not whether the map or the dub's own
+lip sync is correct; it also does not verify a muxed or encoded output file.
+The report gives mapped and examined seconds separately because short segments,
+gaps and joins are excluded from the source check.
+
+Add `--stereo` to `visual-audio` to experimentally extract and compare left and
+right audio features separately instead of downmixing first. This can retain
+shared sounds that partly cancel in a mono mix, but different channel layouts,
+swapped channels or unrelated mixes can still give misleading results. The
+source-audio reconstruction check also compares channels separately in this
+mode. It remains `review` and does not change the normal merge gate.
+
+With `--stereo --holdout`, corrections are estimated on non-overlapping
+10-second windows; different windows are reserved for evaluation, with
+padding between reference searches and exclusion of overlapping dubbed source
+samples. Feature normalization still uses whole-track statistics, and this is
+not an independently annotated sync verdict. In this mode `off_sec` counts
+only confidently off sampled seconds and does not imply a continuous run.
+`--stereo --repair-audio` instead
+tests small corrections on consistently off runs and retains them only if the
+same validation set improves without reducing coverage or worsening aggregates.
+That repair comparison is not a holdout and cannot be combined with `--holdout`.
+The report separately flags mapped intervals where dubbed-audio source time
+differs by more than 150 ms from the corresponding visual source time. An
+experimental repair is not kept if it increases those flagged intervals. This
+flag does not determine which source is correct: the dub may itself be out of
+sync, and visual estimates are sampled. Gaps and unobserved images are excluded.
+
+The native AAC/Matroska mux path retains the complete rendered PCM. An
+integration test measures the decoded track against its source to detect an
+encoder-priming timing shift; this behavior should be rechecked if the encoder
+or container changes.
+PCM decoding uses stream timestamps to preserve initial audio offsets relative
+to the container timeline. A regression test covers an audio stream beginning
+one second after video.
+Each report is `review`: a soundtrack match can disagree with the dub's own
+picture, and the report does not establish whether the original dub is itself
+in sync. No media is written and this analysis does not change the merge gate.
+
+### Experimental visual assistance in merge jobs
+
+The opt-in **Experimental visual assistance** setting proposes offsets from
+five-second image sequences sampled once per second. A candidate is only added
+after the original audio matcher independently refines it near that location.
+When audio-only matching finds an alignment, the solver keeps a visual-assisted
+alternative only if the existing quality checks improve. If audio-only matching
+finds no segments, the visual pass can seed a candidate instead; audio must
+still confirm each proposal and the normal quality gate is never relaxed.
+Enabling this decodes both videos and may substantially increase
+processing time. Videos longer than two hours are rejected by this mode.
+
+Visual matches can be wrong in repeated scenes, cuts, mirrored or heavily edited
+releases; the option does not guarantee that a rejected merge will succeed.
+API clients can opt in with `merge_visual_assist: true` in `POST /api/jobs`;
+`dualaudio analyze --visual-assist` exercises it without producing an output.
+
+For targeted research, `visual-audio --stereo --waveform-at 133.083,187`
+adds experimental three-second waveform probes at base-video times. Each
+probe requires continuous visual coverage and a consistent visual offset,
+compares both 16-kHz stereo channels over a ±1.5-second base search, and
+reports channel peaks, ambiguity ratios and an `accepted` heuristic. Manual selection is
+limited to 20 probes and cannot be combined with `--holdout`. Alternatively,
+`--waveform-every 15` samples regularly at 15-second intervals, reports skipped
+positions and reasons, and allows at most 200 attempts. The scan does not
+constitute a holdout: it uses the same tracks and visual map. Two-channel
+agreement and shared waveform peaks can corroborate a common sound; duplicate
+channels, differing mixes, repeated music and imperfect source lip sync mean
+this is not independent truth or an automatic merge approval. Thresholds are
+exploratory, and a rejected probe is inconclusive. It does not change the
+candidate map or the normal merge gate.
+
+The optional `waveform_visual_disagreements` report groups at least three
+accepted, non-overlapping probes whose signed offsets differ by at most 80 ms
+and whose absolute offset is at least 150 ms. Its start and end bound the
+supporting probes, not necessarily continuous coverage. These thresholds are
+heuristics; the report identifies a mismatch, not which source is correct.
+
+`dualaudio waveform-gap --base BASE --dub DUB --alignment MAP.json --timeline
+TIMELINE.json --start 780 --end 782` proposes a map for a gap of at most two
+seconds when adjacent map offsets agree, both visual anchors are direct or
+fine-refined, and a three-second stereo shared-sound probe passes its checks.
+It decodes only short audio excerpts and returns an in-memory candidate with
+`status: review`; it does not write media or bypass the merge gate. The output
+explicitly reports `visual_rejected` when the original visual analysis rejected
+the gap. A matching soundtrack can be music or effects and can coexist with a
+different edit or misaligned dubbed source, so this is not a lip-sync verdict.
+
+For a short transition, `dualaudio waveform-probe --base BASE --dub DUB
+--base-start 462 --dub-start 461.89525 --window 0.5` measures each stereo
+channel separately over a query of 0.5–3 seconds. It reports peak polarity as
+`-1` or `1`; channel inversion can otherwise cancel a shared sound. Short
+queries use stricter heuristic thresholds and return review status. Repeated
+sound, seek/resampling phase, differing mixes and source lip sync can still
+make this measurement misleading or inconclusive. This diagnostic does not
+write media or change the three-second gap-recovery gate.
+
+`dualaudio source-waveform-audit --review REVIEW.mkv --dub DUB.mp4
+--alignment MAP.json --stride 3` screens the rendered dubbed track against
+the original dubbed source in non-overlapping three-second queries. The map
+supplies search offsets, including nearby offsets for gaps and seams. The
+report distinguishes matches, inconclusive windows and conflicting candidates;
+it always requires review and writes no media. Each query searches overlapping
+reference audio, and a match may be dominated by shared music or effects, so
+window counts are not verified speech coverage or a lip-sync verdict. The
+command decodes both full stereo tracks into memory and accepts files up to two
+hours; increasing `--stride` reduces the number of comparisons.
+
+### Review shared audio in a rendered file
+
+`animeup dualaudio shared-audio --file review.mkv --reference-stream 0 --candidate-stream 1`
+compares timestamp-aligned audio streams in one-second windows. The diagnostic
+reports unusually similar windows, allowing up to 6 ms of codec or resampling
+phase difference. It skips low-energy windows and the file edges. A match can
+be an English fallback, shared music, or a sound effect; it does not identify
+speech or establish lip synchronization. Thresholds are exploratory, and an
+unreported window is not evidence that no fallback is present. Inspect the
+reported intervals in context and compare the source audio before editing.
+
+### Find a possible misplaced transition
+
+`dualaudio analyze --base BASE --dub DUB --visual-assist --json > alignment.json`
+exports the normal analysis result. Given a separately generated visual timeline,
+`dualaudio visual-seams --timeline timeline.json --alignment alignment.json`
+can report an interval where directly measured frames support the previous
+source offset after the audio solver has already switched to the next offset.
+It estimates a local visual/audio bias and requires multiple direct observations
+on both sides; contextual windows, rejected regions and large observation gaps
+cannot establish a boundary. The interval is a review hint, not an exact edit,
+proof of dubbed-source lip sync, or permission to bypass the normal merge gate.
+This diagnostic currently detects only a visual transition later than the audio
+boundary, so an empty result is not evidence that all boundaries are correct.
+
+For an in-memory, review-only comparison of the first supported later boundary,
+`dualaudio visual-seams-evaluate --base BASE --dub DUB --timeline timeline.json --alignment alignment.json --tick 1`
+constructs a candidate using the earliest visually supported bound, preserves
+existing gaps, checks the alignment durations against the supplied files,
+renders both alternatives in memory, and compares the same validation windows.
+It reports audio-metric improvement only when the window
+count is unchanged, hits do not decrease, consistent off-time decreases, and
+median/p95 do not worsen beyond 5 ms. The same material helps select and
+measure the candidate: this is not independent validation or proof of lip
+sync. The command keeps `status: review` and writes no media. It evaluates only
+the first candidate, can take substantial time and memory, and does not replace
+the existing merge gate.
+
+### Compare two alignment maps fairly
+
+`dualaudio compare-alignments --base BASE --dub DUB --first first.json --second second.json --tick 1`
+renders two candidates in memory and validates only windows fully covered by
+both maps, using stereo features by default. It checks durations against the
+supplied files, reports common mapped seconds and each map's metrics, and does
+not write media. Use `--stereo=false` to inspect mono behavior separately. The
+same 50 ms gap tolerance as the regular validator applies. Higher audio scores
+are not proof of correct lip sync, especially when the same material was used
+to create the map; this diagnostic always returns review status.
+
+Optionally, `--timeline TIMELINE.json` also reports visual conflicts where the
+two maps differ by more than 150 ms. Only directly observed, non-rejected image
+windows count. The 90% observation threshold is a heuristic; agreement does not
+prove that the dubbed source itself has correct lip sync. This comparison does
+not apply changes or bypass the merge gate.
+
+For a contextual two-second visual window, `dualaudio visual-motion-confirm
+--base BASE --dub DUB --timeline timeline.json --at START > checked.json` runs
+the experimental 24-fps central-motion check at the existing visual offset. It
+records a separate motion confirmation only if that check is accepted and its
+offset agrees with the window. The comparison above then counts this window as
+observed. The motion check uses the same footage and a bounded search; it is
+not independent truth, can miss small or static motion, and cannot establish
+the dub's internal audio synchronization. No media is written or approved.

@@ -38,6 +38,10 @@ type Config struct {
 	SeedVR2BatchSize    int      // SEEDVR2_BATCH_SIZE, 4n+1
 	SeedVR2BlocksToSwap int      // SEEDVR2_BLOCKS_TO_SWAP, -1 = default
 	SeedVR2ExtraArgs    []string // SEEDVR2_EXTRA_ARGS, appended to the CLI
+
+	// SeparatorURL is the optional voice separator service used by merges
+	// (SEPARATOR_URL, e.g. http://separator:4752); empty disables it.
+	SeparatorURL string
 }
 
 func NewConfig() Config {
@@ -84,6 +88,7 @@ func NewConfig() Config {
 		SeedVR2BatchSize:    envSeedVR2BatchSize("SEEDVR2_BATCH_SIZE"),
 		SeedVR2BlocksToSwap: envIntMin("SEEDVR2_BLOCKS_TO_SWAP", -1, 0),
 		SeedVR2ExtraArgs:    strings.Fields(os.Getenv("SEEDVR2_EXTRA_ARGS")),
+		SeparatorURL:        os.Getenv("SEPARATOR_URL"),
 	}
 
 	// Overlay persisted runtime settings over env/defaults.

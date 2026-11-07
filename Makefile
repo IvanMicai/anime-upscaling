@@ -7,7 +7,7 @@ APP_PORT ?= 4750
 HOST_PROCESS_DIR ?= ./data
 PROCESS_DIR ?= $(abspath $(HOST_PROCESS_DIR))
 
-.PHONY: all init gen-secrets quickstart build build-api build-api-seedvr2 build-app run run-gpu run-seedvr2 stop logs dev dev-api dev-app clean deploy
+.PHONY: all init gen-secrets quickstart build build-api build-api-seedvr2 build-app build-separator run run-gpu run-seedvr2 stop logs dev dev-api dev-app clean deploy
 
 # --- Build ---
 
@@ -47,7 +47,7 @@ quickstart: init
 	@echo "Log in with the AUTH_PASSWORD from .env:"
 	@grep '^AUTH_PASSWORD=' .env
 
-build: build-api build-app
+build: build-api build-app build-separator
 
 # --platform: video2x image is amd64-only; lets the build run on Apple Silicon.
 build-api:
@@ -56,6 +56,10 @@ build-api:
 # The API image with SeedVR2 (PyTorch + CUDA); NVIDIA only, several GB larger.
 build-api-seedvr2:
 	docker build --platform=linux/amd64 --target seedvr2 -t anime-upscaling-api:seedvr2 apps/api
+
+# Voice separator (Demucs on PyTorch + CUDA); several GB, runs on CPU too.
+build-separator:
+	docker build --platform=linux/amd64 -t anime-upscaling-separator apps/separator
 
 build-app:
 	docker build -t anime-upscaling-app apps/web
