@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.14.2](https://github.com/IvanMicai/anime-upscaling/compare/v1.14.1...v1.14.2) (2026-11-09)
+
+### Bug Fixes
+
+* cap video2x encoder threads and lookahead to cut RAM use ([#104](https://github.com/IvanMicai/anime-upscaling/issues/104)) ([15974c4](https://github.com/IvanMicai/anime-upscaling/commit/15974c4f043867d6d30ddf997305ccd44d246fcb))
+
 ## [1.14.1](https://github.com/IvanMicai/anime-upscaling/compare/v1.14.0...v1.14.1) (2026-11-09)
 
 ### Bug Fixes
