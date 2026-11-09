@@ -217,3 +217,17 @@ func TestEffectiveNoiseLevel(t *testing.T) {
 		}
 	}
 }
+
+func TestVideo2xArgsCapEncoderMemory(t *testing.T) {
+	up := video2xUpscaleArgs("in.mkv", "out.mkv", 1, 4, UpscaleOptions{}.WithDefaults())
+	rife := video2xRifeArgs("in.mkv", "out.mkv", 0, 2, RifeOptions{Model: "rife-v4.6", UHD: true, SceneThresh: 5})
+
+	wantUp := "-i in.mkv -o out.mkv -p realesrgan -s 4 -d 1 --realesrgan-model realesr-animevideov3 --thread-count 12 -e rc-lookahead=10"
+	if got := strings.Join(up, " "); got != wantUp {
+		t.Errorf("upscale args:\n got:  %s\n want: %s", got, wantUp)
+	}
+	wantRife := "-i in.mkv -o out.mkv -p rife -m 2 -d 0 --rife-model rife-v4.6 --rife-uhd --scene-thresh 5.0 --thread-count 8 -e rc-lookahead=10"
+	if got := strings.Join(rife, " "); got != wantRife {
+		t.Errorf("rife args:\n got:  %s\n want: %s", got, wantRife)
+	}
+}

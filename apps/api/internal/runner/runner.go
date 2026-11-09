@@ -231,6 +231,61 @@ func (o UpscaleOptions) WithDefaults() UpscaleOptions {
 	return o
 }
 
+// video2xEncoderArgs caps the memory of the encoder built into video2x
+// (libx264 by default). It writes the full upscaled resolution, and left on
+// auto it opens one thread per core, each holding its own frames: on a 36-core
+// host a 2528x1920 encode peaked at 5.9-6.9 GB. A fixed thread count and a
+// shorter rate-control lookahead bring that to about 2 GB.
+//
+// The thread count follows how fast the GPU model delivers frames. RIFE is
+// slow enough that 8 threads keep up (1.7 GB, same speed); Real-ESRGAN is
+// faster and with 8 the encoder became the bottleneck (+15% time), while 12
+// matched the uncapped speed (2.1 GB). A lookahead of 10 frames kept file size
+// and quality; 0 disables x264's macroblock tree and doubles the file size.
+func video2xEncoderArgs(threads int) []string {
+	return []string{"--thread-count", strconv.Itoa(threads), "-e", "rc-lookahead=10"}
+}
+
+func video2xUpscaleArgs(in, out string, gpuID, scale int, opts UpscaleOptions) []string {
+	args := []string{
+		"-i", in,
+		"-o", out,
+		"-p", opts.Processor,
+		"-s", strconv.Itoa(scale),
+		"-d", strconv.Itoa(gpuID),
+	}
+	switch opts.Processor {
+	case "realesrgan":
+		args = append(args, "--realesrgan-model", opts.Model)
+	case "libplacebo":
+		args = append(args, "--libplacebo-shader", opts.Model)
+	case "realcugan":
+		args = append(args, "--realcugan-model", opts.Model)
+	}
+	if n := opts.EffectiveNoiseLevel(); n > 0 {
+		args = append(args, "-n", strconv.Itoa(n))
+	}
+	return append(args, video2xEncoderArgs(12)...)
+}
+
+func video2xRifeArgs(in, out string, gpuID, multiplier int, opts RifeOptions) []string {
+	args := []string{
+		"-i", in,
+		"-o", out,
+		"-p", "rife",
+		"-m", strconv.Itoa(multiplier),
+		"-d", strconv.Itoa(gpuID),
+	}
+	if opts.Model != "" {
+		args = append(args, "--rife-model", opts.Model)
+	}
+	if opts.UHD {
+		args = append(args, "--rife-uhd")
+	}
+	args = append(args, "--scene-thresh", fmt.Sprintf("%.1f", opts.SceneThresh))
+	return append(args, video2xEncoderArgs(8)...)
+}
+
 // Video2x runs video2x upscale on a specific GPU, writing stdout/stderr to logPath.
 // If onProgress is non-nil, the log output is also parsed for progress data.
 // streamIdx disambiguates concurrent streams running on the same GPU for tracker
@@ -247,25 +302,7 @@ func (r *Runner) Video2x(ctx context.Context, gpuID, streamIdx int, filename, lo
 	cmdInputPath, cmdOutputPath, originalOutputPath, sanitized, cleanupSymlink := setupSanitizedPaths(filename, inputDir, outputDir)
 	defer cleanupSymlink()
 
-	args := []string{
-		"-i", cmdInputPath,
-		"-o", cmdOutputPath,
-		"-p", opts.Processor,
-		"-s", strconv.Itoa(scale),
-		"-d", strconv.Itoa(gpuID),
-	}
-	switch opts.Processor {
-	case "realesrgan":
-		args = append(args, "--realesrgan-model", opts.Model)
-	case "libplacebo":
-		args = append(args, "--libplacebo-shader", opts.Model)
-	case "realcugan":
-		args = append(args, "--realcugan-model", opts.Model)
-	}
-	if n := opts.EffectiveNoiseLevel(); n > 0 {
-		args = append(args, "-n", strconv.Itoa(n))
-	}
-
+	args := video2xUpscaleArgs(cmdInputPath, cmdOutputPath, gpuID, scale, opts)
 	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin, args...)
 
 	tail := newTailWriter(20)
@@ -306,21 +343,7 @@ func (r *Runner) Video2xRife(ctx context.Context, gpuID, streamIdx int, filename
 	cmdInputPath, cmdOutputPath, originalOutputPath, sanitized, cleanupSymlink := setupSanitizedPaths(filename, inputDir, outputDir)
 	defer cleanupSymlink()
 
-	args := []string{
-		"-i", cmdInputPath,
-		"-o", cmdOutputPath,
-		"-p", "rife",
-		"-m", strconv.Itoa(multiplier),
-		"-d", strconv.Itoa(gpuID),
-	}
-	if opts.Model != "" {
-		args = append(args, "--rife-model", opts.Model)
-	}
-	if opts.UHD {
-		args = append(args, "--rife-uhd")
-	}
-	args = append(args, "--scene-thresh", fmt.Sprintf("%.1f", opts.SceneThresh))
-
+	args := video2xRifeArgs(cmdInputPath, cmdOutputPath, gpuID, multiplier, opts)
 	cmd := exec.CommandContext(ctx, r.cfg.Video2xBin, args...)
 
 	tail := newTailWriter(20)
