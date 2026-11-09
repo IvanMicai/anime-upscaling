@@ -132,11 +132,12 @@ async function handleDownload(req: NextRequest): Promise<Response> {
     return NextResponse.json({ error: "invalid path" }, { status: 400 });
   }
 
-  const fullPath = join(PROCESS_DIR, subDir, subPath, name);
+  // Media is read at runtime from PROCESS_DIR; keep the build from tracing it.
+  const fullPath = join(/*turbopackIgnore: true*/ PROCESS_DIR, subDir, subPath, name);
 
   let size: number;
   try {
-    const info = await stat(fullPath);
+    const info = await stat(/*turbopackIgnore: true*/ fullPath);
     if (!info.isFile()) {
       return NextResponse.json({ error: "file not found" }, { status: 404 });
     }
@@ -145,7 +146,7 @@ async function handleDownload(req: NextRequest): Promise<Response> {
     return NextResponse.json({ error: "file not found" }, { status: 404 });
   }
 
-  const nodeStream = createReadStream(fullPath);
+  const nodeStream = createReadStream(/*turbopackIgnore: true*/ fullPath);
   const webStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
 
   return new Response(webStream, {
