@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.14.1](https://github.com/IvanMicai/anime-upscaling/compare/v1.14.0...v1.14.1) (2026-11-09)
+
+### Bug Fixes
+
+* preserve audio timing and add visual sync diagnostics ([#103](https://github.com/IvanMicai/anime-upscaling/issues/103)) ([043a9fc](https://github.com/IvanMicai/anime-upscaling/commit/043a9fccff8097d075afe1bec217420a19f36984))
+
 ## [1.14.0](https://github.com/IvanMicai/anime-upscaling/compare/v1.13.4...v1.14.0) (2026-10-13)
 
 ### Features
