@@ -24,11 +24,15 @@ running and deploying, see the [README](../README.md) and
 
 ## 1. System overview
 
-Two processes deployed together by Docker Compose:
+Three services deployed together by Docker Compose:
 
 - **`apps/web`** — a Next.js web app. The only port published to the host.
 - **`apps/api`** — a Go HTTP server that orchestrates `video2x` and `ffmpeg`
   subprocesses. Reachable only on the internal Compose network.
+- **`apps/separator`** — a voice separator (Demucs) the API calls during
+  dual-audio merges. Idle it holds no model, RAM or VRAM; the model loads on
+  demand and unloads after a timeout. Internal only, like the API. See
+  [DUAL-AUDIO.md](DUAL-AUDIO.md#voice-separation).
 
 ```
                     host:4750 (published)

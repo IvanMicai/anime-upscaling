@@ -167,3 +167,26 @@ func TestMergeFrameAndLocateValidateInput(t *testing.T) {
 		}
 	}
 }
+
+func TestMergeRequestVisualAssistIsOptIn(t *testing.T) {
+	var m mergeRequest
+	if err := json.Unmarshal([]byte(`{"merge_visual_assist":true}`), &m); err != nil {
+		t.Fatal(err)
+	}
+	if !m.MergeVisualAssist {
+		t.Fatal("visual assistance was not decoded")
+	}
+	if err := normaliseMerge(&m); err != nil {
+		t.Fatal(err)
+	}
+	if !m.MergeVisualAssist || m.MergeForce {
+		t.Fatal("visual assistance changed the force setting")
+	}
+	var defaults mergeRequest
+	if err := json.Unmarshal([]byte(`{}`), &defaults); err != nil {
+		t.Fatal(err)
+	}
+	if defaults.MergeVisualAssist {
+		t.Fatal("visual assistance must be opt-in")
+	}
+}

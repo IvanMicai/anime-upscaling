@@ -69,6 +69,8 @@ export default function NewMergePage() {
         merge_tick: mergeCfg.tick,
         merge_gap_fill: mergeCfg.gapFill,
         merge_force: mergeCfg.force || undefined,
+        merge_visual_assist: mergeCfg.visualAssist || undefined,
+        merge_voice_separation: mergeCfg.voiceSeparation || undefined,
         merge_default_audio: mergeCfg.defaultAudio || undefined,
       });
       router.push("/");

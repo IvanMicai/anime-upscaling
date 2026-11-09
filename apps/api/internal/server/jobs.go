@@ -79,13 +79,15 @@ type Job struct {
 // the job holds the OUTPUT names, one per pair, so progress lines up with what
 // will appear in the merged folder.
 type MergeParams struct {
-	Video        string               `json:"video"`
-	TickSec      float64              `json:"tick_sec"`
-	GapFill      string               `json:"gap_fill"`
-	Force        bool                 `json:"force,omitempty"`
-	DefaultAudio string               `json:"default_audio,omitempty"`
-	Pairs        []dualaudio.NamePair `json:"pairs"`
-	Unpaired     []dualaudio.Unpaired `json:"unpaired,omitempty"`
+	Video           string               `json:"video"`
+	TickSec         float64              `json:"tick_sec"`
+	GapFill         string               `json:"gap_fill"`
+	Force           bool                 `json:"force,omitempty"`
+	VisualAssist    bool                 `json:"visual_assist,omitempty"`
+	VoiceSeparation bool                 `json:"voice_separation,omitempty"`
+	DefaultAudio    string               `json:"default_audio,omitempty"`
+	Pairs           []dualaudio.NamePair `json:"pairs"`
+	Unpaired        []dualaudio.Unpaired `json:"unpaired,omitempty"`
 }
 
 // StartJobParams holds all parameters for creating and starting a job.
@@ -589,7 +591,7 @@ func (m *JobManager) StartJob(p StartJobParams) *Job {
 				byOutput[pr.Output] = pr
 			}
 			opt := process.MergeOptions{Video: p.Merge.Video, TickSec: p.Merge.TickSec,
-				GapFill: dualaudio.GapFill(p.Merge.GapFill), Force: p.Merge.Force, DefaultAudio: p.Merge.DefaultAudio}
+				GapFill: dualaudio.GapFill(p.Merge.GapFill), Force: p.Merge.Force, VisualAssist: p.Merge.VisualAssist, VoiceSeparation: p.Merge.VoiceSeparation, DefaultAudio: p.Merge.DefaultAudio}
 			for i, f := range toProcess {
 				wg.Add(1)
 				idx := i + 1

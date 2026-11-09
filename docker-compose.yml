@@ -12,11 +12,28 @@ services:
       - STREAMS_PER_GPU=${STREAMS_PER_GPU:-1}
       - FFMPEG_STREAMS=${FFMPEG_STREAMS:-1}
       - GPU_VENDOR=${GPU_VENDOR:-}
+      - SEPARATOR_URL=${SEPARATOR_URL:-http://separator:4752}
     expose:
       - "${API_PORT:-4751}"
     volumes:
       - ${HOST_PROCESS_DIR:-./data}:${PROCESS_DIR:-/data}
     mem_limit: ${API_MEM_LIMIT:-16g}
+    restart: unless-stopped
+
+  # Voice separator for dual-audio merges (Demucs). Always running, but idle it
+  # is a small Python process holding no model, RAM or VRAM: the model loads on
+  # the first request and unloads after SEPARATOR_IDLE_SECONDS without one.
+  # No published port; like the API it is only reachable on this network.
+  separator:
+    build: apps/separator
+    image: anime-upscaling-separator
+    platform: linux/amd64  # the PyTorch CUDA base image is amd64-only
+    container_name: anime-upscaling-separator
+    environment:
+      - SEPARATOR_IDLE_SECONDS=${SEPARATOR_IDLE_SECONDS:-300}
+    expose:
+      - "4752"
+    mem_limit: ${SEPARATOR_MEM_LIMIT:-12g}
     restart: unless-stopped
 
   web:

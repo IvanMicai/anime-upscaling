@@ -52,6 +52,8 @@ export const WithLanguages: Story = {
     await expect(args.onChange).toHaveBeenCalledWith({ video: "en" });
     await userEvent.click(canvas.getByRole("button", { name: /2 s/ }));
     await expect(args.onChange).toHaveBeenCalledWith({ tick: 2 });
+    await userEvent.click(canvas.getByRole("checkbox", { name: /Experimental visual assistance/ }));
+    await expect(args.onChange).toHaveBeenCalledWith({ visualAssist: true });
   },
 };
 

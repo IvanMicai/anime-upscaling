@@ -17,19 +17,14 @@ import (
 type Tools struct {
 	FFmpeg  string
 	FFprobe string
+	// Separator is the base URL of the optional voice separator service
+	// (apps/separator); empty when none is deployed.
+	Separator string
 }
 
 const (
 	outRate     = 48000
 	outChannels = 2
-
-	// aacEncoderDelay is the priming delay of ffmpeg's native AAC encoder. It is
-	// written as initial_padding, which the Matroska muxer does NOT compensate
-	// for: measured on finished files, the dubbed track came out a constant
-	// 20 ms late. Dropping exactly this many samples before encoding cancels it.
-	// It only holds for the native encoder — switch to libfdk_aac or opus and
-	// this has to be measured again.
-	aacEncoderDelay = 1024
 )
 
 func (t Tools) run(ctx context.Context, bin string, stdin []byte, args ...string) ([]byte, error) {
@@ -100,9 +95,10 @@ func (t Tools) hasSubtitles(ctx context.Context, path string) bool {
 
 // DecodePCM decodes one audio stream to interleaved signed 16-bit samples.
 func (t Tools) DecodePCM(ctx context.Context, path string, rate, channels, stream int) ([]int16, error) {
-	raw, err := t.run(ctx, t.FFmpeg, nil, "-v", "error", "-nostdin", "-i", path,
+	raw, err := t.run(ctx, t.FFmpeg, nil, "-v", "error", "-nostdin", "-threads", "2", "-i", path,
 		"-map", fmt.Sprintf("0:a:%d", stream), "-vn",
-		"-ac", strconv.Itoa(channels), "-ar", strconv.Itoa(rate), "-f", "s16le", "-")
+		"-ac", strconv.Itoa(channels), "-ar", strconv.Itoa(rate),
+		"-af", fmt.Sprintf("aresample=%d:async=1:first_pts=0", rate), "-f", "s16le", "-")
 	if err != nil {
 		return nil, err
 	}
@@ -126,9 +122,6 @@ type MuxOptions struct {
 // track. It writes to a temp name and renames, so a killed job never leaves a
 // half-written file where a finished one is expected.
 func (t Tools) Mux(ctx context.Context, basePath string, dub []int16, outPath string, o MuxOptions) error {
-	if len(dub) > aacEncoderDelay*outChannels {
-		dub = dub[aacEncoderDelay*outChannels:]
-	}
 	raw := make([]byte, 2*len(dub))
 	for i, s := range dub {
 		binary.LittleEndian.PutUint16(raw[2*i:], uint16(s))

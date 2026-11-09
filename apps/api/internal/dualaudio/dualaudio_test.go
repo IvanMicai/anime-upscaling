@@ -373,12 +373,59 @@ func TestGrade(t *testing.T) {
 		"misplaced stretch unseen by the median": {good, Validation{Median: 0.002, P95: 0.01, Hits: 18, Eligible: 69}},
 		"short stretch at a neighbour's offset":  {good, Validation{Median: 0.001, P95: 0.02, Hits: 232, Eligible: 243, OffSec: 30}},
 		"few windows":                            {&Alignment{Coverage: 0.95, WindowsTotal: 100, WindowsLocked: 30}, Validation{Median: 0.001, P95: 0.01, Hits: 10, Eligible: 10}},
-		"drift":                                  {&Alignment{Coverage: 0.95, WindowsTotal: 10, WindowsLocked: 10, DriftSuspected: true}, Validation{Median: 0.001, P95: 0.01, Hits: 10, Eligible: 10}},
+		"drift with failing checks":              {&Alignment{Coverage: 0.95, WindowsTotal: 10, WindowsLocked: 10, DriftSuspected: true}, Validation{Median: 0.001, P95: 0.01, Hits: 5, Eligible: 10}},
 	}
 	for name, c := range cases {
 		if s, _ := grade(c.al, c.v, DefaultGate()); s != StatusReview {
 			t.Errorf("%s: graded %s, want review", name, s)
 		}
+	}
+	// Drift is approximated by constant segments; when every measurement of the
+	// result passes, the approximation was fine enough.
+	drift := &Alignment{Coverage: 0.95, WindowsTotal: 10, WindowsLocked: 10, DriftSuspected: true}
+	if s, notes := grade(drift, Validation{Median: 0.001, P95: 0.01, Hits: 10, Eligible: 10}, DefaultGate()); s != StatusOK {
+		t.Errorf("drift with passing checks graded %s: %v", s, notes)
+	}
+}
+
+// A 15 s stretch 0.15 s off inside one long segment: TV rips are re-edited in
+// steps that small, and no neighbour has the right lag, so SnapSeams cannot
+// help. SplitRuns gives the stretch its own segment and finds both cuts.
+func TestSplitRunsCarvesAShortStepOutOfASegment(t *testing.T) {
+	m := music(120, 41)
+	extra := music(1, 99)
+	at := func(sec float64) int { return int(sec * featRate) }
+	var dm []float64
+	dm = append(dm, m[at(0.3):at(50)]...)   // lag 0.30
+	dm = append(dm, m[at(50.15):at(65)]...) // lag 0.45: the base holds 0.15 s more
+	dm = append(dm, extra[:at(0.15)]...)    // the dub holds 0.15 s more
+	dm = append(dm, m[at(65):]...)          // lag 0.30 again
+	base := mix(m, voice(len(m), 141))
+	dub := mix(dm, voice(len(dm), 241))
+	baseFeat, dubFeat := ExtractFeatures(toPCM(base)), ExtractFeatures(toPCM(dub))
+
+	al := &Alignment{BaseDuration: 120, Segments: []Segment{{BaseStart: 0, BaseEnd: 119, Lag: 0.3}}}
+	if !al.SplitRuns(baseFeat, dubFeat, []OffRun{{Start: 46, End: 69, Lag: 0.15, Windows: 12}}) {
+		t.Fatal("no split")
+	}
+	var mid *Segment
+	for i := range al.Segments {
+		if math.Abs(al.Segments[i].Lag-0.45) < 0.011 {
+			mid = &al.Segments[i]
+		}
+	}
+	if mid == nil {
+		t.Fatalf("no segment at lag 0.45: %+v", al.Segments)
+	}
+	if math.Abs(mid.BaseStart-50.15) > 1 || math.Abs(mid.BaseEnd-65) > 1 {
+		t.Errorf("stretch at %.2f-%.2f s, want about 50.15-65", mid.BaseStart, mid.BaseEnd)
+	}
+}
+
+func TestSplitRunsIgnoresLargeDisagreements(t *testing.T) {
+	al := &Alignment{BaseDuration: 120, Segments: []Segment{{BaseStart: 0, BaseEnd: 119, Lag: 0.3}}}
+	if al.SplitRuns(nil, nil, []OffRun{{Start: 46, End: 69, Lag: 3.5, Windows: 12}}) {
+		t.Error("split on a 3.5 s disagreement: that is wrong material, not a small step")
 	}
 }
 
@@ -475,5 +522,30 @@ func TestSeamFixToleratesMeasurementError(t *testing.T) {
 	// real fault, and moving a seam would bury it.
 	if f, ok := seamFixFor(segs, OffRun{Start: 1232, End: 1252, Lag: 0.5, Windows: 11}); ok {
 		t.Errorf("accepted a %0.f ms disagreement: %+v", 500.0, f)
+	}
+}
+
+// A preview cut differently in each version: 20 s measured 4 s off. No lag of
+// the dub explains it, so it becomes a hole that plays the base audio.
+func TestGapRunsLeavesDifferentMaterialToTheBase(t *testing.T) {
+	al := &Alignment{BaseDuration: 1342, Segments: []Segment{
+		{BaseStart: 923.5, BaseEnd: 1219.5, Lag: -10.62},
+		{BaseStart: 1219.5, BaseEnd: 1284.9, Lag: -10.75},
+	}}
+	if !al.GapRuns([]OffRun{{Start: 1259, End: 1279, Lag: -4.09, Windows: 11}}) {
+		t.Fatal("no change")
+	}
+	if len(al.Segments) != 3 || al.Segments[1].BaseEnd != 1259 || al.Segments[2].BaseStart != 1279 {
+		t.Fatalf("segments = %+v, want a hole at 1259-1279", al.Segments)
+	}
+	for _, s := range al.Segments {
+		if s.Lag != -10.62 && s.Lag != -10.75 {
+			t.Errorf("lag changed: %+v", s)
+		}
+	}
+	// Small residuals are SplitRuns' business, not holes.
+	al2 := &Alignment{BaseDuration: 100, Segments: []Segment{{BaseStart: 0, BaseEnd: 100, Lag: 1}}}
+	if al2.GapRuns([]OffRun{{Start: 40, End: 60, Lag: 0.15, Windows: 10}}) {
+		t.Error("a 0.15 s step became a hole")
 	}
 }

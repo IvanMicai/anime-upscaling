@@ -11,8 +11,8 @@ type GapFill string
 const (
 	// GapFillBase plays the base track. A stretch that exists only in the base
 	// (credits, preview, a scene the dub's rip cut) would otherwise be a minute
-	// of silence, which reads as a playback fault; the original language says at
-	// once that this part was never dubbed.
+	// of silence. A gap means no dub was aligned; it does not prove the source
+	// lacks a dub or that a viewer will recognize the language change.
 	GapFillBase    GapFill = "base"
 	GapFillSilence GapFill = "silence"
 )
@@ -39,15 +39,51 @@ func Render(a *Alignment, dub, base []int16, fill GapFill) []int16 {
 	if fade < 1 {
 		fade = 1
 	}
-	// sin² in, cos² out: the two ramps sum to exactly 1 across a join.
-	ramp := make([]float32, fade)
-	for i := range ramp {
-		s := math.Sin(float64(i) / float64(fade) * math.Pi / 2)
-		ramp[i] = float32(s * s)
+	// Reconstruct the complement so older saved alignments, which omitted
+	// gaps of 250 ms or less, render those intervals consistently too.
+	gaps, _ := gapsAndCoverage(a.Segments, a.BaseDuration)
+	shortBoundaries := make(map[int]int)
+	limitShortSpan := func(start, end int) {
+		if width := end - start; width >= 0 && width < 2*fade {
+			for _, at := range []int{start, end} {
+				if old, ok := shortBoundaries[at]; !ok || width/2 < old {
+					shortBoundaries[at] = width / 2
+				}
+			}
+		}
 	}
-
-	place := func(src []int16, srcStart, dstStart, dstEnd int) {
-		lo, hi := dstStart-fade, dstEnd+fade
+	for _, g := range gaps {
+		limitShortSpan(int(math.Round(g.Start*outRate)), int(math.Round(g.End*outRate)))
+	}
+	for _, s := range a.Segments {
+		limitShortSpan(int(math.Round(s.BaseStart*outRate)), int(math.Round(s.BaseEnd*outRate)))
+	}
+	// Both ramps span the same interval [join-fade, join+fade]. The
+	// incoming sin² and outgoing cos² weights therefore sum to one.
+	ramps := make(map[int][]float32)
+	rampFor := func(width int) []float32 {
+		if r, ok := ramps[width]; ok {
+			return r
+		}
+		r := make([]float32, 2*width+1)
+		if width > 0 {
+			for i := range r {
+				s := math.Sin(float64(i) / float64(2*width) * math.Pi / 2)
+				r[i] = float32(s * s)
+			}
+		}
+		ramps[width] = r
+		return r
+	}
+	boundaryFade := func(at int) int {
+		if width, ok := shortBoundaries[at]; ok {
+			return width
+		}
+		return fade
+	}
+	place := func(src []int16, srcStart, dstStart, dstEnd, fadeIn, fadeOut int) {
+		lo, hi := dstStart-fadeIn, dstEnd+fadeOut
+		inRamp, outRamp := rampFor(fadeIn), rampFor(fadeOut)
 		if lo < 0 {
 			lo = 0
 		}
@@ -60,11 +96,13 @@ func Render(a *Alignment, dub, base []int16, fill GapFill) []int16 {
 		}
 		srcStart -= dstStart - lo
 		for i := 0; i < n; i++ {
+			pos := lo + i
 			g := float32(1)
-			if i < fade {
-				g = ramp[i]
-			} else if n-1-i < fade {
-				g = ramp[n-1-i]
+			if fadeIn > 0 && dstStart > 0 && pos < dstStart+fadeIn {
+				g *= inRamp[pos-(dstStart-fadeIn)]
+			}
+			if fadeOut > 0 && dstEnd < total && pos >= dstEnd-fadeOut {
+				g *= outRamp[(dstEnd+fadeOut)-pos]
 			}
 			si := srcStart + i
 			if si < 0 || (si+1)*outChannels > len(src) {
@@ -79,12 +117,13 @@ func Render(a *Alignment, dub, base []int16, fill GapFill) []int16 {
 	for _, s := range a.Segments {
 		e0 := int(math.Round(s.BaseStart * outRate))
 		e1 := int(math.Round(s.BaseEnd * outRate))
-		place(dub, int(math.Round((s.BaseStart-s.Lag)*outRate)), e0, e1)
+		place(dub, int(math.Round((s.BaseStart-s.Lag)*outRate)), e0, e1, boundaryFade(e0), boundaryFade(e1))
 	}
 	if fill == GapFillBase && base != nil {
-		for _, g := range a.Gaps {
+		for _, g := range gaps {
 			e0 := int(math.Round(g.Start * outRate))
-			place(base, e0, e0, int(math.Round(g.End*outRate)))
+			e1 := int(math.Round(g.End * outRate))
+			place(base, e0, e0, e1, boundaryFade(e0), boundaryFade(e1))
 		}
 	}
 
@@ -117,6 +156,22 @@ func downmix16k(pcm []int16) []int16 {
 			}
 		}
 		out[i] = int16(acc / (ratio * outChannels))
+	}
+	return out
+}
+
+func downsampleStereo16k(pcm []int16) []int16 {
+	const ratio = outRate / featRate
+	frames := len(pcm) / outChannels / ratio
+	out := make([]int16, frames*outChannels)
+	for i := 0; i < frames; i++ {
+		for c := 0; c < outChannels; c++ {
+			var acc int
+			for j := 0; j < ratio; j++ {
+				acc += int(pcm[(i*ratio+j)*outChannels+c])
+			}
+			out[i*outChannels+c] = int16(acc / ratio)
+		}
 	}
 	return out
 }
@@ -184,10 +239,50 @@ func ClampTick(sec float64) float64 {
 // tick — a shorter one does not hold enough score to lock — so a finer tick
 // means more overlapping checks, not shorter ones.
 func Validate(rendered []int16, base *Features, segs []Segment, minConf, tickSec float64) Validation {
-	tickSec = ClampTick(tickSec)
+	return validateFeatures(ExtractFeatures(downmix16k(rendered)), base, segs, minConf, ClampTick(tickSec), 0, nil)
+}
+
+// ValidateStereo checks a stereo reconstruction against stereo base features.
+// It remains an experimental audio comparison, not proof of visual sync.
+func ValidateStereo(rendered []int16, base *Features, segs []Segment, minConf, tickSec float64) Validation {
+	return validateFeatures(ExtractStereoFeatures(downsampleStereo16k(rendered)), base, segs, minConf, ClampTick(tickSec), 0, nil)
+}
+
+// ValidateStereoHoldout measures windows not used by VisualAudioAlignHoldout.
+// It also excludes mapped dub intervals that overlap training source audio.
+func ValidateStereoHoldout(rendered []int16, base *Features, segs []Segment, trainingSource []Gap, minConf float64) Validation {
+	allowed := func(start, end float64) bool { return !sourceOverlapTraining(start, end, segs, trainingSource) }
+	v := validateFeatures(ExtractStereoFeatures(downsampleStereo16k(rendered)), base, segs, minConf, 60, 24.5, allowed)
+	// Holdout windows are sparse: count only confidently off examined seconds
+	// and do not imply the unmeasured gaps form continuous error runs.
+	v.OffSec = float64(len(v.Offs)) * validateWinSec
+	v.Runs = nil
+	return v
+}
+
+func sourceOverlapTraining(start, end float64, segs []Segment, training []Gap) bool {
+	for _, s := range segs {
+		lo, hi := math.Max(start, s.BaseStart), math.Min(end, s.BaseEnd)
+		if hi <= lo {
+			continue
+		}
+		// Include padding for crossfades, feature windows and sample rounding.
+		lo, hi = lo-s.Lag-.1, hi-s.Lag+.1
+		for _, g := range training {
+			if lo < g.End+.1 && hi > g.Start-.1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func validateFeatures(feat, base *Features, segs []Segment, minConf, tickSec, startSec float64, allowed func(float64, float64) bool) Validation {
 	var v Validation
 	v.TickSec = tickSec
-	feat := ExtractFeatures(downmix16k(rendered))
+	if feat == nil || base == nil || len(feat.Bands) != len(base.Bands) {
+		return v
+	}
 	if feat.Frames < 100 {
 		return v
 	}
@@ -210,7 +305,7 @@ func Validate(rendered []int16, base *Features, segs []Segment, minConf, tickSec
 		}
 		covered = append(covered, Gap{s.BaseStart, s.BaseEnd})
 	}
-	for p0 := 0; p0+wm <= feat.Frames; p0 += hm {
+	for p0 := int(math.Round(startSec * fps)); p0+wm <= feat.Frames; p0 += hm {
 		t0, t1 := float64(p0)/fps, float64(p0+wm)/fps
 		inside := false
 		for _, c := range covered {
@@ -220,6 +315,9 @@ func Validate(rendered []int16, base *Features, segs []Segment, minConf, tickSec
 			}
 		}
 		if !inside {
+			continue
+		}
+		if allowed != nil && !allowed(t0, t1) {
 			continue
 		}
 		v.Eligible++
