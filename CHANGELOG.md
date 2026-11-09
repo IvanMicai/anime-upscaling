@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.14.3](https://github.com/IvanMicai/anime-upscaling/compare/v1.14.2...v1.14.3) (2026-11-09)
+
+### Bug Fixes
+
+* **deps:** update web dependencies and patch Next.js advisories ([#105](https://github.com/IvanMicai/anime-upscaling/issues/105)) ([ad113df](https://github.com/IvanMicai/anime-upscaling/commit/ad113dffd7eb4d0d7f5a0c11104b77afec7efdef))
+
 ## [1.14.2](https://github.com/IvanMicai/anime-upscaling/compare/v1.14.1...v1.14.2) (2026-11-09)
 
 ### Bug Fixes
